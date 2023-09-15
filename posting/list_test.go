@@ -493,7 +493,10 @@ func TestAddMutation_mrjn1(t *testing.T) {
 func TestReadSingleValue(t *testing.T) {
 	defer setMaxListSize(maxListSize)
 	maxListSize = math.MaxInt32
+<<<<<<< HEAD
 	require.Equal(t, nil, pstore.DropAll())
+=======
+>>>>>>> 6fbd525d2 (Use get batch api badger)
 
 	// We call pl.Iterate and then stop iterating in the first loop when we are reading
 	// single values. This test confirms that the two functions, getFirst from this file
@@ -502,6 +505,7 @@ func TestReadSingleValue(t *testing.T) {
 	key := x.DataKey(x.GalaxyAttr("value"), 1240)
 	ol, err := getNew(key, ps, math.MaxUint64)
 	require.NoError(t, err)
+<<<<<<< HEAD
 	N := uint64(10000)
 	for i := uint64(2); i <= N; i += 2 {
 		edge := &pb.DirectedEdge{
@@ -514,6 +518,19 @@ func TestReadSingleValue(t *testing.T) {
 		kData := ol.getMutation(i + 1)
 		writer := NewTxnWriter(pstore)
 		if err := writer.SetAt(key, kData, BitDeltaPosting, i+1); err != nil {
+=======
+	N := int(10000)
+	for i := 2; i <= N; i += 2 {
+		edge := &pb.DirectedEdge{
+			Value: []byte("ho hey there" + strconv.Itoa(i)),
+		}
+		txn := Txn{StartTs: uint64(i)}
+		addMutationHelper(t, ol, edge, Set, &txn)
+		require.NoError(t, ol.commitMutation(uint64(i), uint64(i)+1))
+		kData := ol.getMutation(uint64(i))
+		writer := NewTxnWriter(pstore)
+		if err := writer.SetAt(key, kData, BitDeltaPosting, uint64(i)); err != nil {
+>>>>>>> 6fbd525d2 (Use get batch api badger)
 			require.NoError(t, err)
 		}
 		writer.Flush()
@@ -523,12 +540,16 @@ func TestReadSingleValue(t *testing.T) {
 			kvs, err := ol.Rollup(nil, txn.StartTs-3)
 			require.NoError(t, err)
 			require.NoError(t, writePostingListToDisk(kvs))
+<<<<<<< HEAD
 			// Delete item from global cache before reading, as we are not updating the cache in the test
 			memoryLayer.del(key)
+=======
+>>>>>>> 6fbd525d2 (Use get batch api badger)
 			ol, err = getNew(key, ps, math.MaxUint64)
 			require.NoError(t, err)
 		}
 
+<<<<<<< HEAD
 		j := uint64(3)
 		if j < ol.minTs {
 			j = ol.minTs
@@ -538,6 +559,17 @@ func TestReadSingleValue(t *testing.T) {
 			k, err := tx.cache.GetSinglePosting(key)
 			require.NoError(t, err)
 			checkValue(t, ol, string(k.Postings[0].Value), j)
+=======
+		j := 2
+		if j < int(ol.minTs) {
+			j = int(ol.minTs)
+		}
+		for ; j < i+6; j++ {
+			tx := NewTxn(uint64(j))
+			k, err := tx.cache.GetSinglePosting(key)
+			require.NoError(t, err)
+			checkValue(t, ol, string(k.Postings[0].Value), uint64(j))
+>>>>>>> 6fbd525d2 (Use get batch api badger)
 		}
 	}
 }
