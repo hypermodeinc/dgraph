@@ -35,21 +35,30 @@ import (
 
 	"github.com/dgraph-io/dgo/v240"
 	"github.com/dgraph-io/dgo/v240/protos/api"
-	"github.com/hypermodeinc/dgraph/v24/testutil"
+	"github.com/hypermodeinc/dgraph/v24/dgraphapi"
+	"github.com/hypermodeinc/dgraph/v24/dgraphtest"
 	"github.com/hypermodeinc/dgraph/v24/x"
 )
 
 type state struct {
-	dg *dgo.Dgraph
+	dg *dgraphapi.GrpcClient
 }
 
 var s state
 
 func TestMain(m *testing.M) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	x.Panic(testutil.AssignUids(200))
-	dg, err := testutil.DgraphClientWithGroot(testutil.SockAddr)
+	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
+	c, err := dgraphtest.NewLocalCluster(conf)
+
 	x.Panic(err)
+	x.Panic(c.Start())
+	dg, cleanup, err := c.Client()
+	x.Panic(err)
+	defer cleanup()
+
+	x.Panic(dg.Login(context.Background(), dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
+	x.Panic(c.AssignUids(dg.Dgraph, 200))
 	s.dg = dg
 	_ = m.Run()
 }
@@ -724,25 +733,23 @@ query countAnswers($num: int) {
 )
 
 func TestCountIndexConcurrentTxns(t *testing.T) {
-	dg, err := testutil.DgraphClientWithGroot(testutil.SockAddr)
-	require.NoError(t, err)
-	testutil.DropAll(t, dg)
-	alterSchema(t, dg, "answer: [uid] @count .")
+	require.NoError(t, s.dg.DropAll())
+	require.NoError(t, s.dg.SetupSchema("answer: [uid] @count ."))
 
 	// Expected edge count of 0x100: 1
-	txn0 := dg.NewTxn()
+	txn0 := s.dg.NewTxn()
 	mu := api.Mutation{SetNquads: []byte("<0x100> <answer> <0x200> .")}
-	_, err = txn0.Mutate(ctxb, &mu)
+	_, err := txn0.Mutate(ctxb, &mu)
 	require.NoError(t, err)
 	require.NoError(t, txn0.Commit(ctxb))
 
 	// The following two mutations are in separate interleaved txns.
-	txn1 := dg.NewTxn()
+	txn1 := s.dg.NewTxn()
 	mu = api.Mutation{SetNquads: []byte("<0x1> <answer> <0x2> .")}
 	_, err = txn1.Mutate(ctxb, &mu)
 	require.NoError(t, err)
 
-	txn2 := dg.NewTxn()
+	txn2 := s.dg.NewTxn()
 	mu = api.Mutation{SetNquads: []byte("<0x1> <answer> <0x3> .")}
 	_, err = txn2.Mutate(ctxb, &mu)
 	require.NoError(t, err)
@@ -752,13 +759,13 @@ func TestCountIndexConcurrentTxns(t *testing.T) {
 		"the txn2 should be aborted due to concurrent update on the count index of	<0x01>")
 
 	// retry the mutation
-	txn3 := dg.NewTxn()
+	txn3 := s.dg.NewTxn()
 	_, err = txn3.Mutate(ctxb, &mu)
 	require.NoError(t, err)
 	require.NoError(t, txn3.Commit(ctxb))
 
 	// Verify count queries
-	txn := dg.NewReadOnlyTxn()
+	txn := s.dg.NewReadOnlyTxn()
 	vars := map[string]string{"$num": "1"}
 	resp, err := txn.QueryWithVars(ctxb, countQuery, vars)
 	require.NoError(t, err)
@@ -766,7 +773,7 @@ func TestCountIndexConcurrentTxns(t *testing.T) {
 	require.JSONEq(t,
 		`{"me": [{"count(answer)": 1, "uid": "0x100"}]}`,
 		js)
-	txn = dg.NewReadOnlyTxn()
+	txn = s.dg.NewReadOnlyTxn()
 	vars = map[string]string{"$num": "2"}
 	resp, err = txn.QueryWithVars(ctxb, countQuery, vars)
 	require.NoError(t, err)
@@ -777,35 +784,33 @@ func TestCountIndexConcurrentTxns(t *testing.T) {
 }
 
 func TestCountIndexSerialTxns(t *testing.T) {
-	dg, err := testutil.DgraphClientWithGroot(testutil.SockAddr)
-	require.NoError(t, err)
-	testutil.DropAll(t, dg)
-	alterSchema(t, dg, "answer: [uid] @count .")
+	require.NoError(t, s.dg.DropAll())
+	require.NoError(t, s.dg.SetupSchema("answer: [uid] @count ."))
 
 	// Expected Edge count of 0x100: 1
-	txn0 := dg.NewTxn()
+	txn0 := s.dg.NewTxn()
 	mu := api.Mutation{SetNquads: []byte("<0x100> <answer> <0x200> .")}
-	_, err = txn0.Mutate(ctxb, &mu)
+	_, err := txn0.Mutate(ctxb, &mu)
 	require.NoError(t, err)
 	require.NoError(t, txn0.Commit(ctxb))
 
 	// Expected edge count of 0x1: 2
 	// This should NOT appear in the query result
 	// The following two mutations are in serial txns.
-	txn1 := dg.NewTxn()
+	txn1 := s.dg.NewTxn()
 	mu = api.Mutation{SetNquads: []byte("<0x1> <answer> <0x2> .")}
 	_, err = txn1.Mutate(ctxb, &mu)
 	require.NoError(t, err)
 	require.NoError(t, txn1.Commit(ctxb))
 
-	txn2 := dg.NewTxn()
+	txn2 := s.dg.NewTxn()
 	mu = api.Mutation{SetNquads: []byte("<0x1> <answer> <0x3> .")}
 	_, err = txn2.Mutate(ctxb, &mu)
 	require.NoError(t, err)
 	require.NoError(t, txn2.Commit(ctxb))
 
 	// Verify query
-	txn := dg.NewReadOnlyTxn()
+	txn := s.dg.NewReadOnlyTxn()
 	vars := map[string]string{"$num": "1"}
 	resp, err := txn.QueryWithVars(ctxb, countQuery, vars)
 	require.NoError(t, err)
@@ -813,7 +818,7 @@ func TestCountIndexSerialTxns(t *testing.T) {
 	require.JSONEq(t,
 		`{"me": [{"count(answer)": 1, "uid": "0x100"}]}`,
 		js)
-	txn = dg.NewReadOnlyTxn()
+	txn = s.dg.NewReadOnlyTxn()
 	vars = map[string]string{"$num": "2"}
 	resp, err = txn.QueryWithVars(ctxb, countQuery, vars)
 	require.NoError(t, err)
@@ -824,22 +829,20 @@ func TestCountIndexSerialTxns(t *testing.T) {
 }
 
 func TestCountIndexSameTxn(t *testing.T) {
-	dg, err := testutil.DgraphClientWithGroot(testutil.SockAddr)
-	require.NoError(t, err)
-	testutil.DropAll(t, dg)
-	alterSchema(t, dg, "answer: [uid] @count .")
+	require.NoError(t, s.dg.DropAll())
+	require.NoError(t, s.dg.SetupSchema("answer: [uid] @count ."))
 
 	// Expected Edge count of 0x100: 1
-	txn0 := dg.NewTxn()
+	txn0 := s.dg.NewTxn()
 	mu := api.Mutation{SetNquads: []byte("<0x100> <answer> <0x200> .")}
-	_, err = txn0.Mutate(ctxb, &mu)
+	_, err := txn0.Mutate(ctxb, &mu)
 	require.NoError(t, err)
 	require.NoError(t, txn0.Commit(ctxb))
 
 	// Expected edge count of 0x1: 2
 	// This should NOT appear in the query result
 	// The following two mutations are in the same txn.
-	txn1 := dg.NewTxn()
+	txn1 := s.dg.NewTxn()
 	mu = api.Mutation{SetNquads: []byte("<0x1> <answer> <0x2> .")}
 	_, err = txn1.Mutate(ctxb, &mu)
 	require.NoError(t, err)
@@ -849,7 +852,7 @@ func TestCountIndexSameTxn(t *testing.T) {
 	require.NoError(t, txn1.Commit(ctxb))
 
 	// Verify query
-	txn := dg.NewReadOnlyTxn()
+	txn := s.dg.NewReadOnlyTxn()
 	vars := map[string]string{"$num": "1"}
 	resp, err := txn.QueryWithVars(ctxb, countQuery, vars)
 	require.NoError(t, err)
@@ -857,7 +860,7 @@ func TestCountIndexSameTxn(t *testing.T) {
 	require.JSONEq(t,
 		`{"me": [{"count(answer)": 1, "uid": "0x100"}]}`,
 		js)
-	txn = dg.NewReadOnlyTxn()
+	txn = s.dg.NewReadOnlyTxn()
 	vars = map[string]string{"$num": "2"}
 	resp, err = txn.QueryWithVars(ctxb, countQuery, vars)
 	require.NoError(t, err)
@@ -868,9 +871,8 @@ func TestCountIndexSameTxn(t *testing.T) {
 }
 
 func TestConcurrentQueryMutate(t *testing.T) {
-	testutil.DropAll(t, s.dg)
-	alterSchema(t, s.dg, "name: string .")
-
+	require.NoError(t, s.dg.DropAll())
+	require.NoError(t, s.dg.SetupSchema("name: string ."))
 	txn := s.dg.NewTxn()
 	defer func() { require.NoError(t, txn.Discard(context.Background())) }()
 
@@ -904,8 +906,8 @@ func TestConcurrentQueryMutate(t *testing.T) {
 }
 
 func TestTxnDiscardBeforeCommit(t *testing.T) {
-	testutil.DropAll(t, s.dg)
-	alterSchema(t, s.dg, "name: string .")
+	require.NoError(t, s.dg.DropAll())
+	require.NoError(t, s.dg.SetupSchema("name: string ."))
 
 	txn := s.dg.NewTxn()
 	mu := &api.Mutation{

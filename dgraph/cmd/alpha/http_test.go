@@ -35,9 +35,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 
+	"github.com/hypermodeinc/dgraph/v24/dgraphapi"
 	"github.com/hypermodeinc/dgraph/v24/protos/pb"
 	"github.com/hypermodeinc/dgraph/v24/query"
-	"github.com/hypermodeinc/dgraph/v24/testutil"
 	"github.com/hypermodeinc/dgraph/v24/x"
 )
 
@@ -846,13 +846,13 @@ func setDrainingMode(t *testing.T, enable bool, accessJwt string) {
 			}
 		}
 	}`
-	params := &testutil.GraphQLParams{
+	params := dgraphapi.GraphQLParams{
 		Query:     drainingRequest,
 		Variables: map[string]interface{}{"enable": enable},
 	}
-	resp := testutil.MakeGQLRequestWithAccessJwt(t, params, accessJwt)
-	resp.RequireNoGraphQLErrors(t)
-	require.JSONEq(t, `{"draining":{"response":{"code":"Success"}}}`, string(resp.Data))
+	resp, err := hc.RunGraphqlQuery(params, true)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"draining":{"response":{"code":"Success"}}}`, string(resp))
 }
 
 func TestDrainingMode(t *testing.T) {
@@ -894,12 +894,12 @@ func TestDrainingMode(t *testing.T) {
 
 	}
 
-	token := testutil.GrootHttpLogin(addr + "/admin")
+	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser, dgraphapi.DefaultPassword, 0))
 
-	setDrainingMode(t, true, token.AccessJwt)
+	setDrainingMode(t, true, hc.AccessJwt)
 	runRequests(true)
 
-	setDrainingMode(t, false, token.AccessJwt)
+	setDrainingMode(t, false, hc.AccessJwt)
 	runRequests(false)
 }
 
