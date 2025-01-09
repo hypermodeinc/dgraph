@@ -182,6 +182,7 @@ func (r *Response) Output() interface{} {
 type Extensions struct {
 	TouchedUids uint64 `json:"touched_uids,omitempty"`
 	Tracing     *Trace `json:"tracing,omitempty"`
+	DQLQuery    string `json:"dql_query,omitempty"`
 }
 
 // GetTouchedUids returns TouchedUids
@@ -204,6 +205,12 @@ func (e *Extensions) Merge(ext *Extensions) {
 		e.Tracing = ext.Tracing
 	} else {
 		e.Tracing.Merge(ext.Tracing)
+	}
+
+	if e.DQLQuery == "" {
+		e.DQLQuery = ext.DQLQuery
+	} else {
+		e.DQLQuery = e.DQLQuery + "\n" + ext.DQLQuery
 	}
 }
 
