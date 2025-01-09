@@ -37,7 +37,7 @@ services:
       /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --telemetry "reports=false; sentry=false;"
       --zero=zero1:5080 --expose_trace --profile_mode block --block_rate 10 --logtostderr -v=2
       --my=alpha1:7080 --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;" --graphql
-      "lambda-url=http://lambda:8686/graphql-worker;" --trace "ratio=1.0;"
+      "lambda-url=http://lambda:8686/graphql-worker; debug=true;" --trace "ratio=1.0;"
 
   lambda:
     image: dgraph/dgraph-lambda:latest

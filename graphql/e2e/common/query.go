@@ -2097,6 +2097,22 @@ func queriesHaveExtensions(t *testing.T) {
 	require.Greater(t, int(gqlResponse.Extensions[touchedUidskey].(float64)), 0)
 }
 
+func queriesWithDebugFlagHaveDQLQueryInExtensions(t *testing.T) {
+	query := &GraphQLParams{
+		Query: `query {
+			queryPost {
+				title
+			}
+		}`,
+	}
+
+	gqlResponse := query.ExecuteAsPost(t, GraphqlURL+"?debug=true")
+	RequireNoGQLErrors(t, gqlResponse)
+	require.Contains(t, gqlResponse.Extensions, "dql_query")
+	require.NotEmpty(t, gqlResponse.Extensions["dql_query"])
+	require.Equal(t, "query {\n  queryPost(func: type(Post)) {\n    Post.title : Post.title\n    dgraph.uid : uid\n  }\n}", gqlResponse.Extensions["dql_query"])
+}
+
 func erroredQueriesHaveTouchedUids(t *testing.T) {
 	country1 := addCountry(t, postExecutor)
 	country2 := addCountry(t, postExecutor)

@@ -848,6 +848,7 @@ func RunAll(t *testing.T) {
 	t.Run("multiple operations", multipleOperations)
 	t.Run("query post with author", queryPostWithAuthor)
 	t.Run("queries have extensions", queriesHaveExtensions)
+	t.Run("queries with debug flag have dql query in extensions", queriesWithDebugFlagHaveDQLQueryInExtensions)
 	t.Run("queries have touched_uids even if there are GraphQL errors", erroredQueriesHaveTouchedUids)
 	t.Run("alias works for queries", queryWithAlias)
 	t.Run("multiple aliases for same field in query", queryWithMultipleAliasOfSameField)
