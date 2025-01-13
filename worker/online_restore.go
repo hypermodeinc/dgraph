@@ -607,3 +607,15 @@ func buildPredsForDefaultNamespace(restorePreds []string, fromNamespace uint64) 
 	}
 	return filtered
 }
+
+func ProposeDrain(ctx context.Context, drainMode *pb.Drainmode) error {
+	pl := groups().connToZeroLeader()
+	if pl == nil {
+		return conn.ErrNoConnection
+	}
+	con := pl.Get()
+	c := pb.NewZeroClient(con)
+	status, err := c.ApplyDrainmode(ctx, drainMode)
+	fmt.Println("status ans erros", status, err)
+	return err
+}

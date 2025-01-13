@@ -16,6 +16,7 @@ import (
 	"go.etcd.io/etcd/raft/v3"
 
 	"github.com/dgraph-io/badger/v4"
+	api_v25 "github.com/dgraph-io/dgo/v240/protos/api.v25"
 	"github.com/dgraph-io/ristretto/v2/z"
 	"github.com/hypermodeinc/dgraph/v24/conn"
 	"github.com/hypermodeinc/dgraph/v24/posting"
@@ -32,6 +33,71 @@ const (
 type badgerWriter interface {
 	Write(buf *z.Buffer) error
 	Flush() error
+}
+
+func FlushKvs(stream api_v25.Dgraph_StreamPSnapshotServer) error {
+
+	// schema.Init(State.Pstore)
+	// postingListCacheSize := (x.CachePercent[0] * (x.TotalCache << 20)) / 100
+	// pstoreBlockCacheSize := (x.CachePercent[1] * (totalCacx.TotalCachehe << 20)) / 100
+	// pstoreIndexCacheSize := (x.CachePercent[2] * (x.TotalCache << 20)) / 100
+	// posting.Init(State.Pstore, postingListCacheSize, x.RemoveOnUpdate)
+	// defer posting.Cleanup()
+	// Init(State.Pstore)
+	if err := pstore.DropAll(); err != nil {
+		return err
+	}
+	var writer badgerWriter
+	sw := pstore.NewStreamWriter()
+	defer sw.Cancel()
+
+	if err := sw.Prepare(); err != nil {
+		return err
+	}
+
+	writer = sw
+
+	// We can use count to check the number of posting lists returned in tests.
+	size := 0
+	for {
+		kvs, err := stream.Recv()
+		if kvs != nil {
+			glog.Infoln("All key-values have been received.", string(kvs.Data))
+		}
+
+		if err != nil {
+			return err
+		}
+		if kvs.Done {
+			glog.Infoln("All key-values have been received.")
+			break
+		}
+
+		size += len(kvs.Data)
+		glog.Infof("Received batch of size: %s. Total so far: %s\n",
+			humanize.IBytes(uint64(len(kvs.Data))), humanize.IBytes(uint64(size)))
+
+		buf := z.NewBufferSlice(kvs.Data)
+		if err := writer.Write(buf); err != nil {
+			return err
+		}
+	}
+	if err := writer.Flush(); err != nil {
+		return err
+	}
+
+	glog.Infof("P dir writes DONE. Sending ACK")
+	// Send an acknowledgement back to the leader.
+	if err := stream.SendAndClose(&api_v25.ReceiveSnapshotKVRequest{Message: "done"}); err != nil {
+		return err
+	}
+
+	// posting.ResetCache()
+	// ResetAclCache()
+	// State.Dispose()
+	// InitServerState()
+
+	return nil
 }
 
 // populateSnapshot gets data for a shard from the leader and writes it to BadgerDB on the follower.

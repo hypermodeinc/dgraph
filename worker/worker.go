@@ -8,6 +8,7 @@
 package worker
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math"
@@ -88,6 +89,14 @@ func (w *grpcWorker) Subscribe(
 	return pstore.Subscribe(stream.Context(), func(kvs *badgerpb.KVList) error {
 		return stream.Send(kvs)
 	}, matches)
+}
+
+func (w *grpcWorker) ApplyDrainmode(ctx context.Context, req *pb.Drainmode) (*pb.Status, error) {
+	drainMode := &pb.Drainmode{State: req.State}
+	node := groups().Node
+	err := node.proposeAndWait(ctx, &pb.Proposal{Drainmode: drainMode}) // Subscribe on given prefixes.
+
+	return nil, err
 }
 
 // RunServer initializes a tcp server on port which listens to requests from

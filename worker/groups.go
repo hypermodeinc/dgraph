@@ -70,6 +70,10 @@ func StartRaftNodes(walStore *raftwal.DiskStorage, bindall bool) {
 		}
 	}
 
+	if x.WorkerConfig.MyGrpcAddr == "" {
+		x.WorkerConfig.MyGrpcAddr = fmt.Sprintf("localhost:%d", x.Config.PortOffset+x.PortGrpc)
+	}
+
 	x.AssertTruef(len(x.WorkerConfig.ZeroAddr) > 0, "Providing dgraphzero address is mandatory.")
 	for _, zeroAddr := range x.WorkerConfig.ZeroAddr {
 		x.AssertTruef(zeroAddr != x.WorkerConfig.MyAddr,
@@ -95,10 +99,11 @@ func StartRaftNodes(walStore *raftwal.DiskStorage, bindall bool) {
 	// Successfully connect with dgraphzero, before doing anything else.
 	// Connect with Zero leader and figure out what group we should belong to.
 	m := &pb.Member{
-		Id:      raftIdx,
-		GroupId: x.WorkerConfig.ProposedGroupId,
-		Addr:    x.WorkerConfig.MyAddr,
-		Learner: x.WorkerConfig.Raft.GetBool("learner"),
+		Id:       raftIdx,
+		GroupId:  x.WorkerConfig.ProposedGroupId,
+		Addr:     x.WorkerConfig.MyAddr,
+		Learner:  x.WorkerConfig.Raft.GetBool("learner"),
+		GrpcAddr: x.WorkerConfig.MyGrpcAddr,
 	}
 	if m.GroupId > 0 {
 		m.ForceGroupId = true
@@ -750,6 +755,7 @@ func (g *groupi) doSendMembership(tablets map[string]*pb.Tablet) error {
 		Addr:       x.WorkerConfig.MyAddr,
 		Leader:     leader,
 		LastUpdate: uint64(time.Now().Unix()),
+		GrpcAddr:   x.WorkerConfig.MyGrpcAddr,
 	}
 	group := &pb.Group{
 		Members: make(map[uint64]*pb.Member),

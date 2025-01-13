@@ -122,6 +122,7 @@ message Member {
 
 	bool clusterInfoOnly = 13;
 	bool forceGroupId = 14;
+  string grpcAddr = 15;
 }
 
 message Group {
@@ -325,6 +326,7 @@ message Proposal {
   DeleteNsRequest delete_ns = 14;  // Used to delete namespace.
   // Skipping 15 as it is used for uint64 key in master and might be needed later here.
   uint64 start_ts = 16;
+  Drainmode drainmode =17;
 }
 
 message CDCState {
@@ -583,6 +585,7 @@ service Zero {
   rpc RemoveNode(RemoveNodeRequest) returns (Status) {}
   rpc MoveTablet(MoveTabletRequest) returns (Status) {}
   rpc ApplyLicense(ApplyLicenseRequest) returns (Status) {}
+  rpc ApplyDrainmode(Drainmode) returns (Status) {}
 }
 
 service Worker {
@@ -602,8 +605,12 @@ service Worker {
       returns (UpdateGraphQLSchemaResponse) {}
   rpc DeleteNamespace(DeleteNsRequest) returns (Status) {}
   rpc TaskStatus(TaskStatusRequest) returns (TaskStatusResponse) {}
+  rpc ApplyDrainmode(Drainmode) returns (Status) {}
 }
 
+message Drainmode {
+  bool state = 1;
+}
 message TabletResponse {
   repeated Tablet tablets = 1;
 }

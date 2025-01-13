@@ -141,7 +141,10 @@ var (
 	// GuardiansUid is a map from namespace to the Uid of guardians group node.
 	GuardiansUid = &sync.Map{}
 	// GrootUid is a map from namespace to the Uid of groot user node.
-	GrootUid = &sync.Map{}
+	GrootUid       = &sync.Map{}
+	CachePercent   []int64
+	TotalCache     int64
+	RemoveOnUpdate bool
 )
 
 func init() {

@@ -108,6 +108,21 @@ func (s *Server) MoveTablet(ctx context.Context, req *pb.MoveTabletRequest) (*pb
 		req.DstGroup)}, nil
 }
 
+func (s *Server) ApplyDrainmode(ctx context.Context, req *pb.Drainmode) (*pb.Status, error) {
+	knownGroups := s.KnownGroups()
+
+	for _, grp := range knownGroups {
+		pl := s.Leader(grp)
+		wc := pb.NewWorkerClient(pl.Get())
+		in := &pb.Drainmode{State: req.State}
+
+		if status, err := wc.ApplyDrainmode(ctx, in); err != nil {
+			return status, errors.Wrapf(err, "while applying drainmode")
+		}
+	}
+	return nil, nil
+}
+
 // movePredicate is the main entry point for move predicate logic. This Zero must remain the leader
 // for the entire duration of predicate move. If this Zero stops being the leader, the final
 // proposal of reassigning the tablet to the destination would fail automatically.
