@@ -1884,6 +1884,55 @@ func (s *Server) CheckVersion(ctx context.Context, c *api.Check) (v *api.Version
 	return v, nil
 }
 
+func (s *Server) InitiateSnapShotStream(ctx context.Context,
+	c *apiv25.InitiateSnapShotStreamRequest) (v *apiv25.InitiateSnapShotStreamResponse, err error) {
+	leaders := make(map[uint32]string)
+	ms := worker.GetMembershipState()
+
+	for groupID, n := range ms.Groups {
+		for _, a := range n.Members {
+			if a.Leader {
+				leaders[uint32(groupID)] = a.GrpcAddr
+			}
+		}
+	}
+
+	drainMode := &pb.Drainmode{State: true}
+	if err := worker.ProposeDrain(ctx, drainMode); err != nil {
+		return nil, err
+	}
+
+	resp := &apiv25.InitiateSnapShotStreamResponse{
+		LeaderAlphas: leaders,
+	}
+
+	return resp, nil
+}
+
+func (s *Server) StreamPSnapshot(stream apiv25.DgraphHM_StreamPSnapshotServer) error {
+	leaders := make(map[uint32]string)
+	ms := worker.GetMembershipState()
+
+	for groupID, n := range ms.Groups {
+		for _, a := range n.Members {
+			if a.Leader {
+				leaders[uint32(groupID)] = a.GrpcAddr
+			}
+		}
+	}
+
+	if err := worker.FlushKvs(stream); err != nil {
+		return err
+	}
+
+	drainMode := &pb.Drainmode{State: false}
+	if err := worker.ProposeDrain(stream.Context(), drainMode); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // -------------------------------------------------------------------------------------------------
 // HELPER FUNCTIONS
 // -------------------------------------------------------------------------------------------------

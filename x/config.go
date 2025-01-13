@@ -85,6 +85,8 @@ type WorkerOptions struct {
 	Trace *z.SuperFlag
 	// MyAddr stores the address and port for this alpha.
 	MyAddr string
+	// MyGrpcAddr stores public grpc address and port for this alpha.
+	MyGrpcAddr string
 	// ZeroAddr stores the list of address:port for the zero instances associated with this alpha.
 	// Alpha would communicate via only one zero address from the list. All
 	// the other addresses serve as fallback.

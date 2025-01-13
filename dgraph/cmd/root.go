@@ -34,6 +34,7 @@ import (
 	"github.com/hypermodeinc/dgraph/v24/dgraph/cmd/migrate"
 	"github.com/hypermodeinc/dgraph/v24/dgraph/cmd/version"
 	"github.com/hypermodeinc/dgraph/v24/dgraph/cmd/zero"
+	dgraphimport "github.com/hypermodeinc/dgraph/v24/dgraph_import"
 	"github.com/hypermodeinc/dgraph/v24/upgrade"
 	"github.com/hypermodeinc/dgraph/v24/x"
 )
@@ -74,7 +75,7 @@ var rootConf = viper.New()
 var subcommands = []*x.SubCommand{
 	&bulk.Bulk, &cert.Cert, &conv.Conv, &live.Live, &alpha.Alpha, &zero.Zero, &version.Version,
 	&debug.Debug, &migrate.Migrate, &debuginfo.DebugInfo, &upgrade.Upgrade, &decrypt.Decrypt, &increment.Increment,
-	&checkupgrade.CheckUpgrade,
+	&checkupgrade.CheckUpgrade, &dgraphimport.Import,
 }
 
 func initCmds() {
