@@ -1895,6 +1895,29 @@ func (s *Server) CheckVersion(ctx context.Context, c *api.Check) (v *api.Version
 	return v, nil
 }
 
+// CheckVersion returns the version of this Dgraph instance.
+func (s *Server) InitiateSnapShotStream(ctx context.Context, c *api.InitiateSnapShotStreamRequest) (v *api.SnapShotStreamResponse, err error) {
+
+	// as we get all leaders name fromthis function call can return them to clients
+	alphas, err := s.CheckReadyNessOfAlphas()
+	if err != nil {
+		return nil, err
+	}
+
+	numUids := map[string]uint64{
+		alphas[0]: 1, alphas[1]: 2,
+	}
+
+	return &api.SnapShotStreamResponse{NumUids: numUids}, nil
+}
+
+func (s *Server) CheckReadyNessOfAlphas() ([]string, error) {
+	// here we have to call internal rpc call ad send a request to all the alpha leaders at the time
+	// and return all alpha leaders name  also we have to apply proposals to all alphas and if it succeds we can say that this alpha is ready to
+	// recieve stram of p from client
+	return []string{"alpha1", "alpha2"}, nil
+}
+
 // -------------------------------------------------------------------------------------------------
 // HELPER FUNCTIONS
 // -------------------------------------------------------------------------------------------------
