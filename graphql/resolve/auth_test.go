@@ -28,7 +28,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 
 	dgoapi "github.com/dgraph-io/dgo/v240/protos/api"
 	_ "github.com/dgraph-io/gqlparser/v2/validator/rules" // make gql validator init() all rules
