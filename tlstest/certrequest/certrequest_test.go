@@ -50,16 +50,18 @@ func TestAccessWithCaCert(t *testing.T) {
 func TestCurlAccessWithCaCert(t *testing.T) {
 	// curl over plaintext should fail
 	curlPlainTextArgs := []string{
+		"--ipv4",
 		"https://" + testutil.SockAddrHttpLocalhost + "/alter",
 		"-d", "name: string @index(exact) .",
 	}
 	testutil.VerifyCurlCmd(t, curlPlainTextArgs, &testutil.CurlFailureConfig{
 		ShouldFail: true,
-		CurlErrMsg: "SSL certificate problem",
+		CurlErrMsg: "SSL",
 	})
 
 	curlArgs := []string{
-		"--cacert", "../tls/ca.crt", "https://" + testutil.SockAddrHttpLocalhost + "/alter",
+		"--cacert", "../tls/ca.crt", "--ipv4",
+		"https://" + testutil.SockAddrHttpLocalhost + "/alter",
 		"-d", "name: string @index(exact) .",
 	}
 	testutil.VerifyCurlCmd(t, curlArgs, &testutil.CurlFailureConfig{

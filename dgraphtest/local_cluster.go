@@ -550,7 +550,7 @@ func (c *LocalCluster) HealthCheck(zeroOnly bool) error {
 func (c *LocalCluster) containerHealthCheck(url func(c *LocalCluster) (string, error)) error {
 	endpoint, err := url(c)
 	if err != nil {
-		return errors.Wrap(err, "error getting health URL")
+		return errors.Wrapf(err, "error getting health URL %v", endpoint)
 	}
 
 	for range 60 {
@@ -764,17 +764,31 @@ func (c *LocalCluster) recreateContainers() error {
 // Client returns a grpc client that can talk to any Alpha in the cluster
 func (c *LocalCluster) Client() (*dgraphapi.GrpcClient, func(), error) {
 	// TODO(aman): can we cache the connections?
+	retryPolicy := `{
+		"methodConfig": [{
+			"retryPolicy": {
+				"MaxAttempts": 4,
+				"InitialBackoff": ".01s",
+				"MaxBackoff": ".01s",
+				"BackoffMultiplier": 1.0,
+				"RetryableStatusCodes": [ "UNAVAILABLE" ]
+			}
+		}]
+	}`
 	var apiClients []api.DgraphClient
 	var conns []*grpc.ClientConn
 	for _, aa := range c.alphas {
 		if !aa.isRunning {
+			// QUESTIONS(shivaji): Should this be 'continue' instead of a break from the loop
 			break
 		}
 		url, err := aa.alphaURL(c)
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "error getting health URL")
 		}
-		conn, err := grpc.Dial(url, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		conn, err := grpc.Dial(url,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithDefaultServiceConfig(retryPolicy))
 		if err != nil {
 			return nil, nil, errors.Wrap(err, "error connecting to alpha")
 		}
@@ -782,6 +796,9 @@ func (c *LocalCluster) Client() (*dgraphapi.GrpcClient, func(), error) {
 		apiClients = append(apiClients, api.NewDgraphClient(conn))
 	}
 
+	if len(apiClients) == 0 {
+		return nil, nil, errors.New("no alphas running")
+	}
 	client := dgo.NewDgraphClient(apiClients...)
 	cleanup := func() {
 		for _, conn := range conns {

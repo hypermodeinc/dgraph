@@ -52,6 +52,7 @@ func (asuite *AclTestSuite) TestCurlAuthorization() {
 	// alter and mutate should fail.
 	queryArgs := func(jwt string) []string {
 		return []string{"-H", fmt.Sprintf("X-Dgraph-AccessToken:%s", jwt),
+			"--ipv4",
 			"-H", "Content-Type: application/dql",
 			"-d", query, testutil.SockAddrHttp + "/query"}
 	}

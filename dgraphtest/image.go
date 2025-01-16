@@ -182,32 +182,64 @@ func copyBinary(fromDir, toDir, version string) error {
 }
 
 func copy(src, dst string) error {
-	sourceFileStat, err := os.Stat(src)
-	if err != nil {
-		return err
-	}
-	if !sourceFileStat.Mode().IsRegular() {
-		return errors.Wrap(err, fmt.Sprintf("%s is not a regular file", src))
+	// Validate inputs
+	if src == "" || dst == "" {
+		return errors.New("source or destination paths cannot be empty")
 	}
 
-	source, err := os.Open(src)
-	srcStat, _ := source.Stat()
+	// Check source file
+	sourceFileStat, err := os.Stat(src)
 	if err != nil {
-		return errors.Wrap(err, fmt.Sprintf("error while opening file [%s]", src))
+		return errors.Wrapf(err, "failed to stat source file: %s", src)
+	}
+	if !sourceFileStat.Mode().IsRegular() {
+		return errors.Errorf("%s is not a regular file", src)
+	}
+
+	// Open source file
+	source, err := os.Open(src)
+	if err != nil {
+		return errors.Wrapf(err, "failed to open source file: %s", src)
 	}
 	defer source.Close()
 
-	destination, err := os.Create(dst)
-	if err != nil {
-		return err
+	// Create destination directory if it doesn't exist
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return errors.Wrapf(err, "failed to create destination directory: %s", filepath.Dir(dst))
 	}
-	defer destination.Close()
 
-	if err := os.Chmod(dst, srcStat.Mode()); err != nil {
-		return err
+	// Create destination file
+	destination, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, sourceFileStat.Mode())
+	if err != nil {
+		return errors.Wrapf(err, "failed to create destination file: %s", dst)
 	}
-	_, err = io.Copy(destination, source)
-	return err
+
+	// Copy the file
+	if _, err := io.Copy(destination, source); err != nil {
+		return errors.Wrap(err, "failed to copy file contents")
+	}
+
+	// Ensure data is flushed to disk
+	if err := destination.Sync(); err != nil {
+		return errors.Wrap(err, "failed to sync destination file")
+	}
+
+	// Close the destination file
+	if err := destination.Close(); err != nil {
+		return errors.Wrap(err, "failed to close destination file")
+	}
+
+	// Stat the new file to check file size match
+	destStat, err := os.Stat(dst)
+	if err != nil {
+		return errors.Wrapf(err, "failed to stat destination file: %s", dst)
+	}
+	if destStat.Size() != sourceFileStat.Size() {
+		log.Printf("[WARNING] size mismatch after copy of %s to %s: source=%d bytes, destination=%d bytes",
+			src, dst, sourceFileStat.Size(), destStat.Size())
+	}
+
+	return nil
 }
 
 // IsHigherVersion checks whether "higher" is the higher version compared to "lower"

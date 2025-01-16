@@ -30,7 +30,7 @@
   available through your OS package manager)
 - Install [Docker](https://docs.docker.com/install/) and
   [Docker Compose](https://docs.docker.com/compose/install/).
-- [Install Go 1.13 or above](https://golang.org/doc/install).
+- [Install Go 1.22.7 or above](https://golang.org/doc/install).
 
 ### Setup Dgraph from source repo
 
@@ -94,23 +94,29 @@ You can build Dgraph using `make dgraph` or `make install` which add the version
 binary.
 
 - `make dgraph`: Creates a `dgraph` binary at `./dgraph/dgraph`
-- `make install`: Creates a `dgraph` binary at `$GOPATH/bin/dgraph`. You can add `$GOPATH/bin` to
-  your `$PATH`.
+- `make install`: Creates a `dgraph` binary at `$GOPATH/bin/dgraph`. You should add `$GOPATH/bin` to
+  your `$PATH` if it isn't there already.
 
-```text
+```sh
 $ make install
+Installing Dgraph...
+Commit SHA256: 15839b156e9920ca2c4ab718e1e73b6637b8ecec
+Old SHA256: 596e362ede7466a2569d19ded91241e457e665ada785d05a902af2c6f2cea508
+Installed dgraph to /Users/<homedir>/go/bin/dgraph
+
 $ dgraph version
-[Decoder]: Using assembly version of decoder
+Dgraph version   : v24.0.2-103-g15839b156
+Dgraph codename  : dgraph
+Dgraph SHA-256   : 9ce738cd055dfebdef5d68b2a49ea4e062e597799498607dbd1bb618d48861a6
+Commit SHA-1     : 15839b156
+Commit timestamp : 2025-01-10 17:56:49 -0500
+Branch           : username/some-branch-that-im-on
+Go version       : go1.22.7
+jemalloc enabled : true
 
-Dgraph version   : v1.1.1
-Dgraph SHA-256   : 97326c9328aff93851290b12d846da81a7da5b843e97d7c63f5d79091b9063c1
-Commit SHA-1     : 8994a57
-Commit timestamp : 2019-12-16 18:24:50 -0800
-Branch           : HEAD
-Go version       : go1.13.5
-
-For Dgraph official documentation, visit https://dgraph.io/docs/.
+For Dgraph official documentation, visit https://dgraph.io/docs.
 For discussions about Dgraph     , visit https://discuss.dgraph.io.
+For fully-managed Dgraph Cloud   , visit https://dgraph.io/cloud.
 
 Licensed variously under the Apache Public License 2.0 and Dgraph Community License.
 Copyright 2015-2025 Hypermode Inc.
@@ -119,73 +125,32 @@ Copyright 2015-2025 Hypermode Inc.
 ### Build Docker Image
 
 ```sh
-make image
+make image-local
 ```
 
-To build a test Docker image from source, use `make image`. This builds a Dgraph binary using
-`make dgraph` and creates a Docker image named `dgraph/dgraph` tagged as the current branch name.
-The image only contains the `dgraph` binary.
-
-Example:
-
-```bash
-$ git rev-parse --abbrev-ref HEAD # current branch
-main
-$ make image
-Successfully built c74d564d911f
-Successfully tagged dgraph/dgraph:main
-$ $ docker run --rm -it dgraph/dgraph:main dgraph version
-[Decoder]: Using assembly version of decoder
-
-Dgraph version   : v1.1.1-1-g5fa139a0e
-Dgraph SHA-256   : 31f8c9324eb90a6f4659066937fcebc67bbca251c20b9da0461c2fd148187689
-Commit SHA-1     : 5fa139a0e
-Commit timestamp : 2019-12-16 20:52:06 -0800
-Branch           : main
-Go version       : go1.13.5
-
-For Dgraph official documentation, visit https://dgraph.io/docs/.
-For discussions about Dgraph     , visit https://discuss.dgraph.io.
-
-Licensed variously under the Apache Public License 2.0 and Dgraph Community License.
-Copyright 2015-2025 Hypermode Inc.
-```
+To build a test Docker image from source, use `make image-local`. This builds a linux-compatible
+Dgraph binary using `make dgraph` and creates a Docker image tagged `dgraph/dgraph:local`. You can
+then use this local image to test Dgraph in your local Docker setup.
 
 ### Testing
 
-#### Dgraph
+Dgraph employs a ~~complex~~ sophisticated testing framework that includes extensive test coverage.
+Due to the comprehensive nature of these tests, a complete test run can take several hours,
+depending on your hardware. To manage this complex testing process efficiently, we've developed a
+custom test framework implemented in Go, which resides in the [./t](/t) directory. This specialized
+framework provides enhanced control and flexibility beyond what's available through standard Go
+testing framework.
 
-1. Change directory to t directory.
-2. If all packages need to be tested, run make test If only a specific package needs to be tested,
-   run make test args="--pkg=desired_package_name"
+For dependencies, runner flags and instructions for running tests on non-Linux machines, see the
+[README](t/README.md) in the [_t_](t) folder.
 
-   example 1: make test args="--pkg=tok" example 2: make test args="--pkg=tlstest/acl"
+Other integration tests do not use the testing framework located in the `t` folder. Consult the
+[github actions definitions](.github) folder to discover the tests we run as part of our continuous
+delivery process.
 
-   The first example will run all the tests in the 'tok' directory (if there are any) The second one
-   will run all the test in the acl subfolder of the tlstest directory. Note: running make test
-   args="--pkg=tlstest" will return an error saying no packages found because all the tests in the
-   tlstest package are in subdirectories of the package. So the subdirectories must be specified as
-   shown in example 2.
-
-Tests should be written in Go and use the Dgraph cluster set up in `dgraph/docker-compose.yml`
-whenever possible. If the functionality being tested requires a different cluster setup (e.g.
-different commandline options), the `*_test.go` files should be put in a separate directory that
-also contains a `docker-compose.yml` to set up the cluster as needed.
-
-**IMPORTANT:** All containers should be labeled with `cluster: test` so they may be correctly
-restarted and cleaned up by the test script.
-
-#### Badger
-
-Run `go test` in the root folder.
-
-```bash
-$ go test ./...
-ok      github.com/dgraph-io/badger     24.853s
-ok      github.com/dgraph-io/badger/skl 0.027s
-ok      github.com/dgraph-io/badger/table       0.478s
-ok      github.com/dgraph-io/badger/y   0.004s
-```
+Non-integration unit tests exist for many core packages that can be exercised without invoking the
+testing framework. For instance, to unit test the core DQL parsing package:
+`go test github.com/hypermodeinc/dgraph/v24/dql`.
 
 ## Contributing
 

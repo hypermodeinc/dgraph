@@ -483,7 +483,7 @@ top:
 		// the curl command should have returned an non-zero code
 		require.Error(t, err, "the curl command should have failed")
 		if ee, ok := err.(*exec.ExitError); ok {
-			require.True(t, strings.Contains(string(ee.Stderr), failureConfig.CurlErrMsg),
+			require.Contains(t, string(ee.Stderr), failureConfig.CurlErrMsg,
 				"the curl output does not contain the expected output")
 		}
 	} else {

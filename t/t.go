@@ -91,7 +91,7 @@ var (
 	skipSlow = pflag.BoolP("skip-slow", "s", false,
 		"If true, don't run tests on slow packages.")
 	suite = pflag.String("suite", "unit", "This flag is used to specify which "+
-		"test suites to run. Possible values are all, ldbc, load, unit. Multiple suites can be "+
+		"test suites to run. Possible values are all, ldbc, load, unit, systest, vector, core. Multiple suites can be "+
 		"selected like --suite=ldbc,load")
 	tmp               = pflag.String("tmp", "", "Temporary directory used to download data.")
 	downloadResources = pflag.BoolP("download", "d", true,

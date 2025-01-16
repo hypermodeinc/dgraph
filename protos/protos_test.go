@@ -19,6 +19,7 @@ package protos
 
 import (
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -27,6 +28,10 @@ import (
 )
 
 func TestProtosRegenerate(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Skipping test on non-Linux platform")
+	}
+
 	err := testutil.Exec("make", "regenerate")
 	require.NoError(t, err, "Got error while regenerating protos: %v\n", err)
 

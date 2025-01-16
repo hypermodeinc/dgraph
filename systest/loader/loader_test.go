@@ -21,6 +21,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -34,6 +35,12 @@ import (
 
 // TestLoaderXidmap checks that live loader re-uses xidmap on loading data from two different files
 func TestLoaderXidmap(t *testing.T) {
+
+	// test that the cert exists and is valid
+	certPath := "../../tlstest/mtls_internal/tls/live/ca.crt"
+	_, err := os.Stat(certPath)
+	require.NoError(t, err, "CA certificate file not found")
+
 	conf := viper.GetViper()
 	conf.Set("tls", fmt.Sprintf("ca-cert=%s; server-name=%s; internal-port=%v;",
 		// ca-cert

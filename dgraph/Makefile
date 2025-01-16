@@ -29,6 +29,7 @@ BUILD_VERSION := $(shell echo ${DGRAPH_VERSION} | sed -e 's/-amd64//' -e 's/-arm
 endif
 
 GOOS          ?= $(shell go env GOOS)
+GOARCH        ?= $(shell go env GOARCH)
 # Only build with jemalloc on Linux, mac
 ifeq ($(GOOS),$(filter $(GOOS),linux darwin))
 	BUILD_TAGS ?= jemalloc
@@ -71,6 +72,9 @@ HAS_SHA256SUM = $(shell which sha256sum)
 INSTALL_TARGET = $(GOPATH)/bin/$(BIN)
 ifneq ($(strip $(shell go env GOBIN)),)
 	INSTALL_TARGET = $(shell go env GOBIN)/$(BIN)
+endif
+ifneq ($(GOOS)_$(GOARCH),$(shell go env GOHOSTOS)_$(shell go env GOHOSTARCH))
+	INSTALL_TARGET = $(GOPATH)/bin/$(GOOS)_$(GOARCH)/$(BIN)
 endif
 
 .PHONY: all $(BIN)
