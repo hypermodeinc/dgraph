@@ -36,7 +36,7 @@ services:
       --raft="idx=1" --my=zero1:5180 --replicas=3 --logtostderr -v=2 --bindall --trace
       "jaeger=http://ocagent:14268;"
   ocagent:
-    image: omnition/opencensus-agent:0.1.6
+    image: omnition/opencensus-agent:0.1.11
     container_name: ocagent
     labels:
       cluster: test
