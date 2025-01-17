@@ -24,6 +24,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -2095,6 +2096,26 @@ func queriesHaveExtensions(t *testing.T) {
 	RequireNoGQLErrors(t, gqlResponse)
 	require.Contains(t, gqlResponse.Extensions, touchedUidskey)
 	require.Greater(t, int(gqlResponse.Extensions[touchedUidskey].(float64)), 0)
+}
+
+func queriesWithDebugFlagHaveDQLQueryInExtensions(t *testing.T) {
+	query := &GraphQLParams{
+		Query: `query {
+			queryPost {
+				title
+			}
+		}`,
+	}
+
+	gqlResponse := query.ExecuteAsPost(t, GraphqlURL+"?debug=true")
+	RequireNoGQLErrors(t, gqlResponse)
+
+	// Needed for directives tests (Post remapped to myPost)
+	pattern := regexp.MustCompile(`query \{\n\s*query(?:Post|myPost)\(func: type\((?:Post|myPost)\)\) \{\n\s*Post\.title : (?:Post|myPost)\.title\n\s*dgraph\.uid : uid\n\s*\}\n\}`)
+
+	require.Contains(t, gqlResponse.Extensions, "dql_query")
+	require.NotEmpty(t, gqlResponse.Extensions["dql_query"])
+	require.True(t, pattern.MatchString(gqlResponse.Extensions["dql_query"].(string)))
 }
 
 func erroredQueriesHaveTouchedUids(t *testing.T) {

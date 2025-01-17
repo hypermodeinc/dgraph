@@ -139,6 +139,9 @@ func (qr *queryResolver) rewriteAndExecute(ctx context.Context, query schema.Que
 	}
 
 	ext.TouchedUids = resp.GetMetrics().GetNumUids()[touchedUidsKey]
+	if x.Config.GraphQL.GetBool("debug") {
+		ext.DQLQuery = qry
+	}
 	resolved := &Resolved{
 		Data:       resp.GetJson(),
 		Field:      query,
