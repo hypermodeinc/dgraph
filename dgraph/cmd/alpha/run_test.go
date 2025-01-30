@@ -254,10 +254,9 @@ func TestDeletePredicate(t *testing.T) {
 
 	output, err = runGraphqlQuery(`schema{}`)
 	require.NoError(t, err)
-
-	dgraphapi.CompareJSON(dgraphapi.GetFullSchemaHTTPResponse(dgraphapi.SchemaOptions{
+	require.NoError(t, dgraphapi.CompareJSON(dgraphapi.GetFullSchemaHTTPResponse(dgraphapi.SchemaOptions{
 		UserPreds: `{"predicate":"age","type":"default"},` +
-			`{"predicate":"name","type":"string","index":true, "tokenizer":["term"]}`}), output)
+			`{"predicate":"name","type":"string","index":true, "tokenizer":["term"]}`}), output))
 
 	output, err = runGraphqlQuery(q1)
 	require.NoError(t, err)
@@ -1037,8 +1036,8 @@ func TestListTypeSchemaChange(t *testing.T) {
 	q = `schema{}`
 	res, err = runGraphqlQuery(q)
 	require.NoError(t, err)
-	dgraphapi.CompareJSON(dgraphapi.GetFullSchemaHTTPResponse(
-		dgraphapi.SchemaOptions{UserPreds: `{"predicate":"occupations","type":"string"}`}), res)
+	require.NoError(t, dgraphapi.CompareJSON(dgraphapi.GetFullSchemaHTTPResponse(
+		dgraphapi.SchemaOptions{UserPreds: `{"predicate":"occupations","type":"string"}`}), res))
 }
 
 func TestDeleteAllSP2(t *testing.T) {
@@ -1272,7 +1271,7 @@ func TestDropAll(t *testing.T) {
 	q3 := "schema{}"
 	output, err = runGraphqlQuery(q3)
 	require.NoError(t, err)
-	dgraphapi.CompareJSON(dgraphapi.GetFullSchemaHTTPResponse(dgraphapi.SchemaOptions{}), output)
+	require.NoError(t, dgraphapi.CompareJSON(dgraphapi.GetFullSchemaHTTPResponse(dgraphapi.SchemaOptions{}), output))
 
 	// Reinstate schema so that we can re-run the original query.
 	require.NoError(t, alterSchemaWithRetry(s))
@@ -1652,9 +1651,10 @@ func TestMain(m *testing.M) {
 
 	x.Panic(dg.Login(context.Background(), dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
 
-	alphaSockAdd, err = c.GetAlphaGrpcPublicPort()
+	alphaGrpcPort, err := c.GetAlphaGrpcPublicPort()
 	x.Panic(err)
 
+	alphaSockAdd = "0.0.0.0:" + alphaGrpcPort
 	alphaSockAddHttp, err := c.GetAlphaHttpPublicPort()
 	x.Panic(err)
 	addr = "http://0.0.0.0:" + alphaSockAddHttp

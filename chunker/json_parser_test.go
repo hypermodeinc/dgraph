@@ -41,6 +41,10 @@ import (
 	"github.com/hypermodeinc/dgraph/v24/x"
 )
 
+var (
+	dg *dgraphapi.GrpcClient
+)
+
 func makeNquad(sub, pred string, val *api.Value) *api.NQuad {
 	return &api.NQuad{
 		Subject:     sub,
