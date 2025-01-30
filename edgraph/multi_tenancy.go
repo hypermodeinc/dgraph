@@ -27,7 +27,7 @@ type ResetPasswordInput struct {
 	Namespace uint64
 }
 
-func (s *Server) CreateNamespace(ctx context.Context, passwd string) (uint64, error) {
+func (s *Server) CreateNamespaceInternal(ctx context.Context, passwd string) (uint64, error) {
 	return 0, nil
 }
 

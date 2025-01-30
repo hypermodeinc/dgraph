@@ -88,7 +88,7 @@ func (c *DCloudCluster) Client() (*dgraphapi.GrpcClient, func(), error) {
 		}
 	}
 	client := dgo.NewDgraphClient(api.NewDgraphClient(conn))
-	return &dgraphapi.GrpcClient{Dgraph: client}, cleanup, nil
+	return &dgraphapi.GrpcClient{Dgraph: client, Conns: conns}, cleanup, nil
 }
 
 func (c *DCloudCluster) HTTPClient() (*dgraphapi.HTTPClient, error) {
