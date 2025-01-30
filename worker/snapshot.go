@@ -212,6 +212,11 @@ func doStreamSnapshot(snap *pb.Snapshot, out pb.Worker_StreamSnapshotServer) err
 	// Use the default implementation. We no longer try to generate a rolled up posting list here.
 	// Instead, we just stream out all the versions as they are.
 	stream.KeyToList = nil
+	stream.SinceTs = snap.SinceTs
+	if snap.SinceTs == 0 {
+		// Do full table copy when streaming the entire data.
+		stream.FullCopy = true
+	}
 	stream.Send = func(buf *z.Buffer) error {
 		kvs := &pb.KVS{Data: buf.Bytes()}
 		return out.Send(kvs)
