@@ -1194,6 +1194,10 @@ func (c *LocalCluster) GetAlphaHttpPublicPort() (string, error) {
 	return publicPort(c.dcli, c.alphas[0], alphaHttpPort)
 }
 
+func (c *LocalCluster) GetZeroGrpcPublicPort() (string, error) {
+	return publicPort(c.dcli, c.zeros[0], zeroGrpcPort)
+}
+
 func (c *LocalCluster) GetTempDir() string {
 	return c.tempBinDir
 }
