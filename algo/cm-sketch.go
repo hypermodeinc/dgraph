@@ -78,8 +78,9 @@ func NewCountMinSketch(epsilon, delta float64) *CountMinSketch {
 		matrix = make([][]uint64, depth)
 	)
 
+	flatMatrix := make([]uint64, width*depth)
 	for i := uint(0); i < depth; i++ {
-		matrix[i] = make([]uint64, width)
+		matrix[i] = flatMatrix[i*width : (i+1)*width : (i+1)*width]
 	}
 
 	return &CountMinSketch{
