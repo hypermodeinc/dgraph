@@ -249,7 +249,7 @@ type TxnCache struct {
 	startTs uint64
 }
 
-func (tc *TxnCache) Get(key []byte) (rval index.Value, rerr error) {
+func (tc *TxnCache) Get(key []byte) (rval []byte, rerr error) {
 	return tc.txn.Get(key)
 }
 
@@ -278,7 +278,7 @@ func (qc *QueryCache) Find(prefix []byte, filter func([]byte) bool) (uint64, err
 	return qc.cache.Find(prefix, filter)
 }
 
-func (qc *QueryCache) Get(key []byte) (rval index.Value, rerr error) {
+func (qc *QueryCache) Get(key []byte) (rval []byte, rerr error) {
 	return qc.cache.Get(key)
 }
 
@@ -295,7 +295,7 @@ func NewQueryCache(cache index.LocalCache, readTs uint64) *QueryCache {
 
 // getDataFromKeyWithCacheType(keyString, uid, c) looks up data in c
 // associated with keyString and uid.
-func getDataFromKeyWithCacheType(keyString string, uid uint64, c index.CacheType) (index.Value, error) {
+func getDataFromKeyWithCacheType(keyString string, uid uint64, c index.CacheType) ([]byte, error) {
 	key := DataKey(keyString, uid)
 	data, err := c.Get(key)
 	if err != nil {
@@ -326,7 +326,7 @@ func populateEdgeDataFromKeyWithCacheType(
 	if data == nil {
 		return false, nil
 	}
-	err = decodeUint64MatrixUnsafe(data.([]byte), edgeData)
+	err = decodeUint64MatrixUnsafe(data, edgeData)
 	return true, err
 }
 
@@ -368,6 +368,8 @@ func getInsertLayer(maxLevels int) int {
 	return level
 }
 
+var emptyVec = []byte{}
+
 // adds the data corresponding to a uid to the given vec variable in the form of []T
 // this does not allocate memory for vec, so it must be allocated before calling this function
 func (ph *persistentHNSW[T]) getVecFromUid(uid uint64, c index.CacheType, vec *[]T) error {
@@ -375,16 +377,16 @@ func (ph *persistentHNSW[T]) getVecFromUid(uid uint64, c index.CacheType, vec *[
 	if err != nil {
 		if errors.Is(err, errFetchingPostingList) {
 			// no vector. Return empty array of floats
-			index.BytesAsFloatArray([]byte{}, vec, ph.floatBits)
+			index.BytesAsFloatArray(emptyVec, vec, ph.floatBits)
 			return fmt.Errorf("%w; %w", errNilVector, err)
 		}
 		return err
 	}
 	if data != nil {
-		index.BytesAsFloatArray(data.([]byte), vec, ph.floatBits)
+		index.BytesAsFloatArray(data, vec, ph.floatBits)
 		return nil
 	} else {
-		index.BytesAsFloatArray([]byte{}, vec, ph.floatBits)
+		index.BytesAsFloatArray(emptyVec, vec, ph.floatBits)
 		return errNilVector
 	}
 }
@@ -419,7 +421,7 @@ func (ph *persistentHNSW[T]) createEntryAndStartNodes(
 		return create_edges(inUuid)
 	}
 
-	entry := BytesToUint64(data.([]byte)) // convert entry Uuid returned from Get to uint64
+	entry := BytesToUint64(data) // convert entry Uuid returned from Get to uint64
 	err := ph.getVecFromUid(entry, c, vec)
 	if err != nil || len(*vec) == 0 {
 		// The entry vector has been deleted. We have to create a new entry vector.
@@ -609,7 +611,7 @@ func (ph *persistentHNSW[T]) addNeighbors(ctx context.Context, tc *TxnCache,
 			allLayerEdges = allLayerNeighbors
 		} else {
 			// all edges of nearest neighbor
-			err := decodeUint64MatrixUnsafe(data.([]byte), &allLayerEdges)
+			err := decodeUint64MatrixUnsafe(data, &allLayerEdges)
 			if err != nil {
 				return nil, err
 			}
@@ -671,7 +673,7 @@ func (ph *persistentHNSW[T]) removeDeadNodes(nnEdges []uint64, tc *TxnCache) ([]
 
 		var deadNodes []uint64
 		if data != nil { // if dead nodes exist, convert to []uint64
-			deadNodes, err = ParseEdges(string(data.([]byte)))
+			deadNodes, err = ParseEdges(string(data))
 			if err != nil {
 				return []uint64{}, err
 			}

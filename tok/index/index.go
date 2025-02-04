@@ -137,9 +137,9 @@ type Txn interface {
 	// StartTs gets the exact time that the transaction started, returned in uint64 format
 	StartTs() uint64
 	// Get uses a []byte key to return the Value corresponding to the key
-	Get(key []byte) (rval Value, rerr error)
+	Get(key []byte) (rval []byte, rerr error)
 	// GetWithLockHeld uses a []byte key to return the Value corresponding to the key with a mutex lock held
-	GetWithLockHeld(key []byte) (rval Value, rerr error)
+	GetWithLockHeld(key []byte) (rval []byte, rerr error)
 	Find(prefix []byte, filter func(val []byte) bool) (uint64, error)
 	// Adds a mutation operation on a index.Txn interface, where the mutation
 	// is represented in the form of an index.DirectedEdge
@@ -155,9 +155,9 @@ type Txn interface {
 // Local cache is an interface representation of the local cache of a persistent storage system
 type LocalCache interface {
 	// Get uses a []byte key to return the Value corresponding to the key
-	Get(key []byte) (rval Value, rerr error)
+	Get(key []byte) (rval []byte, rerr error)
 	// GetWithLockHeld uses a []byte key to return the Value corresponding to the key with a mutex lock held
-	GetWithLockHeld(key []byte) (rval Value, rerr error)
+	GetWithLockHeld(key []byte) (rval []byte, rerr error)
 	Find(prefix []byte, filter func(val []byte) bool) (uint64, error)
 }
 
@@ -166,7 +166,7 @@ type Value interface{}
 
 // CacheType is an interface representation of the cache of a persistent storage system
 type CacheType interface {
-	Get(key []byte) (rval Value, rerr error)
+	Get(key []byte) (rval []byte, rerr error)
 	Ts() uint64
 	Find(prefix []byte, filter func(val []byte) bool) (uint64, error)
 }

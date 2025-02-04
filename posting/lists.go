@@ -31,7 +31,6 @@ import (
 	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/dgraph-io/ristretto/v2/z"
 	"github.com/hypermodeinc/dgraph/v24/protos/pb"
-	"github.com/hypermodeinc/dgraph/v24/tok/index"
 	"github.com/hypermodeinc/dgraph/v24/x"
 )
 
@@ -98,7 +97,7 @@ func (vc *viLocalCache) Find(prefix []byte, filter func([]byte) bool) (uint64, e
 	return vc.delegate.Find(prefix, filter)
 }
 
-func (vc *viLocalCache) Get(key []byte) (rval index.Value, rerr error) {
+func (vc *viLocalCache) Get(key []byte) ([]byte, error) {
 	pl, err := vc.delegate.Get(key)
 	if err != nil {
 		return nil, err
@@ -108,7 +107,7 @@ func (vc *viLocalCache) Get(key []byte) (rval index.Value, rerr error) {
 	return vc.GetValueFromPostingList(pl)
 }
 
-func (vc *viLocalCache) GetWithLockHeld(key []byte) (rval index.Value, rerr error) {
+func (vc *viLocalCache) GetWithLockHeld(key []byte) ([]byte, error) {
 	pl, err := vc.delegate.Get(key)
 	if err != nil {
 		return nil, err
@@ -116,18 +115,22 @@ func (vc *viLocalCache) GetWithLockHeld(key []byte) (rval index.Value, rerr erro
 	return vc.GetValueFromPostingList(pl)
 }
 
-func (vc *viLocalCache) GetValueFromPostingList(pl *List) (rval index.Value, rerr error) {
+func (vc *viLocalCache) GetValueFromPostingList(pl *List) ([]byte, error) {
+	if pl.cache != nil {
+		return pl.cache, nil
+	}
 	value := pl.findStaticValue(vc.delegate.startTs)
 
 	if value == nil || len(value.Postings) == 0 {
 		return nil, ErrNoValue
 	}
 
-	if hasDeleteAll(value.Postings[0]) || value.Postings[0].Op == Del {
+	if value.Postings[0].Op == Del {
 		return nil, ErrNoValue
 	}
 
-	return value.Postings[0].Value, nil
+	pl.cache = value.Postings[0].Value
+	return pl.cache, nil
 }
 
 func NewViLocalCache(delegate *LocalCache) *viLocalCache {
