@@ -172,7 +172,7 @@ func DgraphClientWithGroot(serviceAddr string) (*dgo.Dgraph, error) {
 // It is intended to be called from TestMain() to establish a Dgraph connection shared
 // by all tests, so there is no testing.T instance for it to use.
 func DgraphClient(serviceAddr string) (*dgo.Dgraph, error) {
-	conn, err := grpc.Dial(serviceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(serviceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}

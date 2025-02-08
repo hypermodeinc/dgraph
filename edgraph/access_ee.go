@@ -114,8 +114,7 @@ func (s *Server) Login(ctx context.Context,
 // authenticateLogin authenticates the login request using either the refresh token if present, or
 // the <userId, password> pair. If authentication passes, it queries the user's uid and associated
 // groups from DB and returns the user object
-func (s *Server) authenticateLogin(ctx context.Context, request *api.LoginRequest) (*acl.User,
-	error) {
+func (s *Server) authenticateLogin(ctx context.Context, request *api.LoginRequest) (*acl.User, error) {
 	if err := validateLoginRequest(request); err != nil {
 		return nil, errors.Wrapf(err, "invalid login request")
 	}
@@ -142,6 +141,14 @@ func (s *Server) authenticateLogin(ctx context.Context, request *api.LoginReques
 		user.Namespace = userData.namespace
 		glog.Infof("Authenticated user %s through refresh token", userId)
 		return user, nil
+	}
+
+	if request.NsName != "" {
+		ns, err := getNamespaceID(x.AttachNamespace(ctx, 0), request.NsName)
+		if err != nil {
+			return nil, err
+		}
+		request.Namespace = ns
 	}
 
 	// In case of login, we can't extract namespace from JWT because we have not yet given JWT

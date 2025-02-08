@@ -182,7 +182,7 @@ func (ir *incrRollupi) Process(closer *z.Closer, getNewTs func(bool) uint64) {
 				// Add/Update map and rollup.
 				m[hash] = currTs
 				if err := ir.rollUpKey(writer, key); err != nil {
-					glog.Warningf("Error %v rolling up key %v\n", err, key)
+					glog.Warningf("Error rolling up key [%v]: %v", err, key)
 				}
 			}
 		}

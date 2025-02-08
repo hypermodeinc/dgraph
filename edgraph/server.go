@@ -548,7 +548,6 @@ func annotateStartTs(span *otrace.Span, ts uint64) {
 }
 
 func (s *Server) doMutate(ctx context.Context, qc *queryContext, resp *api.Response) error {
-
 	if len(qc.gmuList) == 0 {
 		return nil
 	}
@@ -1883,6 +1882,280 @@ func (s *Server) CheckVersion(ctx context.Context, c *api.Check) (v *api.Version
 	return v, nil
 }
 
+func (s *Server) CreateNamespace(ctx context.Context, in *api.CreateNamespaceRequest) (
+	*api.CreateNamespaceResponse, error) {
+
+	if err := AuthGuardianOfTheGalaxy(ctx); err != nil {
+		s := status.Convert(err)
+		return nil, status.Error(s.Code(),
+			"Non guardian of galaxy user cannot create namespace. "+s.Message())
+	}
+
+	if err := verifyNamespaceName(in.NsName); err != nil {
+		return nil, err
+	}
+
+	if _, err := getNamespaceID(x.AttachJWTNamespace(ctx), in.NsName); err == nil {
+		return nil, errors.Errorf("namespace %q already exists", in.NsName)
+	} else if !strings.Contains(err.Error(), "not found") {
+		return nil, err
+	}
+
+	password := "password"
+	if len(in.Password) != 0 {
+		password = in.Password
+	}
+
+	ns, err := (&Server{}).CreateNamespaceInternal(ctx, password)
+	if err != nil {
+		return nil, err
+	}
+
+	// If we crash at this point, it is possible that namespaces is created
+	// but no entry has been added to dgraph.namespace predicate. This is alright
+	// because we have not let the user know that namespace has been created.
+	// The user would have to try again and another namespace then would be
+	// assigned to the provided name here.
+
+	_, err = (&Server{}).QueryNoGrpc(
+		context.WithValue(ctx, IsGraphql, true),
+		&api.Request{
+			Mutations: []*api.Mutation{{
+				Set: []*api.NQuad{
+					{
+						Subject:     "_:ns",
+						Predicate:   "dgraph.namespace.name",
+						ObjectValue: &api.Value{Val: &api.Value_StrVal{StrVal: in.NsName}},
+					},
+					{
+						Subject:     "_:ns",
+						Predicate:   "dgraph.namespace.id",
+						ObjectValue: &api.Value{Val: &api.Value_IntVal{IntVal: int64(ns)}},
+					},
+					{
+						Subject:     "_:ns",
+						Predicate:   "dgraph.type",
+						ObjectValue: &api.Value{Val: &api.Value_StrVal{StrVal: "dgraph.namespace"}},
+					},
+				},
+			}},
+			CommitNow: true,
+		})
+	if err != nil {
+		return nil, err
+	}
+
+	glog.Infof("Created namespace [%v] with id [%d]", in.NsName, ns)
+	return &api.CreateNamespaceResponse{NsId: ns}, nil
+}
+
+func (s *Server) DropNamespace(ctx context.Context, in *api.DropNamespaceRequest) (
+	*api.DropNamespaceResponse, error) {
+
+	if err := AuthGuardianOfTheGalaxy(ctx); err != nil {
+		s := status.Convert(err)
+		return nil, status.Error(s.Code(),
+			"Non guardian of galaxy user cannot drop namespace. "+s.Message())
+	}
+
+	if in.NsName != "" {
+		ns, err := deleteNamespaceByName(x.AttachJWTNamespace(ctx), in.NsName)
+		if err != nil {
+			return nil, err
+		}
+		in.NsId = ns
+	} else {
+		if err := deleteNamespaceByID(x.AttachJWTNamespace(ctx), in.NsId); err != nil {
+			return nil, err
+		}
+	}
+
+	if in.NsId == 0 {
+		glog.Infof("Namespace [%v] does not exist, cannot be deleted", in.NsName)
+		return &api.DropNamespaceResponse{}, nil
+	}
+
+	if err := (&Server{}).DeleteNamespace(ctx, in.NsId); err != nil {
+		if !strings.Contains(err.Error(), "error deleting non-existing namespace") {
+			return nil, err
+		} else {
+			glog.Infof("Namespace with id [%d] does not exist, cannot be deleted", in.NsId)
+		}
+	}
+
+	glog.Infof("Dropped namespace [%v] with id [%d]", in.NsName, in.NsId)
+	return &api.DropNamespaceResponse{}, nil
+}
+
+func (s *Server) RenameNamespace(ctx context.Context, in *api.RenameNamespaceRequest) (
+	*api.RenameNamespaceResponse, error) {
+
+	if err := AuthGuardianOfTheGalaxy(ctx); err != nil {
+		s := status.Convert(err)
+		return nil, status.Error(s.Code(),
+			"Non guardian of galaxy user cannot rename a namespace. "+s.Message())
+	}
+
+	if err := verifyNamespaceName(in.ToNs); err != nil {
+		return nil, err
+	}
+
+	resp, err := (&Server{}).QueryNoGrpc(context.WithValue(ctx, IsGraphql, true), &api.Request{
+		Query: `{q as var(func: eq(dgraph.namespace.name, "` + in.FromNs + `"))}`,
+		Mutations: []*api.Mutation{{
+			Cond: `@if(gt(len(q), 0))`,
+			Set: []*api.NQuad{
+				{
+					Subject:     "uid(q)",
+					Predicate:   "dgraph.namespace.name",
+					ObjectValue: &api.Value{Val: &api.Value_StrVal{StrVal: in.ToNs}},
+				},
+			},
+		}},
+		CommitNow: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.Metrics.NumUids["q"] != 1 {
+		return nil, errors.Errorf("namespace [%v] not found", in.FromNs)
+	}
+
+	glog.Infof("Renamed namespace [%v] to [%v]", in.FromNs, in.ToNs)
+	return &api.RenameNamespaceResponse{}, nil
+}
+
+func (s *Server) ListNamespaces(ctx context.Context, in *api.ListNamespacesRequest) (
+	*api.ListNamespacesResponse, error) {
+
+	if err := AuthGuardianOfTheGalaxy(ctx); err != nil {
+		s := status.Convert(err)
+		return nil, status.Error(s.Code(),
+			"Non guardian of galaxy user cannot list namespaces. "+s.Message())
+	}
+
+	const q = `{q(func: type(dgraph.namespace)) {
+			dgraph.namespace.name
+			dgraph.namespace.id }}`
+	resp, err := (&Server{}).doQuery(x.AttachJWTNamespace(ctx),
+		&Request{req: &api.Request{Query: q}, doAuth: NoAuthorize})
+	if err != nil {
+		return nil, err
+	}
+
+	var data struct {
+		Data []struct {
+			ID   uint64 `json:"dgraph.namespace.id"`
+			Name string `json:"dgraph.namespace.name"`
+		} `json:"q"`
+	}
+	if err := json.Unmarshal(resp.GetJson(), &data); err != nil {
+		return nil, err
+	}
+
+	// TODO: What about namespaces that are created through GraphQL, they won't have names!
+	nsList := schema.State().Namespaces()
+	result := &api.ListNamespacesResponse{NsList: make(map[string]*api.Namespace)}
+	for _, e := range data.Data {
+		if _, ok := nsList[e.ID]; !ok {
+			glog.Warningf("Namespace [%v] with id [%d] not found in schema", e.Name, e.ID)
+			continue
+		}
+		result.NsList[e.Name] = &api.Namespace{Name: e.Name, Id: e.ID}
+	}
+
+	return result, nil
+}
+
+// verifyNamespaceName ensures that name only has alpha numeric characters as
+// well as underscores and hyphens. It also ensures that the name is not empty.
+func verifyNamespaceName(name string) error {
+	if name == "" {
+		return errors.Errorf("namespace name cannot be empty")
+	}
+	hasInvalidChars := strings.ContainsFunc(name, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '_' && r != '-'
+	})
+	if hasInvalidChars {
+		return fmt.Errorf("namespace name [%v] has invalid characters", name)
+	}
+	if strings.HasPrefix(name, "_") || strings.HasPrefix(name, "-") {
+		return fmt.Errorf("namespace name [%v] cannot start with _ or -", name)
+	}
+	if strings.HasPrefix(name, "dgraph") {
+		return fmt.Errorf("namespace name [%v] cannot start with dgraph", name)
+	}
+	return nil
+}
+
+func getNamespaceID(ctx context.Context, nsName string) (uint64, error) {
+	const q = `{q(func: eq(dgraph.namespace.name, "%v")) { dgraph.namespace.id }}`
+	req := &api.Request{Query: fmt.Sprintf(q, nsName)}
+	resp, err := (&Server{}).doQuery(ctx, &Request{req: req, doAuth: NoAuthorize})
+	if err != nil {
+		return 0, err
+	}
+
+	var data struct {
+		Data []struct {
+			ID int64 `json:"dgraph.namespace.id"`
+		} `json:"q"`
+	}
+	if err := json.Unmarshal(resp.GetJson(), &data); err != nil {
+		return 0, err
+	}
+	if len(data.Data) == 0 {
+		return 0, errors.Errorf("namespace %q not found", nsName)
+	}
+
+	glog.Infof("Found namespace [%v] with id [%d]", nsName, data.Data[0].ID)
+	return uint64(data.Data[0].ID), nil
+}
+
+func deleteNamespaceByName(ctx context.Context, nsName string) (uint64, error) {
+	const q = `{ns(func: eq(dgraph.namespace.name, "%v")) {
+		q as uid
+		dgraph.namespace.id
+	  }}`
+	req := &api.Request{
+		Query:     fmt.Sprintf(q, nsName),
+		Mutations: []*api.Mutation{{DelNquads: []byte(`uid(q) * * .`)}},
+		CommitNow: true,
+	}
+	resp, err := (&Server{}).doQuery(context.WithValue(ctx, IsGraphql, true),
+		&Request{req: req, doAuth: NoAuthorize})
+	if err != nil {
+		return 0, err
+	}
+
+	var data struct {
+		Data []struct {
+			ID int64 `json:"dgraph.namespace.id"`
+		} `json:"ns"`
+	}
+	if err := json.Unmarshal(resp.GetJson(), &data); err != nil {
+		return 0, err
+	}
+	if len(data.Data) != 1 {
+		return 0, nil
+	}
+
+	return uint64(data.Data[0].ID), nil
+}
+
+func deleteNamespaceByID(ctx context.Context, nsID uint64) error {
+	const q = `{q as var(func: eq(dgraph.namespace.id, "%v")) }`
+	req := &api.Request{
+		Query:     fmt.Sprintf(q, nsID),
+		Mutations: []*api.Mutation{{DelNquads: []byte(`uid(q) * * .`)}},
+		CommitNow: true,
+	}
+	_, err := (&Server{}).doQuery(context.WithValue(ctx, IsGraphql, true),
+		&Request{req: req, doAuth: NoAuthorize})
+	return err
+}
+
 // -------------------------------------------------------------------------------------------------
 // HELPER FUNCTIONS
 // -------------------------------------------------------------------------------------------------
@@ -2005,9 +2278,9 @@ func validateAndConvertFacets(nquads []*api.NQuad) error {
 	return nil
 }
 
-// validateForGraphql validate nquads for graphql
-func validateForGraphql(nq *api.NQuad, isGraphql bool) error {
-	// Check whether the incoming predicate is graphql reserved predicate or not.
+// validateForOtherReserved validate nquads for other reserved predicates
+func validateForOtherReserved(nq *api.NQuad, isGraphql bool) error {
+	// Check whether the incoming predicate is other reserved predicate.
 	if !isGraphql && x.IsOtherReservedPredicate(nq.Predicate) {
 		return errors.Errorf("Cannot mutate graphql reserved predicate %s", nq.Predicate)
 	}
@@ -2029,7 +2302,7 @@ func validateNQuads(set, del []*api.NQuad, isGraphql bool) error {
 		if err := validateKeys(nq); err != nil {
 			return errors.Wrapf(err, "key error: %+v", nq)
 		}
-		if err := validateForGraphql(nq, isGraphql); err != nil {
+		if err := validateForOtherReserved(nq, isGraphql); err != nil {
 			return err
 		}
 	}
@@ -2044,7 +2317,7 @@ func validateNQuads(set, del []*api.NQuad, isGraphql bool) error {
 		if nq.Subject == x.Star || (nq.Predicate == x.Star && !ostar) {
 			return errors.Errorf("Only valid wildcard delete patterns are 'S * *' and 'S P *': %v", nq)
 		}
-		if err := validateForGraphql(nq, isGraphql); err != nil {
+		if err := validateForOtherReserved(nq, isGraphql); err != nil {
 			return err
 		}
 		// NOTE: we dont validateKeys() with delete to let users fix existing mistakes
