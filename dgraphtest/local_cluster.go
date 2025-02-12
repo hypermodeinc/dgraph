@@ -796,7 +796,7 @@ func (c *LocalCluster) Client() (*dgraphapi.GrpcClient, func(), error) {
 			}
 		}
 	}
-	return &dgraphapi.GrpcClient{Dgraph: client}, cleanup, nil
+	return &dgraphapi.GrpcClient{Dgraph: client, Conns: conns}, cleanup, nil
 }
 
 func (c *LocalCluster) AlphaClient(id int) (*dgraphapi.GrpcClient, func(), error) {

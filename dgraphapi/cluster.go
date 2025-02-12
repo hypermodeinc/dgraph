@@ -12,12 +12,17 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"os/exec"
 	"strings"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/pkg/errors"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/dgraph-io/dgo/v240"
 	"github.com/dgraph-io/dgo/v240/protos/api"
@@ -44,6 +49,10 @@ type Cluster interface {
 
 type GrpcClient struct {
 	*dgo.Dgraph
+
+	// These are needed for APIs that we have not exposed yet in dgo
+	Conns []*grpc.ClientConn
+	jwt   api.Jwt
 }
 
 // HttpToken stores credentials for making HTTP request
@@ -689,6 +698,116 @@ func (hc *HTTPClient) PostDqlQuery(query string) ([]byte, error) {
 		req.Header.Add("X-Dgraph-AccessToken", hc.AccessJwt)
 	}
 	return DoReq(req)
+}
+
+func (gc *GrpcClient) getContext() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	if len(gc.jwt.AccessJwt) > 0 {
+		md, ok := metadata.FromOutgoingContext(ctx)
+		if !ok {
+			// no metadata key is in the context, add one
+			md = metadata.New(nil)
+		}
+		md.Set("accessJwt", gc.jwt.AccessJwt)
+		return metadata.NewOutgoingContext(ctx, md), cancel
+	}
+
+	return ctx, cancel
+}
+
+func (gc *GrpcClient) CreateNamespace(name, password string) error {
+	ctx, cancel := gc.getContext()
+	defer cancel()
+
+	client := api.NewDgraphClient(gc.Conns[rand.Intn(len(gc.Conns))])
+	req := &api.CreateNamespaceRequest{NsName: name, Password: password}
+	_, err := client.CreateNamespace(ctx, req)
+	return err
+}
+
+func (gc *GrpcClient) DropNamespace(name string) error {
+	ctx, cancel := gc.getContext()
+	defer cancel()
+
+	client := api.NewDgraphClient(gc.Conns[rand.Intn(len(gc.Conns))])
+	req := &api.DropNamespaceRequest{NsName: name}
+	_, err := client.DropNamespace(ctx, req)
+	return err
+}
+
+func (gc *GrpcClient) DropNamespaceWithID(nsID uint64) error {
+	ctx, cancel := gc.getContext()
+	defer cancel()
+
+	client := api.NewDgraphClient(gc.Conns[rand.Intn(len(gc.Conns))])
+	req := &api.DropNamespaceRequest{NsId: nsID}
+	_, err := client.DropNamespace(ctx, req)
+	return err
+}
+
+func (gc *GrpcClient) RenameNamespace(oldName, newName string) error {
+	ctx, cancel := gc.getContext()
+	defer cancel()
+
+	client := api.NewDgraphClient(gc.Conns[rand.Intn(len(gc.Conns))])
+	req := &api.RenameNamespaceRequest{FromNs: oldName, ToNs: newName}
+	_, err := client.RenameNamespace(ctx, req)
+	return err
+}
+
+func (gc *GrpcClient) ListNamespace() (map[string]*api.Namespace, error) {
+	ctx, cancel := gc.getContext()
+	defer cancel()
+
+	client := api.NewDgraphClient(gc.Conns[rand.Intn(len(gc.Conns))])
+	resp, err := client.ListNamespaces(ctx, &api.ListNamespacesRequest{})
+	if err != nil {
+		return nil, err
+	}
+	return resp.NsList, nil
+}
+
+func (gc *GrpcClient) Login(ctx context.Context, userid string, password string) error {
+	if err := gc.Dgraph.Login(ctx, userid, password); err != nil {
+		return err
+	}
+	gc.jwt = gc.Dgraph.GetJwt()
+	return nil
+}
+
+func (gc *GrpcClient) LoginIntoNamespace(ctx context.Context,
+	userid string, password string, namespace uint64) error {
+
+	if err := gc.Dgraph.LoginIntoNamespace(ctx, userid, password, namespace); err != nil {
+		return err
+	}
+	gc.jwt = gc.Dgraph.GetJwt()
+	return nil
+}
+
+func (gc *GrpcClient) LoginUsingNamespaceName(ctx context.Context,
+	userid string, password string, namespace string) error {
+
+	client := api.NewDgraphClient(gc.Conns[rand.Intn(len(gc.Conns))])
+	req := &api.LoginRequest{Userid: userid, Password: password, NsName: namespace}
+	resp, err := client.Login(ctx, req)
+	if err != nil {
+		return err
+	}
+	if err := proto.Unmarshal(resp.Json, &gc.jwt); err != nil {
+		return errors.Wrap(err, "error unmarshalling jwt")
+	}
+
+	token, _, err := new(jwt.Parser).ParseUnverified(gc.jwt.AccessJwt, jwt.MapClaims{})
+	if err != nil {
+		return errors.Wrap(err, "error parsing jwt")
+	}
+	var nsID uint64
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
+		nsID = uint64(claims["namespace"].(float64))
+	}
+
+	return gc.Dgraph.LoginIntoNamespace(ctx, userid, password, nsID)
 }
 
 func (hc *HTTPClient) Mutate(mutation string, commitNow bool) ([]byte, error) {
