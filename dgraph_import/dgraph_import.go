@@ -17,31 +17,6 @@ var (
 	Import x.SubCommand
 )
 
-// type importServer struct {
-// 	pb.ImportPServer
-// }
-
-// var grpcServer *grpc.Server
-
-// func (server *importServer) StreamSnapshot(stream pb.ImportP_StreamSnapshotServer) error {
-// 	defer func() {
-// 		go func() {
-// 			fmt.Println("Shutting down gRPC server...")
-// 			grpcServer.GracefulStop()
-// 		}()
-// 	}()
-// 	snap := &pb.Snapshot{}
-// 	snap.SinceTs = 0
-// 	snap.ReadTs = 28
-
-// 	opt := badger.DefaultOptions("/home/shiva/workspace/dgraph-work/import/p")
-// 	ps, err := badger.OpenManaged(opt)
-// 	x.Check(err)
-// 	worker.Pstore = ps
-
-// 	return worker.DoStreamSnapshot(snap, stream)
-// }
-
 func init() {
 	Import.Cmd = &cobra.Command{
 		Use:   "import",
@@ -69,10 +44,27 @@ func importP() error {
 	defer conn.Close()
 
 	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
-	alphs, err := dg.InitiateSnapShotStream()
 
+	// here we are getting alpha leader request so now we will need to stream to
+	// desired alpha only
+	alphs, err := dg.InitiateSnapShotStream()
+	fmt.Println("alphas are----------->", alphs)
 	if err != nil {
 		return err
+	}
+
+	alphaLeader := "localhost:9080"
+	conn, err = grpc.NewClient(alphaLeader, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer conn.Close()
+	// worker.Snapshot
+
+	dg1 := dgo.NewDgraphClient(api.NewDgraphClient(conn))
+
+	if err := dg1.StreamSnapshot("/home/shiva/workspace/dgraph-work/stream_data/p"); err != nil {
+		log.Fatal()
 	}
 
 	// here we get a list of alphas now which we have to send stream of lpahs back
@@ -80,41 +72,6 @@ func importP() error {
 	// add new rpc whcih can stram p to alpha
 
 	// now we have dgraph client which can tell server that p dir is ready to proced further
-
-	// go func() {
-	// 	retryCount := 0
-	// 	maxRetries := 10
-	// 	retryDelay := 2 * time.Second
-	// 	for {
-	// 		conn, err := grpc.NewClient("localhost:7080", grpc.WithTransportCredentials(insecure.NewCredentials()))
-	// 		if err == nil {
-	// 			defer conn.Close()
-	// 			c := pb.NewWorkerClient(conn)
-
-	// 			_, err = c.PDirStat(context.Background(), &pb.PDirReadyStatus{IsReady: true, Ack: true})
-	// 			if err == nil {
-	// 				fmt.Println("Connected to Dgraph successfully.")
-	// 				return
-	// 			}
-	// 			log.Printf("Failed to send PDirStat: %v", err)
-	// 		} else {
-	// 			log.Printf("Failed to connect to Dgraph: %v", err)
-	// 		}
-
-	// 		retryCount++
-	// 		if retryCount >= maxRetries {
-	// 			break
-	// 		}
-
-	// 		time.Sleep(retryDelay)
-	// 	}
-
-	// }()
-
-	// fmt.Println("Starting gRPC server...")
-	// if err := grpcServer.Serve(lis); err != nil {
-	// 	log.Fatalf("Failed to start gRPC server: %v", err)
-	// }
 
 	return nil
 }

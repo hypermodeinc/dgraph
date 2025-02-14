@@ -1895,20 +1895,27 @@ func (s *Server) CheckVersion(ctx context.Context, c *api.Check) (v *api.Version
 	return v, nil
 }
 
-// CheckVersion returns the version of this Dgraph instance.
 func (s *Server) InitiateSnapShotStream(ctx context.Context, c *api.InitiateSnapShotStreamRequest) (v *api.SnapShotStreamResponse, err error) {
+	leaders := make(map[string]string)
+	ms := worker.GetMembershipState()
 
-	// as we get all leaders name fromthis function call can return them to clients
-	alphas, err := s.CheckReadyNessOfAlphas()
-	if err != nil {
-		return nil, err
+	for i, group := range ms.Groups {
+		for _, a := range group.Members {
+			if a.Leader {
+				leaders["group"+strconv.Itoa(int(i))] = a.Addr // Group name → Leader Address
+			}
+		}
 	}
 
-	numUids := map[string]uint64{
-		alphas[0]: 1, alphas[1]: 2,
+	resp := &api.SnapShotStreamResponse{
+		Leaders: leaders, // Setting the map
 	}
 
-	return &api.SnapShotStreamResponse{NumUids: numUids}, nil
+	return resp, nil
+}
+
+func (s *Server) StreamPSnapshot(stream api.Dgraph_StreamPSnapshotServer) error {
+	return worker.FlushKvs(stream)
 }
 
 func (s *Server) CheckReadyNessOfAlphas() ([]string, error) {
