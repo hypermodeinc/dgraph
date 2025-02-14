@@ -6,7 +6,7 @@
 # linux || darwin
 GOOS          ?= $(shell go env GOOS)
 GOPATH        ?= $(shell go env GOPATH)
-MIN_GO_VERSION = "1.22.11"
+MIN_GO_VERSION = "1.22.12"
 
 all: test
 

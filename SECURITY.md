@@ -1,7 +1,7 @@
 # Reporting Security Concerns
 
-We take the security of Dgraph very seriously. If you believe you have found a security vulnerability
-in Dgraph, we encourage you to let us know right away.
+We take the security of Dgraph very seriously. If you believe you have found a security
+vulnerability in Dgraph, we encourage you to let us know right away.
 
 We will investigate all legitimate reports and do our best to quickly fix the problem. Please report
 any issues or vulnerabilities via GitHub Security Advisories instead of posting a public issue in

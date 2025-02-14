@@ -1,6 +1,6 @@
 module github.com/hypermodeinc/dgraph/v24
 
-go 1.22.11
+go 1.22.12
 
 require (
 	contrib.go.opencensus.io/exporter/jaeger v0.2.1

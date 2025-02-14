@@ -30,7 +30,7 @@
   available through your OS package manager)
 - Install [Docker](https://docs.docker.com/install/) and
   [Docker Compose](https://docs.docker.com/compose/install/).
-- [Install Go 1.22.11 or above](https://golang.org/doc/install).
+- [Install Go 1.22.12 or above](https://golang.org/doc/install).
 
 ### Setup Dgraph from source repo
 
@@ -111,7 +111,7 @@ Dgraph SHA-256   : 9ce738cd055dfebdef5d68b2a49ea4e062e597799498607dbd1bb618d4886
 Commit SHA-1     : 15839b156
 Commit timestamp : 2025-01-10 17:56:49 -0500
 Branch           : username/some-branch-that-im-on
-Go version       : go1.22.11
+Go version       : go1.22.12
 jemalloc enabled : true
 
 For Dgraph official documentation, visit https://dgraph.io/docs.
