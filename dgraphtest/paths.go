@@ -40,9 +40,9 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	if err := ensureDgraphClone(); err != nil {
-		panic(err)
-	}
+	// if err := ensureDgraphClone(); err != nil {
+	// 	panic(err)
+	// }
 
 	log.Printf("[INFO] baseRepoDir: %v", baseRepoDir)
 	log.Printf("[INFO] repoDir: %v", repoDir)
