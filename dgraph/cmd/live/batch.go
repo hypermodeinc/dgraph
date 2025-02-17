@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/dgryski/go-farm"
+	"github.com/dustin/go-humanize"
 	"github.com/dustin/go-humanize/english"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -69,6 +70,9 @@ type loader struct {
 	aborts uint64
 	// To get time elapsed
 	start time.Time
+
+	inflight int32
+	conc     int32
 
 	conflicts map[uint64]struct{}
 	uidsLock  sync.RWMutex
@@ -156,6 +160,7 @@ func (l *loader) infinitelyRetry(req *request) {
 }
 
 func (l *loader) mutate(req *request) error {
+	atomic.AddInt32(&l.inflight, 1)
 	txn := l.dc.NewTxn()
 	req.CommitNow = true
 	request := &api.Request{
@@ -163,6 +168,7 @@ func (l *loader) mutate(req *request) error {
 		Mutations: []*api.Mutation{req.Mutation},
 	}
 	_, err := txn.Do(l.opts.Ctx, request)
+	atomic.AddInt32(&l.inflight, -1)
 	return err
 }
 
@@ -390,23 +396,52 @@ func (l *loader) deregister(req *request) {
 // caller functions.
 func (l *loader) makeRequests() {
 	defer l.requestsWg.Done()
+	atomic.AddInt32(&l.conc, 1)
+	defer atomic.AddInt32(&l.conc, -1)
 
 	buffer := make([]*request, 0, l.opts.bufferSize)
-	drain := func(maxSize int) {
-		for len(buffer) > maxSize {
-			i := 0
-			for _, req := range buffer {
-				// If there is no conflict in req, we will use it
-				// and then it would shift all the other reqs in buffer
-				if !l.addConflictKeys(req) {
-					buffer[i] = req
-					i++
-					continue
-				}
-				// Req will no longer be part of a buffer
-				l.request(req)
+	var loops int
+	drain := func() {
+		i := 0
+		for _, req := range buffer {
+			loops++
+			// If there is no conflict in req, we will use it
+			// and then it would shift all the other reqs in buffer
+			if !l.addConflictKeys(req) {
+				buffer[i] = req
+				i++
+				continue
 			}
-			buffer = buffer[:i]
+			// Req will no longer be part of a buffer
+			l.request(req)
+		}
+		buffer = buffer[:i]
+	}
+
+	t := time.NewTicker(5 * time.Second)
+	defer t.Stop()
+
+outer:
+	for {
+		select {
+		case req, ok := <-l.reqs:
+			if !ok {
+				break outer
+			}
+			req.conflicts = l.conflictKeysForReq(req)
+			if l.addConflictKeys(req) {
+				l.request(req)
+			} else {
+				buffer = append(buffer, req)
+			}
+
+		case <-t.C:
+			for {
+				drain()
+				if len(buffer) < l.opts.bufferSize {
+					break
+				}
+			}
 		}
 	}
 
@@ -417,10 +452,13 @@ func (l *loader) makeRequests() {
 		} else {
 			buffer = append(buffer, req)
 		}
-		drain(l.opts.bufferSize - 1)
-	}
 
-	drain(0)
+		drain()
+		time.Sleep(100 * time.Millisecond)
+	}
+	fmt.Printf("Looped %d times over buffered requests.\n", loops)
+
+	drain()
 }
 
 func (l *loader) printCounters() {
@@ -434,8 +472,11 @@ func (l *loader) printCounters() {
 		rate := float64(counter.Nquads-last.Nquads) / period.Seconds()
 		elapsed := time.Since(start).Round(time.Second)
 		timestamp := time.Now().Format("15:04:05Z0700")
-		fmt.Printf("[%s] Elapsed: %s Txns: %d N-Quads: %d N-Quads/s [last 5s]: %5.0f Aborts: %d\n",
-			timestamp, x.FixedDuration(elapsed), counter.TxnsDone, counter.Nquads, rate, counter.Aborts)
+		fmt.Printf("[%s] Elapsed: %s Txns: %d N-Quads: %s N-Quads/s: %s"+
+			" Inflight: %2d/%2d Aborts: %d\n",
+			timestamp, x.FixedDuration(elapsed), counter.TxnsDone,
+			humanize.Comma(int64(counter.Nquads)), humanize.Comma(int64(rate)),
+			atomic.LoadInt32(&l.inflight), atomic.LoadInt32(&l.conc), counter.Aborts)
 		last = counter
 	}
 }
