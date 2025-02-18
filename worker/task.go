@@ -423,6 +423,7 @@ func (qs *queryState) handleValuePostings(ctx context.Context, args funcArgs) er
 		out := &pb.Result{}
 		outputs[start/width] = out
 
+		cache := make([]*pb.PostingList, 0)
 		for i := start; i < end; i++ {
 			select {
 			case <-ctx.Done():
@@ -437,9 +438,20 @@ func (qs *queryState) handleValuePostings(ctx context.Context, args funcArgs) er
 			fcs := &pb.FacetsList{FacetsList: make([]*pb.Facets, 0)} // TODO Figure out how it is stored
 
 			if !getMultiplePosting {
-				pl, err := qs.cache.GetSinglePosting(key)
-				if err != nil {
-					return err
+				if len(cache) == 0 {
+					keys := make([][]byte, 10)
+					keys[0] = key
+					for j := i + 1; j < i+10 && j < end; j++ {
+						keys[j-i] = x.DataKey(q.Attr, q.UidList.Uids[j])
+					}
+					cache, err = qs.cache.GetBatchSinglePosting(keys)
+					if err != nil {
+						return err
+					}
+				}
+				pl := cache[0]
+				if len(cache) > 1 {
+					cache = cache[1:]
 				}
 				if pl == nil || len(pl.Postings) == 0 {
 					out.UidMatrix = append(out.UidMatrix, &pb.List{})
