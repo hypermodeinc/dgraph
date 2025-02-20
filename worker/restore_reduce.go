@@ -22,7 +22,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/golang/glog"
-	"github.com/golang/snappy"
+	"github.com/klauspost/compress/s2"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/dgraph-io/badger/v4/y"
@@ -92,7 +92,7 @@ func (mi *mapIterator) Close() error {
 func newMapIterator(filename string) (*pb.MapHeader, *mapIterator) {
 	fd, err := os.Open(filename)
 	x.Check(err)
-	r := snappy.NewReader(fd)
+	r := s2.NewReader(fd)
 
 	// Read the header size.
 	reader := bufio.NewReaderSize(r, 16<<10)

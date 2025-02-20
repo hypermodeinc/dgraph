@@ -28,7 +28,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/golang/glog"
-	"github.com/golang/snappy"
+	"github.com/klauspost/compress/s2"
 	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
@@ -92,7 +92,7 @@ func (br *backupReader) WithEncryption(encKey x.Sensitive) *backupReader {
 func (br *backupReader) WithCompression(comp string) *backupReader {
 	switch comp {
 	case "snappy":
-		br.r = snappy.NewReader(br.r)
+		br.r = s2.NewReader(br.r)
 	case "gzip", "":
 		r, err := gzip.NewReader(br.r)
 		br.setErr(err)
@@ -214,7 +214,7 @@ func (m *mapper) writeToDisk(buf *z.Buffer) error {
 	var lenBuf [4]byte
 	binary.BigEndian.PutUint32(lenBuf[:], uint32(len(headerBuf)))
 
-	w := snappy.NewBufferedWriter(f)
+	w := s2.NewWriter(f)
 	x.Check2(w.Write(lenBuf[:]))
 	x.Check2(w.Write(headerBuf))
 	x.Check(err)
