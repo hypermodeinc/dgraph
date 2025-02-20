@@ -1,6 +1,6 @@
 module github.com/hypermodeinc/dgraph/v24
 
-go 1.22.12
+go 1.23.6
 
 require (
 	contrib.go.opencensus.io/exporter/jaeger v0.2.1
@@ -11,7 +11,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/blevesearch/bleve/v2 v2.4.4
 	github.com/dgraph-io/badger/v4 v4.5.1
-	github.com/dgraph-io/dgo/v240 v240.1.1-0.20250218144733-3ac9b92c4cc6
+	github.com/dgraph-io/dgo/v240 v240.1.1-0.20250219205431-57e0fde48904
 	github.com/dgraph-io/gqlgen v0.13.2
 	github.com/dgraph-io/gqlparser/v2 v2.2.2
 	github.com/dgraph-io/graphql-transport-ws v0.0.0-20210511143556-2cef522f1f15

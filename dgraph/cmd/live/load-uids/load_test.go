@@ -23,7 +23,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/dgraph-io/dgo/v240"
-	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/ee"
 	"github.com/hypermodeinc/dgraph/v24/testutil"
 	"github.com/hypermodeinc/dgraph/v24/x"
@@ -81,7 +80,7 @@ func checkUpsertLoadedData(t *testing.T) {
 }
 
 func TestLiveLoadUpsertAtOnce(t *testing.T) {
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	file := testDataDir + "/xid_a.rdf, " + testDataDir + "/xid_b.rdf"
 
@@ -98,7 +97,7 @@ func TestLiveLoadUpsertAtOnce(t *testing.T) {
 }
 
 func TestLiveLoadUpsert(t *testing.T) {
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	pipeline := [][]string{
 		{testutil.DgraphBinaryPath(), "live",
@@ -186,7 +185,7 @@ func checkLoadedData(t *testing.T, newUids bool) {
 }
 
 func TestLiveLoadJsonUidKeep(t *testing.T) {
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	pipeline := [][]string{
 		{testutil.DgraphBinaryPath(), "live",
@@ -201,7 +200,7 @@ func TestLiveLoadJsonUidKeep(t *testing.T) {
 }
 
 func TestLiveLoadJsonUidDiscard(t *testing.T) {
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	pipeline := [][]string{
 		{testutil.DgraphBinaryPath(), "live", "--new_uids",
@@ -216,7 +215,7 @@ func TestLiveLoadJsonUidDiscard(t *testing.T) {
 }
 
 func TestLiveLoadRdfUidKeep(t *testing.T) {
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	pipeline := [][]string{
 		{testutil.DgraphBinaryPath(), "live",
@@ -231,7 +230,7 @@ func TestLiveLoadRdfUidKeep(t *testing.T) {
 }
 
 func TestLiveLoadRdfUidDiscard(t *testing.T) {
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	pipeline := [][]string{
 		{testutil.DgraphBinaryPath(), "live", "--new_uids",
@@ -246,7 +245,7 @@ func TestLiveLoadRdfUidDiscard(t *testing.T) {
 }
 
 func TestLiveLoadExportedSchema(t *testing.T) {
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	// initiate export
 	params := &testutil.GraphQLParams{
@@ -312,7 +311,7 @@ func extractErrLine(output string) string {
 }
 
 func TestLiveLoadFileName(t *testing.T) {
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	pipeline := [][]string{
 		{testutil.DgraphBinaryPath(), "live",
@@ -329,7 +328,7 @@ func TestLiveLoadFileName(t *testing.T) {
 }
 
 func TestLiveLoadFileNameMultipleErrored(t *testing.T) {
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	pipeline := [][]string{
 		{testutil.DgraphBinaryPath(), "live",
@@ -347,7 +346,7 @@ func TestLiveLoadFileNameMultipleErrored(t *testing.T) {
 }
 
 func TestLiveLoadFileNameMultipleCorrect(t *testing.T) {
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	pipeline := [][]string{
 		{testutil.DgraphBinaryPath(), "live",
@@ -383,8 +382,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		log.Fatalf("Error while getting a dgraph client: %v", err)
 	}
-	x.Panic(dg.Alter(
-		context.Background(), &api.Operation{DropAll: true}))
+	x.Panic(dg.DropAll(context.Background()))
 
 	// Try to create any files in a dedicated temp directory that gets cleaned up
 	// instead of all over /tmp or the working directory.

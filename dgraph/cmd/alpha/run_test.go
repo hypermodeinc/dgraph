@@ -1510,8 +1510,8 @@ func TestJSONQueryWithVariables(t *testing.T) {
 
 func TestGeoDataInvalidString(t *testing.T) {
 	ctx := context.Background()
-	require.NoError(t, dg.Alter(ctx, &api.Operation{DropAll: true}))
-	require.NoError(t, dg.Alter(ctx, &api.Operation{Schema: `loc: geo .`}))
+	require.NoError(t, dg.DropAll(ctx))
+	require.NoError(t, dg.SetSchema(ctx, dgo.RootNamespace, `loc: geo .`))
 
 	n := &api.NQuad{
 		Subject:   "_:test",
@@ -1534,8 +1534,8 @@ func TestGeoDataInvalidString(t *testing.T) {
 // invalid data in a mutation though that is left as future work.
 func TestGeoCorruptData(t *testing.T) {
 	ctx := context.Background()
-	require.NoError(t, dg.Alter(ctx, &api.Operation{DropAll: true}))
-	require.NoError(t, dg.Alter(ctx, &api.Operation{Schema: `loc: geo .`}))
+	require.NoError(t, dg.DropAll(ctx))
+	require.NoError(t, dg.SetSchema(ctx, dgo.RootNamespace, `loc: geo .`))
 
 	n := &api.NQuad{
 		Subject:   "_:test",
@@ -1568,8 +1568,8 @@ func TestGeoCorruptData(t *testing.T) {
 // by a common user unless user knows what she is doing.
 func TestGeoValidWkbData(t *testing.T) {
 	ctx := context.Background()
-	require.NoError(t, dg.Alter(ctx, &api.Operation{DropAll: true}))
-	require.NoError(t, dg.Alter(ctx, &api.Operation{Schema: `loc: geo .`}))
+	require.NoError(t, dg.DropAll(ctx))
+	require.NoError(t, dg.SetSchema(ctx, dgo.RootNamespace, `loc: geo .`))
 	s := `{"type": "Point", "coordinates": [1.0, 2.0]}`
 	var gt geom.T
 	x.Panic(geojson.Unmarshal([]byte(s), &gt))
@@ -1638,7 +1638,7 @@ func TestMain(m *testing.M) {
 	x.Panic(err)
 	defer cleanup()
 
-	x.Panic(dg.Login(context.Background(), dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
+	x.Panic(dg.LoginUser(context.Background(), dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
 
 	alphaGrpcPort, err := c.GetAlphaGrpcPublicPort()
 	x.Panic(err)

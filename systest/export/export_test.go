@@ -122,7 +122,7 @@ func TestExportAndLoadJson(t *testing.T) {
 	// Drop all data
 	dg, err := testutil.DgraphClient(testutil.SockAddr)
 	require.NoError(t, err)
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{DropAll: true}))
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	res = runQuery(t, q)
 	require.JSONEq(t, `{"data": {"q": [{"count":0}]}}`, res)
@@ -203,7 +203,7 @@ func TestExportAndLoadJsonFacets(t *testing.T) {
 	// Drop all data
 	dg, err := testutil.DgraphClient(testutil.SockAddr)
 	require.NoError(t, err)
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{DropAll: true}))
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	res := runQuery(t, `{ q(func:has(name)) { name } }`)
 	require.JSONEq(t, `{"data": {"q": []}}`, res)
@@ -265,7 +265,6 @@ func dirCleanup(t *testing.T) {
 }
 
 func setupDgraph(t *testing.T, nquads, schema string) {
-
 	require.NoError(t, os.MkdirAll("./data", os.ModePerm))
 	conn, err := grpc.Dial(testutil.SockAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)

@@ -31,13 +31,13 @@ func runOn(conn *grpc.ClientConn, fn func(*testing.T, *dgo.Dgraph)) func(*testin
 }
 
 func dropAllDisallowed(t *testing.T, dg *dgo.Dgraph) {
-	err := dg.Alter(context.Background(), &api.Operation{DropAll: true})
+	err := dg.DropAll(context.Background())
 	require.Error(t, err)
 	require.Contains(t, strings.ToLower(err.Error()), "no mutations allowed")
 }
 
 func dropAllAllowed(t *testing.T, dg *dgo.Dgraph) {
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{DropAll: true}))
+	require.NoError(t, dg.DropAll(context.Background()))
 }
 
 func mutateNewDisallowed(t *testing.T, dg *dgo.Dgraph) {
@@ -70,28 +70,20 @@ func mutateNewDisallowed2(t *testing.T, dg *dgo.Dgraph) {
 
 func addPredicateDisallowed(t *testing.T, dg *dgo.Dgraph) {
 	ctx := context.Background()
-
-	err := dg.Alter(ctx, &api.Operation{
-		Schema: `name: string @index(exact) .`,
-	})
-
+	err := dg.SetSchema(ctx, dgo.RootNamespace, `name: string @index(exact) .`)
 	require.Error(t, err)
 	require.Contains(t, strings.ToLower(err.Error()), "no mutations allowed")
 }
 
 func addPredicateAllowed1(t *testing.T, dg *dgo.Dgraph) {
 	ctx := context.Background()
-	err := dg.Alter(ctx, &api.Operation{
-		Schema: `name: string @index(exact) .`,
-	})
+	err := dg.SetSchema(ctx, dgo.RootNamespace, `name: string @index(exact) .`)
 	require.NoError(t, err)
 }
 
 func addPredicateAllowed2(t *testing.T, dg *dgo.Dgraph) {
 	ctx := context.Background()
-	err := dg.Alter(ctx, &api.Operation{
-		Schema: `size: string @index(exact) .`,
-	})
+	err := dg.SetSchema(ctx, dgo.RootNamespace, `size: string @index(exact) .`)
 	require.NoError(t, err)
 }
 

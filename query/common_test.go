@@ -350,7 +350,7 @@ type DispatchBoardCard {
 `
 
 func populateCluster(dc dgraphapi.Cluster) {
-	x.Panic(client.Alter(context.Background(), &api.Operation{DropAll: true}))
+	x.Panic(client.DropAll(context.Background()))
 
 	// In the query package, we test using hard coded UIDs so that we know what results
 	// to expect. We need to move the max assigned UID in zero to higher value than

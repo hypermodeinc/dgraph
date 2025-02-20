@@ -22,7 +22,6 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/dgraph-io/dgo/v240"
-	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/testutil"
 )
 
@@ -129,14 +128,13 @@ func setup(t *testing.T) *dgo.Dgraph {
 		t.Fatalf("Error while getting a dgraph client: %v", err)
 	}
 	ctx := context.Background()
-	op := api.Operation{DropAll: true}
 
 	// The following piece of code shows how one can set metadata with
 	// auth-token, to allow Alter operation, if the server requires it.
 	md := metadata.New(nil)
 	md.Append("auth-token", "mrjn2")
 	ctx = metadata.NewOutgoingContext(ctx, md)
-	if err := dg.Alter(ctx, &op); err != nil {
+	if err := dg.DropAll(ctx); err != nil {
 		t.Fatalf("Cannot perform drop all op: %s", err.Error())
 	}
 

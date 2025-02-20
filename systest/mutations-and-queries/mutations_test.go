@@ -120,9 +120,8 @@ func (ssuite *SystestTestSuite) TestListWithLanguages() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	err = gcli.Alter(ctx, &api.Operation{
-		Schema: `pred: [string] @lang .`,
-	})
+	err = gcli.SetSchema(ctx, dgo.RootNamespace,
+		`pred: [string] @lang .`)
 	require.Error(t, err)
 }
 
@@ -133,8 +132,7 @@ func (ssuite *SystestTestSuite) TestNQuadMutation() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	op := &api.Operation{Schema: `xid: string @index(exact) .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, `xid: string @index(exact) .`))
 
 	txn := gcli.NewTxn()
 	assigned, err := txn.Mutate(ctx, &api.Mutation{
@@ -220,8 +218,7 @@ func (ssuite *SystestTestSuite) TestDeleteAllReverseIndex() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{Schema: "link: [uid] @reverse ."}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, "link: [uid] @reverse ."))
 	assignedIds, err := gcli.NewTxn().Mutate(ctx, &api.Mutation{
 		CommitNow: true,
 		SetNquads: []byte("_:a <link> _:b ."),
@@ -280,8 +277,7 @@ func (ssuite *SystestTestSuite) TestNormalizeEdgeCases() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{Schema: "xid: string @index(exact) ."}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, "xid: string @index(exact) ."))
 
 	_, err = gcli.NewTxn().Mutate(ctx, &api.Mutation{
 		CommitNow: true,
@@ -369,8 +365,7 @@ func (ssuite *SystestTestSuite) TestFacetOrder() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	op := &api.Operation{Schema: `name: string @index(exact) .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, `name: string @index(exact) .`))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(ctx, &api.Mutation{
@@ -448,11 +443,10 @@ func (ssuite *SystestTestSuite) TestFacetsOnScalarList() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	op := &api.Operation{Schema: `
-	name: string @index(exact) .
-	friend: [string] .
-	`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := `
+		name: string @index(exact) .
+		friend: [string] .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(ctx, &api.Mutation{
@@ -530,8 +524,8 @@ func (ssuite *SystestTestSuite) TestLangAndSortBug() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{Schema: "name: string @index(exact) @lang ."}
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := "name: string @index(exact) @lang ."
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(ctx, &api.Mutation{
@@ -650,8 +644,7 @@ func (ssuite *SystestTestSuite) TestSchemaAfterDeleteNode() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{Schema: "married: bool ."}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, "married: bool ."))
 
 	txn := gcli.NewTxn()
 	assigned, err := txn.Mutate(ctx, &api.Mutation{
@@ -668,7 +661,7 @@ func (ssuite *SystestTestSuite) TestSchemaAfterDeleteNode() {
 		`{"predicate":"married","type":"bool"},` +
 		`{"predicate":"name","type":"default"}`})
 
-	require.NoError(t, gcli.Alter(ctx, &api.Operation{DropAttr: "married"}))
+	require.NoError(t, gcli.DropPredicate(ctx, dgo.RootNamespace, "married"))
 
 	// Lets try to do a S P * deletion. Schema for married shouldn't be rederived.
 	_, err = gcli.NewTxn().Mutate(ctx, &api.Mutation{
@@ -689,8 +682,7 @@ func (ssuite *SystestTestSuite) TestFullTextEqual() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{Schema: "text: string @index(fulltext) ."}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, "text: string @index(fulltext) ."))
 
 	texts := []string{"bat man", "aqua man", "bat cave", "bat", "man", "aqua", "cave"}
 	var rdfs bytes.Buffer
@@ -780,8 +772,7 @@ func (ssuite *SystestTestSuite) TestScalarToList() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	op := &api.Operation{Schema: `pred: string @index(exact) .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, `pred: string @index(exact) .`))
 
 	uids, err := gcli.NewTxn().Mutate(ctx, &api.Mutation{
 		SetNquads: []byte(`_:blank <pred> "first" .`),
@@ -809,8 +800,8 @@ func (ssuite *SystestTestSuite) TestScalarToList() {
 	require.NoError(t, err)
 	require.Equal(t, `{"me":[{"pred":"first"}]}`, string(resp.Json))
 
-	op = &api.Operation{Schema: `pred: [string] @index(exact) .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := `pred: [string] @index(exact) .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 	resp, err = gcli.NewTxn().Query(ctx, q)
 	require.NoError(t, err)
 	require.Equal(t, `{"me":[{"pred":["first"]}]}`, string(resp.Json))
@@ -880,8 +871,7 @@ func (ssuite *SystestTestSuite) TestListToScalar() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	op := &api.Operation{Schema: `pred: [string] @index(exact) .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, `pred: [string] @index(exact) .`))
 
 	// Upgrade
 	ssuite.Upgrade()
@@ -890,14 +880,13 @@ func (ssuite *SystestTestSuite) TestListToScalar() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx = context.Background()
-	err = gcli.Alter(ctx, &api.Operation{Schema: `pred: string @index(exact) .`})
+	err = gcli.SetSchema(ctx, dgo.RootNamespace, `pred: string @index(exact) .`)
 	require.Error(t, err)
 	require.Contains(t, err.Error(),
 		`Type can't be changed from list to scalar for attr: [pred] without dropping it first.`)
 
-	require.NoError(t, gcli.Alter(ctx, &api.Operation{DropAttr: `pred`}))
-	op = &api.Operation{Schema: `pred: string @index(exact) .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.DropPredicate(ctx, dgo.RootNamespace, `pred`))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, `pred: string @index(exact) .`))
 }
 
 func (ssuite *SystestTestSuite) TestSetAfterDeletionListType() {
@@ -907,9 +896,7 @@ func (ssuite *SystestTestSuite) TestSetAfterDeletionListType() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	require.NoError(t, gcli.Alter(ctx, &api.Operation{Schema: `
-		property.test: [string] .
-	`}))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, `property.test: [string] .`))
 
 	m1 := []byte(`
 		_:alice <property.test> "initial value" .
@@ -967,8 +954,8 @@ func (ssuite *SystestTestSuite) TestEmptyNamesWithExact() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{Schema: `name: string @index(exact) @lang .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := `name: string @index(exact) @lang .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	_, err = gcli.NewTxn().Mutate(ctx, &api.Mutation{
 		SetNquads: []byte(`
@@ -1001,17 +988,15 @@ func (ssuite *SystestTestSuite) TestEmptyNamesWithExact() {
 }
 
 func (ssuite *SystestTestSuite) TestEmptyRoomsWithTermIndex() {
-	op := &api.Operation{}
-	op.Schema = `
+	dbSchema := `
 		room: string @index(term) .
-		office.room: [uid] .
-	`
+		office.room: [uid] .`
 	t := ssuite.T()
 	gcli, cleanup, err := doGrpcLogin(ssuite)
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	_, err = gcli.NewTxn().Mutate(ctx, &api.Mutation{
 		SetNquads: []byte(`
@@ -1044,8 +1029,7 @@ func (ssuite *SystestTestSuite) TestEmptyRoomsWithTermIndex() {
 }
 
 func (ssuite *SystestTestSuite) TestDeleteWithExpandAll() {
-	op := &api.Operation{}
-	op.Schema = `
+	dbSchema := `
 		to: [uid] .
 		name: string .
 
@@ -1060,7 +1044,7 @@ func (ssuite *SystestTestSuite) TestDeleteWithExpandAll() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	assigned, err := gcli.NewTxn().Mutate(ctx, &api.Mutation{
 		SetNquads: []byte(`
@@ -1198,8 +1182,7 @@ func (ssuite *SystestTestSuite) TestSkipEmptyPLForHas() {
 	require.NoError(t, err)
 	dgraphapi.CompareJSON(`{"users":[{"name":"u"},{"name":"u1"}]}`, string(resp.Json))
 
-	op := &api.Operation{DropAll: true}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.DropAll(ctx))
 
 	// Upgrade
 	ssuite.Upgrade()
@@ -1226,10 +1209,8 @@ func (ssuite *SystestTestSuite) TestHasWithDash() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	op := &api.Operation{
-		Schema: `name: string @index(hash) .`,
-	}
-	require.NoError(t, (gcli.Alter(ctx, op)))
+	dbSchema := `name: string @index(hash) .`
+	require.NoError(t, (gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema)))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(ctx, &api.Mutation{
@@ -1273,13 +1254,10 @@ func (ssuite *SystestTestSuite) TestListGeoFilter() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	op := &api.Operation{
-		Schema: `
+	dbSchema := `
 			name: string @index(term) .
-			loc: [geo] @index(geo) .
-		`,
-	}
-	require.NoError(t, gcli.Alter(ctx, op))
+			loc: [geo] @index(geo) .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	txn := gcli.NewTxn()
 	defer func() { require.NoError(t, txn.Discard(ctx)) }()
@@ -1331,13 +1309,10 @@ func (ssuite *SystestTestSuite) TestListRegexFilter() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	op := &api.Operation{
-		Schema: `
+	dbSchema := `
 			name: string @index(term) .
-			per: [string] @index(trigram) .
-		`,
-	}
-	require.NoError(t, gcli.Alter(ctx, op))
+			per: [string] @index(trigram) .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	txn := gcli.NewTxn()
 	defer func() { require.NoError(t, txn.Discard(ctx)) }()
@@ -1389,8 +1364,8 @@ func (ssuite *SystestTestSuite) TestRegexQueryWithVarsWithSlash() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	op := &api.Operation{Schema: `data: [string] @index(trigram) .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := `data: [string] @index(trigram) .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	txn := gcli.NewTxn()
 	defer func() { require.NoError(t, txn.Discard(ctx)) }()
@@ -1453,13 +1428,10 @@ func (ssuite *SystestTestSuite) TestRegexQueryWithVars() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	op := &api.Operation{
-		Schema: `
-			name: string @index(term) .
-			per: [string] @index(trigram) .
-		`,
-	}
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := `
+		name: string @index(term) .
+		per: [string] @index(trigram) .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	txn := gcli.NewTxn()
 	defer func() { require.NoError(t, txn.Discard(ctx)) }()
@@ -1512,8 +1484,8 @@ func (ssuite *SystestTestSuite) TestGraphQLVarChild() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	op := &api.Operation{Schema: `name: string @index(exact) .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := `name: string @index(exact) .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	txn := gcli.NewTxn()
 	defer func() { require.NoError(t, txn.Discard(ctx)) }()
@@ -1623,8 +1595,8 @@ func (ssuite *SystestTestSuite) TestMathGe() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	op := &api.Operation{Schema: `name: string @index(exact) .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := `name: string @index(exact) .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	txn := gcli.NewTxn()
 	defer func() { require.NoError(t, txn.Discard(ctx)) }()
@@ -1782,8 +1754,7 @@ func (ssuite *SystestTestSuite) TestHasReverseEdge() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	op := &api.Operation{Schema: `follow: [uid] @reverse .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, `follow: [uid] @reverse .`))
 	txn := gcli.NewTxn()
 	defer func() { require.NoError(t, txn.Discard(ctx)) }()
 
@@ -1848,9 +1819,7 @@ func (ssuite *SystestTestSuite) TestMaxPredicateSize() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	err = gcli.Alter(ctx, &api.Operation{
-		Schema: fmt.Sprintf(`%s: uid @reverse .`, largePred),
-	})
+	err = gcli.SetSchema(ctx, dgo.RootNamespace, fmt.Sprintf(`%s: uid @reverse .`, largePred))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "Predicate name length cannot be bigger than 2^16")
 
@@ -1881,10 +1850,7 @@ func (ssuite *SystestTestSuite) TestRestoreReservedPreds() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	err = gcli.Alter(ctx, &api.Operation{
-		DropAll: true,
-	})
-	require.NoError(t, err)
+	require.NoError(t, gcli.DropAll(ctx))
 
 	// Verify that the reserved predicates were restored to the schema.
 	query := `schema(preds: dgraph.type) {predicate}`
@@ -1900,13 +1866,11 @@ func (ssuite *SystestTestSuite) TestDropData() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	op := &api.Operation{
-		Schema: `
+	schema := `
 			name: string @index(term) .
 			follow: [uid] @reverse .
-		`,
-	}
-	require.NoError(t, gcli.Alter(ctx, op))
+		`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, schema))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(ctx, &api.Mutation{
@@ -1920,11 +1884,7 @@ func (ssuite *SystestTestSuite) TestDropData() {
 		`),
 	})
 	require.NoError(t, err)
-
-	err = gcli.Alter(ctx, &api.Operation{
-		DropOp: api.Operation_DATA,
-	})
-	require.NoError(t, err)
+	require.NoError(t, gcli.DropAllData(ctx))
 
 	// Upgrade
 	ssuite.Upgrade()
@@ -1950,21 +1910,6 @@ func (ssuite *SystestTestSuite) TestDropData() {
 	dgraphapi.CompareJSON(`{"q": []}`, string(resp.GetJson()))
 }
 
-func (ssuite *SystestTestSuite) TestDropDataAndDropAll() {
-	t := ssuite.T()
-	gcli, cleanup, err := doGrpcLogin(ssuite)
-	defer cleanup()
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	err = gcli.Alter(ctx, &api.Operation{
-		DropAll: true,
-		DropOp:  api.Operation_DATA,
-	})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "Only one of DropAll and DropData can be true")
-}
-
 func (ssuite *SystestTestSuite) TestDropType() {
 	t := ssuite.T()
 	gcli, cleanup, err := doGrpcLogin(ssuite)
@@ -1972,15 +1917,11 @@ func (ssuite *SystestTestSuite) TestDropType() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	require.NoError(t, gcli.Alter(ctx, &api.Operation{
-		Schema: `
-			name: string .
-
-			type Person {
-				name
-			}
-		`,
-	}))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace,
+		`name: string .
+		type Person {
+			name
+		}`))
 
 	// Upgrade
 	ssuite.Upgrade()
@@ -1996,28 +1937,12 @@ func (ssuite *SystestTestSuite) TestDropType() {
 	dgraphapi.CompareJSON(`{"types":[{"name":"Person", "fields":[{"name":"name"}]}]}`,
 		string(resp.Json))
 
-	require.NoError(t, gcli.Alter(ctx, &api.Operation{
-		DropOp:    api.Operation_TYPE,
-		DropValue: "Person",
-	}))
+	require.NoError(t, gcli.DropType(ctx, dgo.RootNamespace, "Person"))
 
 	// Check type is gone.
 	resp, err = gcli.NewReadOnlyTxn().Query(ctx, query)
 	require.NoError(t, err)
 	dgraphapi.CompareJSON("{}", string(resp.Json))
-}
-
-func (ssuite *SystestTestSuite) TestDropTypeNoValue() {
-	t := ssuite.T()
-	gcli, cleanup, err := doGrpcLogin(ssuite)
-	defer cleanup()
-	require.NoError(t, err)
-	ctx := context.Background()
-	err = gcli.Alter(ctx, &api.Operation{
-		DropOp: api.Operation_TYPE,
-	})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "DropValue must not be empty")
 }
 
 func (ssuite *SystestTestSuite) TestCountIndexConcurrentSetDelUIDList() {
@@ -2027,9 +1952,8 @@ func (ssuite *SystestTestSuite) TestCountIndexConcurrentSetDelUIDList() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{}
-	op.Schema = `friend: [uid] @count .`
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := `friend: [uid] @count .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	rand.Seed(time.Now().Unix())
 	maxUID := 100
@@ -2158,9 +2082,7 @@ func (ssuite *SystestTestSuite) TestCountIndexConcurrentSetDelScalarPredicate() 
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{}
-	op.Schema = `name: string @index(exact) @count .`
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, `name: string @index(exact) @count .`))
 
 	rand.Seed(time.Now().Unix())
 	txnTotal := uint64(100)
@@ -2219,12 +2141,12 @@ func (ssuite *SystestTestSuite) TestCountIndexConcurrentSetDelScalarPredicate() 
 	defer cleanup()
 	require.NoError(t, err)
 
-	op.Schema = `name: string @index(exact) .`
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := `name: string @index(exact) .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	// We need to rebuild count index after the mutable map changes
-	op.Schema = `name: string @index(exact) @count .`
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema = `name: string @index(exact) @count .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	_, err = gcli.NewTxn().Mutate(context.Background(), mu)
 	require.NoError(t, err, "mutation to delete name should have been succeeded")
@@ -2243,9 +2165,7 @@ func (ssuite *SystestTestSuite) TestCountIndexNonlistPredicateDelete() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{}
-	op.Schema = `name: string @index(exact) @count .`
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, `name: string @index(exact) @count .`))
 
 	// Insert single record for uid 0x1.
 	mu := &api.Mutation{
@@ -2295,9 +2215,8 @@ func (ssuite *SystestTestSuite) TestReverseCountIndexDelete() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{}
-	op.Schema = `friend: [uid] @count @reverse .`
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := `friend: [uid] @count @reverse .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	mu := &api.Mutation{
 		CommitNow: true,
@@ -2346,9 +2265,8 @@ func (ssuite *SystestTestSuite) TestReverseCountIndex() {
 	ctx := context.Background()
 	// This test checks that we consider reverse count index keys while doing conflict detection
 	// for transactions. See https://github.com/hypermodeinc/dgraph/issues/3893 for more details.
-	op := &api.Operation{}
-	op.Schema = `friend: [uid] @count @reverse .`
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := `friend: [uid] @count @reverse .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	mu := &api.Mutation{
 		CommitNow: true,
@@ -2412,49 +2330,40 @@ func (ssuite *SystestTestSuite) TestTypePredicateCheck() {
 	ctx := context.Background()
 	// Reject schema updates if the types have missing predicates.
 	// Update is rejected because name is not in the schema.
-	op := &api.Operation{}
-	op.Schema = `
-	type Person {
-		name
-	}`
-	err = gcli.Alter(ctx, op)
-	require.Error(t, err)
+	require.Error(t, gcli.SetSchema(ctx, dgo.RootNamespace, `
+		type Person {
+			name
+		}`))
 	require.Contains(t, err.Error(), "Schema does not contain a matching predicate for field")
 
 	// Update is accepted because name is not in the schema but is present in the same
 	// update.
-	op = &api.Operation{}
-	op.Schema = `
-	name: string .
-
-	type Person {
-		name
-	}`
 	ctx = context.Background()
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, `
+		name: string .
+
+		type Person {
+			name
+		}`))
 
 	// Type with reverse predicate is not accepted if the original predicate does not exist.
-	op = &api.Operation{}
-	op.Schema = `
+	require.Error(t, gcli.SetSchema(context.Background(), dgo.RootNamespace, `
 	type Person {
 		name
 		<~parent>
-	}`
-	err = gcli.Alter(context.Background(), op)
-	require.Error(t, err)
+	}`))
+	require.Contains(t, err.Error(), "Schema does not contain a matching predicate for field")
 	require.Contains(t, err.Error(), "Schema does not contain a matching predicate for field")
 
 	// Type with reverse predicate is accepted if the original predicate exists.
-	op = &api.Operation{}
-	op.Schema = `
-	parent: [uid] @reverse .
-
-	type Person {
-		name
-		<~parent>
-	}`
 	ctx = context.Background()
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, `
+		parent: [uid] @reverse .
+
+		type Person {
+			name
+			<~parent>
+		}`))
 }
 
 func (ssuite *SystestTestSuite) TestInternalPredicateCheck() {
@@ -2464,10 +2373,7 @@ func (ssuite *SystestTestSuite) TestInternalPredicateCheck() {
 	require.NoError(t, err)
 	ctx := context.Background()
 	// Schema update is rejected because uid is reserved for internal use.
-	op := &api.Operation{}
-	op.Schema = `uid: string .`
-	err = gcli.Alter(ctx, op)
-	require.Error(t, err)
+	require.Error(t, gcli.SetSchema(ctx, dgo.RootNamespace, `uid: string .`))
 	require.Contains(t, err.Error(), "Cannot create user-defined predicate with internal name uid")
 
 	txn := gcli.NewTxn()
@@ -2602,15 +2508,12 @@ func (ssuite *SystestTestSuite) TestOverwriteUidPredicates() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{DropAll: true}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.DropAll(ctx))
 
-	op = &api.Operation{
-		Schema: `
+	dbSchema := `
 		best_friend: uid .
-		name: string @index(exact) .`,
-	}
-	require.NoError(t, gcli.Alter(ctx, op))
+		name: string @index(exact) .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(context.Background(), &api.Mutation{
@@ -2667,15 +2570,12 @@ func (ssuite *SystestTestSuite) TestOverwriteUidPredicatesReverse() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{DropAll: true}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.DropAll(ctx))
 
-	op = &api.Operation{
-		Schema: `
+	dbSchema := `
 		best_friend: uid @reverse .
-		name: string @index(exact) .`,
-	}
-	require.NoError(t, gcli.Alter(ctx, op))
+		name: string @index(exact) .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(context.Background(), &api.Mutation{
@@ -2771,15 +2671,12 @@ func (ssuite *SystestTestSuite) TestOverwriteUidPredicatesMultipleTxn() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{DropAll: true}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.DropAll(ctx))
 
-	op = &api.Operation{
-		Schema: `
+	dbSchema := `
 		best_friend: uid .
-		name: string @index(exact) .`,
-	}
-	require.NoError(t, gcli.Alter(ctx, op))
+		name: string @index(exact) .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	resp, err := gcli.NewTxn().Mutate(context.Background(), &api.Mutation{
 		CommitNow: true,
@@ -2833,11 +2730,8 @@ func (ssuite *SystestTestSuite) TestDeleteAndQuerySameTxn() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	// Set the schema.
-	op := &api.Operation{
-		Schema: `name: string @index(exact) .`,
-	}
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := `name: string @index(exact) .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	// Add data and commit the transaction.
 	txn := gcli.NewTxn()
@@ -2897,8 +2791,7 @@ func (ssuite *SystestTestSuite) TestAddAndQueryZeroTimeValue() {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	op := &api.Operation{Schema: `val: datetime .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, `val: datetime .`))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(ctx, &api.Mutation{

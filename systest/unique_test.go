@@ -20,6 +20,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/dgraph-io/dgo/v240"
 	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/dgraph/cmd/live"
 	"github.com/hypermodeinc/dgraph/v24/dgraphapi"
@@ -45,14 +46,14 @@ func setUpDgraph(t *testing.T) *dgraphapi.GrpcClient {
 	require.NoError(t, err)
 	defer close()
 	require.NoError(t, err)
-	require.NoError(t, dg.Login(context.Background(), "groot", "password"))
-	require.NoError(t, dg.DropAll())
+	require.NoError(t, dg.LoginUser(context.Background(), "groot", "password"))
+	require.NoError(t, dg.DropAll(context.Background()))
 	return dg
 }
 
 func TestSchema(t *testing.T) {
 	dg := setUpDgraph(t)
-	require.NoError(t, dg.SetupSchema(`email: string @unique  @index(exact)  .`))
+	require.NoError(t, dg.SetSchema(context.Background(), dgo.RootNamespace, `email: string @unique  @index(exact)  .`))
 	resp, err := dg.Query(`schema{ }`)
 	require.NoError(t, err)
 	var sch live.Schema
@@ -63,32 +64,32 @@ func TestSchema(t *testing.T) {
 		}
 	}
 
-	require.NoError(t, dg.DropAll())
+	require.NoError(t, dg.DropAll(context.Background()))
 	err = dg.SetupSchema(`email: string @unique  .`)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "index for predicate [email] is missing,"+
 		" add either hash or exact index with @unique")
 	require.NoError(t, dg.SetupSchema(`email: string @unique  @index(exact)  .`))
 
-	require.NoError(t, dg.DropAll())
+	require.NoError(t, dg.DropAll(context.Background()))
 	require.NoError(t, dg.SetupSchema(`email: string @unique  @index(hash)  .`))
 
-	require.NoError(t, dg.DropAll())
+	require.NoError(t, dg.DropAll(context.Background()))
 	err = dg.SetupSchema(`mobile: int @unique   .`)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "index for predicate [mobile] is missing, add int index with @unique")
 	require.NoError(t, dg.SetupSchema(`mobile: int @unique  @index(int)  .`))
 
-	require.NoError(t, dg.DropAll())
+	require.NoError(t, dg.DropAll(context.Background()))
 	err = dg.SetupSchema(`email: string @unique  @index(trigram)  .`)
 	require.Error(t, err)
 	require.ErrorContains(t, err, "index for predicate [email] is missing,"+
 		" add either hash or exact index with @unique")
-	require.NoError(t, dg.DropAll())
+	require.NoError(t, dg.DropAll(context.Background()))
 	require.NoError(t, dg.SetupSchema(`email: string @unique  @index(trigram,exact)  .`))
 
 	// drop @upsert
-	require.NoError(t, dg.DropAll())
+	require.NoError(t, dg.DropAll(context.Background()))
 	err = dg.SetupSchema(`email: string @unique  @index(exact) .`)
 	require.NoError(t, err)
 	// try to drop @upsert

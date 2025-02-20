@@ -152,9 +152,9 @@ func initClusterTest(t *testing.T, schemaStr string) *dgo.Dgraph {
 	if err != nil {
 		t.Fatalf("Error while getting a dgraph client: %v", err)
 	}
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{Schema: schemaStr}))
+	require.NoError(t, dg.SetSchema(context.Background(), "root", schemaStr))
 	populateClusterGraph(t, dg)
 
 	return dg
@@ -243,7 +243,7 @@ func BenchmarkEqFilter(b *testing.B) {
 	if err != nil {
 		panic(err)
 	}
-	err = dg.Alter(context.Background(), &api.Operation{DropAll: true})
+	err = dg.DropAll(context.Background())
 	if err != nil {
 		panic(err)
 	}
@@ -347,9 +347,8 @@ func TestCountReverseIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error while getting a dgraph client: %v", err)
 	}
-	testutil.DropAll(t, dg)
-
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{Schema: schemaStr}))
+	require.NoError(t, dg.DropAll(context.Background()))
+	require.NoError(t, dg.SetSchema(context.Background(), dgo.RootNamespace, schemaStr))
 
 	n := 1000
 	rdf := ""
@@ -389,9 +388,9 @@ func TestCountIndexOverwrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error while getting a dgraph client: %v", err)
 	}
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{Schema: schemaStr}))
+	require.NoError(t, dg.SetSchema(context.Background(), dgo.RootNamespace, schemaStr))
 
 	for i := 0; i < 1000; i++ {
 		setClusterEdge(t, dg, fmt.Sprintf("<%#x> <friend> <%#x> .", 1, 2))
@@ -411,9 +410,8 @@ func TestCountReverseWithDeletes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error while getting a dgraph client: %v", err)
 	}
-	testutil.DropAll(t, dg)
-
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{Schema: schemaStr}))
+	require.NoError(t, dg.DropAll(context.Background()))
+	require.NoError(t, dg.SetSchema(context.Background(), dgo.RootNamespace, schemaStr))
 
 	n := 100
 	for i := 0; i < 1000; i++ {

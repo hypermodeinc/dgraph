@@ -14,10 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/dgraphapi"
 	"github.com/hypermodeinc/dgraph/v24/dgraphtest"
-	"github.com/hypermodeinc/dgraph/v24/x"
 )
 
 type MultitenancyTestSuite struct {
@@ -34,9 +32,9 @@ func (msuite *MultitenancyTestSuite) TearDownTest() {
 	gcli, cleanup, err := msuite.dc.Client()
 	defer cleanup()
 	require.NoError(t, err)
-	require.NoError(t, gcli.LoginIntoNamespace(context.Background(),
-		dgraphapi.DefaultUser, dgraphapi.DefaultPassword, x.GalaxyNamespace))
-	require.NoError(t, gcli.Alter(context.Background(), &api.Operation{DropAll: true}))
+	require.NoError(t, gcli.LoginUser(context.Background(),
+		dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
+	require.NoError(t, gcli.DropAll(context.Background()))
 }
 
 func (msuite *MultitenancyTestSuite) Upgrade() {

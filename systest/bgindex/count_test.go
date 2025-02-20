@@ -44,7 +44,7 @@ func TestCountIndex(t *testing.T) {
 		return err
 	})
 	require.NoError(t, err)
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 	if err := dg.Alter(context.Background(), &api.Operation{
 		Schema: "value: [string] .",
 	}); err != nil {

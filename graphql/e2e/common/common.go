@@ -575,7 +575,7 @@ func safelyDropAll(t *testing.T, withGroot bool) {
 		dg, err = testutil.DgraphClient(Alpha1gRPC)
 	}
 	require.NoError(t, err)
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	// now, return only after the GraphQL layer has seen the schema update.
 	// This makes sure that one can make queries as per the new schema.

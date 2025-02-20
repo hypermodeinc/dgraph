@@ -8,12 +8,14 @@
 package query
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
 	"testing"
 
 	"github.com/hypermodeinc/dgraph/v24/dgraphapi"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -153,7 +155,7 @@ func queryProjectsSimilarByEmbedding(t *testing.T, hc *dgraphapi.HTTPClient, vec
 }
 
 func TestVectorGraphQLAddVectorPredicate(t *testing.T) {
-	require.NoError(t, client.DropAll())
+	require.NoError(t, client.DropAll(context.Background()))
 
 	hc, err := dc.HTTPClient()
 	require.NoError(t, err)
@@ -163,7 +165,7 @@ func TestVectorGraphQLAddVectorPredicate(t *testing.T) {
 }
 
 func TestVectorSchema(t *testing.T) {
-	require.NoError(t, client.DropAll())
+	require.NoError(t, client.DropAll(context.Background()))
 
 	hc, err := dc.HTTPClient()
 	require.NoError(t, err)
@@ -181,7 +183,7 @@ func TestVectorSchema(t *testing.T) {
 }
 
 func TestVectorGraphQlEuclideanIndexMutationAndQuery(t *testing.T) {
-	require.NoError(t, client.DropAll())
+	require.NoError(t, client.DropAll(context.Background()))
 	hc, err := dc.HTTPClient()
 	require.NoError(t, err)
 	hc.LoginIntoNamespace("groot", "password", 0)
@@ -193,7 +195,7 @@ func TestVectorGraphQlEuclideanIndexMutationAndQuery(t *testing.T) {
 }
 
 func TestVectorGraphQlCosineIndexMutationAndQuery(t *testing.T) {
-	require.NoError(t, client.DropAll())
+	require.NoError(t, client.DropAll(context.Background()))
 	hc, err := dc.HTTPClient()
 	require.NoError(t, err)
 	hc.LoginIntoNamespace("groot", "password", 0)
@@ -205,7 +207,7 @@ func TestVectorGraphQlCosineIndexMutationAndQuery(t *testing.T) {
 }
 
 func TestVectorGraphQlDotProductIndexMutationAndQuery(t *testing.T) {
-	require.NoError(t, client.DropAll())
+	require.NoError(t, client.DropAll(context.Background()))
 	hc, err := dc.HTTPClient()
 	require.NoError(t, err)
 	hc.LoginIntoNamespace("groot", "password", 0)

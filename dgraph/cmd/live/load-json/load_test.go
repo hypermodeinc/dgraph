@@ -85,7 +85,7 @@ func checkLoadedData(t *testing.T) {
 }
 
 func TestLiveLoadJSONFileEmpty(t *testing.T) {
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	pipeline := [][]string{
 		{"echo", "[]"},
@@ -99,7 +99,7 @@ func TestLiveLoadJSONFileEmpty(t *testing.T) {
 }
 
 func TestLiveLoadJSONFile(t *testing.T) {
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	pipeline := [][]string{
 		{testutil.DgraphBinaryPath(), "live",
@@ -114,7 +114,7 @@ func TestLiveLoadJSONFile(t *testing.T) {
 }
 
 func TestLiveLoadCanUseAlphaForAssigningUids(t *testing.T) {
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	pipeline := [][]string{
 		{testutil.DgraphBinaryPath(), "live",
@@ -129,7 +129,7 @@ func TestLiveLoadCanUseAlphaForAssigningUids(t *testing.T) {
 }
 
 func TestLiveLoadJSONCompressedStream(t *testing.T) {
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	pipeline := [][]string{
 		{"gzip", "-c", testDataDir + "/family.json"},
@@ -145,7 +145,7 @@ func TestLiveLoadJSONCompressedStream(t *testing.T) {
 }
 
 func TestLiveLoadJSONMultipleFiles(t *testing.T) {
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	files := []string{
 		testDataDir + "/family1.json",

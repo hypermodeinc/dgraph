@@ -35,7 +35,7 @@ func NodesSetup(t *testing.T, c *dgo.Dgraph) {
 	// Retry DropAll to make sure the nodes is up and running.
 	var err error
 	for i := 0; i < 3; i++ {
-		if err = c.Alter(ctx, &api.Operation{DropAll: true}); err != nil {
+		if err = c.DropAll(ctx); err != nil {
 			time.Sleep(5 * time.Second)
 			continue
 		}

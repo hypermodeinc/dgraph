@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dgraph-io/dgo/v240"
 	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/dgraphapi"
 	"github.com/hypermodeinc/dgraph/v24/dgraphtest"
@@ -311,15 +312,15 @@ func TestVectorIndexDropPredicate(t *testing.T) {
 	defer cleanup()
 	require.NoError(t, err)
 
-	require.NoError(t, gc.LoginIntoNamespace(context.Background(),
-		dgraphapi.DefaultUser, dgraphapi.DefaultPassword, x.GalaxyNamespace))
+	require.NoError(t, gc.LoginUser(context.Background(),
+		dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
 
 	hc, err := c.HTTPClient()
 	require.NoError(t, err)
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser,
 		dgraphapi.DefaultPassword, x.GalaxyNamespace))
 
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetSchema(context.Background(), dgo.RootNamespace, testSchema))
 	numVectors := 1000
 
 	// add vectors
@@ -328,7 +329,7 @@ func TestVectorIndexDropPredicate(t *testing.T) {
 	_, err = gc.Mutate(mu)
 	require.NoError(t, err)
 
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetSchema(context.Background(), dgo.RootNamespace, testSchema))
 
 	for _, vect := range vectors {
 		similarVects, err := gc.QueryMultipleVectorsUsingSimilarTo(vect, pred, 2)
@@ -347,13 +348,10 @@ func TestVectorIndexDropPredicate(t *testing.T) {
 	require.JSONEq(t, fmt.Sprintf(`{"vector":[{"count":%v}]}`, numVectors), string(result.GetJson()))
 
 	// remove index from vector predicate
-	require.NoError(t, gc.SetupSchema(testSchemaWithoutIndex))
+	require.NoError(t, gc.SetSchema(context.Background(), dgo.RootNamespace, testSchemaWithoutIndex))
 
 	// drop predicate
-	op := &api.Operation{
-		DropAttr: pred,
-	}
-	require.NoError(t, gc.Alter(context.Background(), op))
+	require.NoError(t, gc.DropPredicate(context.Background(), dgo.RootNamespace, pred))
 
 	// generate random vectors
 	rdfs, vectors = dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
@@ -362,7 +360,7 @@ func TestVectorIndexDropPredicate(t *testing.T) {
 	require.NoError(t, err)
 
 	// add index back
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetSchema(context.Background(), dgo.RootNamespace, testSchema))
 
 	result, err = gc.Query(query)
 	require.NoError(t, err)

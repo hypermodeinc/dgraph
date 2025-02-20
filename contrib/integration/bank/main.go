@@ -61,16 +61,13 @@ type state struct {
 }
 
 func (s *state) createAccounts(dg *dgo.Dgraph) {
-	op := api.Operation{DropAll: true}
-	x.Check(dg.Alter(context.Background(), &op))
+	x.Check(dg.DropAll(context.Background()))
 
-	op.DropAll = false
-	op.Schema = `
+	const opSchema = `
 	key: int @index(int) @upsert .
 	bal: int .
-	typ: string @index(exact) @upsert .
-	`
-	x.Check(dg.Alter(context.Background(), &op))
+	typ: string @index(exact) @upsert .`
+	x.Check(dg.SetSchema(context.Background(), "root", opSchema))
 
 	var all []account
 	for i := 1; i <= *users; i++ {
@@ -354,7 +351,7 @@ func main() {
 		dg := dgo.NewDgraphClient(dc)
 		if *login {
 			// login as groot to perform the DropAll operation later
-			x.Check(dg.Login(context.Background(), "groot", "password"))
+			x.Check(dg.LoginUser(context.Background(), "groot", "password"))
 		}
 		clients = append(clients, dg)
 	}

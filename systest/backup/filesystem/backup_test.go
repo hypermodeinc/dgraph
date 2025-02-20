@@ -83,7 +83,7 @@ func TestBackupOfOldRestore(t *testing.T) {
 	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
 	require.NoError(t, err)
 
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 	time.Sleep(2 * time.Second)
 
 	_ = runBackup(t, 3, 1)
@@ -99,7 +99,7 @@ func TestBackupOfOldRestore(t *testing.T) {
 	_ = runBackup(t, 6, 2)
 
 	// Clean the cluster and try restoring the backups created above.
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 	time.Sleep(2 * time.Second)
 	sendRestoreRequest(t, alphaBackupDir)
 	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
@@ -125,7 +125,7 @@ func TestRestoreOfOldBackup(t *testing.T) {
 		dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
 		require.NoError(t, err)
 
-		testutil.DropAll(t, dg)
+		require.NoError(t, dg.DropAll(context.Background()))
 		time.Sleep(2 * time.Second)
 
 		sendRestoreRequest(t, dir)
@@ -155,7 +155,7 @@ func TestBackupFilesystem(t *testing.T) {
 	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
 
 	ctx := context.Background()
-	require.NoError(t, dg.Alter(ctx, &api.Operation{DropAll: true}))
+	require.NoError(t, dg.DropAll(ctx))
 
 	// Add schema and types.
 	require.NoError(t, dg.Alter(ctx, &api.Operation{Schema: `movie: string .

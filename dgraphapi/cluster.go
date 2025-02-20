@@ -708,27 +708,6 @@ func (hc *HTTPClient) Mutate(mutation string, commitNow bool) ([]byte, error) {
 	return DoReq(req)
 }
 
-// SetupSchema sets up DQL schema
-func (gc *GrpcClient) SetupSchema(dbSchema string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-	defer cancel()
-	return gc.Alter(ctx, &api.Operation{Schema: dbSchema})
-}
-
-// DropAll drops all the data in the db
-func (gc *GrpcClient) DropAll() error {
-	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-	defer cancel()
-	return gc.Alter(ctx, &api.Operation{DropAll: true})
-}
-
-// DropPredicate drops the predicate from the data in the db
-func (gc *GrpcClient) DropPredicate(pred string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-	defer cancel()
-	return gc.Alter(ctx, &api.Operation{DropAttr: pred})
-}
-
 // Mutate performs a given mutation in a txn
 func (gc *GrpcClient) Mutate(mu *api.Mutation) (*api.Response, error) {
 	txn := gc.NewTxn()

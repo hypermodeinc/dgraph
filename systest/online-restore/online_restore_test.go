@@ -211,7 +211,7 @@ func TestBasicRestore(t *testing.T) {
 	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
 
 	ctx := context.Background()
-	require.NoError(t, dg.Alter(ctx, &api.Operation{DropAll: true}))
+	require.NoError(t, dg.DropAll(ctx))
 
 	snapshotTs := getSnapshotTs(t)
 	req := &restoreReq{location: backupLocation, backupId: "youthful_rhodes3", encKeyFile: encKeyFile}
@@ -250,7 +250,7 @@ func TestIncrementalRestore(t *testing.T) {
 	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
 
 	ctx := context.Background()
-	require.NoError(t, dg.Alter(ctx, &api.Operation{DropAll: true}))
+	require.NoError(t, dg.DropAll(ctx))
 
 	req := &restoreReq{
 		location:  backup2011Location,
@@ -341,7 +341,7 @@ func TestRestoreBackupNum(t *testing.T) {
 	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
 
 	ctx := context.Background()
-	require.NoError(t, dg.Alter(ctx, &api.Operation{DropAll: true}))
+	require.NoError(t, dg.DropAll(ctx))
 	runQueries(t, dg, true)
 
 	req := &restoreReq{location: backupLocation, backupId: "youthful_rhodes3", backupNum: 1, encKeyFile: encKeyFile}
@@ -363,7 +363,7 @@ func TestRestoreBackupNumInvalid(t *testing.T) {
 	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
 
 	ctx := context.Background()
-	require.NoError(t, dg.Alter(ctx, &api.Operation{DropAll: true}))
+	require.NoError(t, dg.DropAll(ctx))
 	runQueries(t, dg, true)
 
 	// Send a request with a backupNum greater than the number of manifests.
@@ -423,7 +423,7 @@ func TestMoveTablets(t *testing.T) {
 	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
 
 	ctx := context.Background()
-	require.NoError(t, dg.Alter(ctx, &api.Operation{DropAll: true}))
+	require.NoError(t, dg.DropAll(ctx))
 
 	req := &restoreReq{location: backupLocation, backupId: "youthful_rhodes3", encKeyFile: encKeyFile}
 	sendRestoreRequest(t, req)
@@ -521,7 +521,7 @@ func TestRestoreWithDropOperations(t *testing.T) {
 	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
 	for {
 		// keep retrying until we succeed or receive a non-retriable error
-		err = dg.Alter(context.Background(), &api.Operation{DropAll: true})
+		err = dg.DropAll(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "Please retry") {
 			break
 		}
@@ -537,7 +537,7 @@ func TestRestoreWithDropOperations(t *testing.T) {
 			name
 			age
 		}`
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{Schema: initialSchema}))
+	require.NoError(t, dg.SetSchema(context.Background(), dgo.RootNamespace, initialSchema))
 
 	// add some data
 	alice := `
@@ -594,11 +594,8 @@ func TestRestoreWithDropOperations(t *testing.T) {
 	Verify that dropped ATTR is not there for old nodes and other data is intact.
 	Also verify that the schema is intact after restore.
 	*/
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{
-		DropOp:    api.Operation_ATTR,
-		DropValue: "age",
-	}))
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{Schema: `age: int .`}))
+	require.NoError(t, dg.DropData(context.Background(), dgo.RootNamespace, "age"))
+	require.NoError(t, dg.SetSchema(context.Background(), dgo.RootNamespace, `age: int .`))
 	charlie := `
 		_:charlie <name> "Charlie" .
 		_:charlie <age> "30" .
@@ -631,7 +628,7 @@ func TestRestoreWithDropOperations(t *testing.T) {
 	/* STEP-2: DROP_DATA, then backup and restore.
 	Verify that there is no user data, and the schema is intact after restore.
 	*/
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{DropOp: api.Operation_DATA}))
+	require.NoError(t, dg.DropAllData(context.Background()))
 	backupRestoreAndVerify(t, dg, backupDir,
 		queryPersonCount,
 		`{"persons":[{"count":0}]}`,
@@ -643,7 +640,7 @@ func TestRestoreWithDropOperations(t *testing.T) {
 	/* STEP-3: DROP_ALL, then backup and restore.
 	Verify that there is no user data, and no user schema.
 	*/
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{DropOp: api.Operation_ALL}))
+	require.NoError(t, dg.DropAll(context.Background()))
 	backupRestoreAndVerify(t, dg, backupDir,
 		queryPersonCount,
 		`{"persons":[{"count":0}]}`,
@@ -654,24 +651,23 @@ func TestRestoreWithDropOperations(t *testing.T) {
 	Then, backup and restore using backupDir.
 	Verify that the schema is latest and there is no data.
 	*/
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{Schema: initialSchema}))
+	require.NoError(t, dg.SetSchema(context.Background(), dgo.RootNamespace, initialSchema))
 	backup(t, backupDir)
 	_, err = dg.NewTxn().Mutate(context.Background(), &api.Mutation{SetNquads: []byte(alice),
 		CommitNow: true})
 	require.NoError(t, err)
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{DropOp: api.Operation_ALL}))
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{
-		Schema: `
+	require.NoError(t, dg.DropAll(context.Background()))
+	require.NoError(t, dg.SetSchema(context.Background(), dgo.RootNamespace, `
 		color: String .
 		type Flower {
 			color
-		}`}))
+		}`))
 	_, err = dg.NewTxn().Mutate(context.Background(), &api.Mutation{SetNquads: []byte(`
 		_:flower <color> "yellow" .
 	`),
 		CommitNow: true})
 	require.NoError(t, err)
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{DropOp: api.Operation_DATA}))
+	require.NoError(t, dg.DropAllData(context.Background()))
 	backupRestoreAndVerify(t, dg, backupDir,
 		`{
 			flowers(func: has(color)) {
