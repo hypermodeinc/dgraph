@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/golang/snappy"
+	"github.com/klauspost/compress/s2"
 	"github.com/pkg/errors"
 	ostats "go.opencensus.io/stats"
 	"google.golang.org/protobuf/proto"
@@ -397,7 +397,7 @@ func (pr *BackupProcessor) WriteBackup(ctx context.Context) (*pb.BackupResponse,
 	// Without compression: 7m2s 33GB output.
 	// With snappy: 7m11s 9.5GB output.
 	// With snappy + S3: 7m54s 9.5GB output.
-	cWriter := snappy.NewBufferedWriter(eWriter)
+	cWriter := s2.NewWriter(eWriter)
 
 	stream := pr.DB.NewStreamAt(pr.Request.ReadTs)
 	stream.LogPrefix = "Dgraph.Backup"

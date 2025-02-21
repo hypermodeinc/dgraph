@@ -20,7 +20,7 @@ import (
 
 	farm "github.com/dgryski/go-farm"
 	"github.com/golang/glog"
-	"github.com/golang/snappy"
+	"github.com/klauspost/compress/s2"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/dgraph-io/dgo/v240/protos/api"
@@ -165,7 +165,7 @@ func (m *mapper) writeMapEntriesToFile(cbuf *z.Buffer, shardIdx int) {
 		x.Check(f.Close())
 	}()
 
-	w := snappy.NewBufferedWriter(f)
+	w := s2.NewWriter(f)
 	defer func() {
 		x.Check(w.Close())
 	}()
