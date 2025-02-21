@@ -63,7 +63,7 @@ func TestBackupMinioE(t *testing.T) {
 	require.NoError(t, mc.MakeBucket(bucketName, ""))
 
 	ctx := context.Background()
-	require.NoError(t, dg.Alter(ctx, &api.Operation{DropAll: true}))
+	require.NoError(t, dg.DropAll(ctx))
 
 	// Add schema and types.
 	require.NoError(t, dg.Alter(ctx, &api.Operation{Schema: `movie: string .

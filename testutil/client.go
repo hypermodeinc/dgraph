@@ -134,7 +134,7 @@ func DgraphClientDropAll(serviceAddr string) (*dgo.Dgraph, error) {
 
 	for {
 		// keep retrying until we succeed or receive a non-retriable error
-		err = dg.Alter(context.Background(), &api.Operation{DropAll: true})
+		err = dg.DropAll(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "Please retry") {
 			break
 		}
@@ -203,12 +203,6 @@ func DgraphClientWithCerts(serviceAddr string, conf *viper.Viper) (*dgo.Dgraph, 
 	}
 	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
 	return dg, nil
-}
-
-// DropAll drops all the data in the Dgraph instance associated with the given client.
-func DropAll(t *testing.T, dg *dgo.Dgraph) {
-	err := dg.Alter(context.Background(), &api.Operation{DropAll: true})
-	require.NoError(t, err)
 }
 
 // VerifyQueryResponse executes the given query and verifies that the response of the query is

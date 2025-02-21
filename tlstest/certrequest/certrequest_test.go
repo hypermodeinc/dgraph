@@ -16,16 +16,13 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/testutil"
 )
 
 func TestAccessOverPlaintext(t *testing.T) {
 	dg, err := testutil.DgraphClient(testutil.SockAddr)
-	if err != nil {
-		t.Fatalf("Error while getting a dgraph client: %v", err)
-	}
-	require.Error(t, dg.Alter(context.Background(), &api.Operation{DropAll: true}))
+	require.NoError(t, err)
+	require.Error(t, dg.DropAll(context.Background()))
 }
 
 func TestAccessWithCaCert(t *testing.T) {
@@ -39,7 +36,7 @@ func TestAccessWithCaCert(t *testing.T) {
 	dg, err := testutil.DgraphClientWithCerts(testutil.SockAddr, conf)
 	require.NoError(t, err, "Unable to get dgraph client: %v", err)
 	for i := 0; i < 20; i++ {
-		err := dg.Alter(context.Background(), &api.Operation{DropAll: true})
+		err := dg.DropAll(context.Background())
 		if err == nil {
 			break
 		}

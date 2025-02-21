@@ -14,13 +14,14 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/dgraph-io/dgo/v240"
 	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/dgraphapi"
 	"github.com/hypermodeinc/dgraph/v24/x"
 )
 
 func addData(t *testing.T, gc *dgraphapi.GrpcClient) {
-	require.NoError(t, gc.SetupSchema(`name: string  .`))
+	require.NoError(t, gc.SetSchema(context.Background(), dgo.RootNamespace, `name: string  .`))
 
 	rdfs := `
 	_:a <name> "alice" .
@@ -40,9 +41,9 @@ func (msuite *MultitenancyTestSuite) TestLoggingIntoTheNSAfterDropDataFromTheNS(
 	hc, err := msuite.dc.HTTPClient()
 	require.NoError(t, err)
 
-	require.NoError(t, gc.LoginIntoNamespace(context.Background(),
-		dgraphapi.DefaultUser, dgraphapi.DefaultPassword, x.GalaxyNamespace))
-	require.NoError(t, gc.DropAll())
+	require.NoError(t, gc.LoginUser(context.Background(),
+		dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
+	require.NoError(t, gc.DropAll(context.Background()))
 
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser, dgraphapi.DefaultPassword, x.GalaxyNamespace))
 	for i := 1; i < 5; i++ {
@@ -70,10 +71,10 @@ func (msuite *MultitenancyTestSuite) TestLoggingIntoAllNamespacesAfterDropDataOp
 	hc, err := msuite.dc.HTTPClient()
 	require.NoError(t, err)
 
-	require.NoError(t, gc.LoginIntoNamespace(context.Background(),
-		dgraphapi.DefaultUser, dgraphapi.DefaultPassword, x.GalaxyNamespace))
+	require.NoError(t, gc.LoginUser(context.Background(),
+		dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
 
-	require.NoError(t, gc.DropAll())
+	require.NoError(t, gc.DropAll(context.Background()))
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser, dgraphapi.DefaultPassword, x.GalaxyNamespace))
 
 	nss := []uint64{}
@@ -88,21 +89,21 @@ func (msuite *MultitenancyTestSuite) TestLoggingIntoAllNamespacesAfterDropDataOp
 	}
 
 	// Drop data from default namespace
-	require.NoError(t, gc.LoginIntoNamespace(context.Background(),
-		dgraphapi.DefaultUser, dgraphapi.DefaultPassword, x.GalaxyNamespace))
+	require.NoError(t, gc.LoginUser(context.Background(),
+		dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
 
-	require.NoError(t, gc.Alter(context.Background(), &api.Operation{DropOp: api.Operation_DATA}))
+	require.NoError(t, gc.DropAll(context.Background()))
 
 	// verify here that login into the namespace should not fail
-	require.NoError(t, gc.LoginIntoNamespace(context.Background(),
-		dgraphapi.DefaultUser, dgraphapi.DefaultPassword, x.GalaxyNamespace))
+	require.NoError(t, gc.LoginUser(context.Background(),
+		dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
 
 	for _, ns := range nss {
 		require.NoError(t, gc.LoginIntoNamespace(context.Background(),
 			dgraphapi.DefaultUser, dgraphapi.DefaultPassword, ns))
 		query := `{
 			q(func: has(name)) {
-			count(uid)			
+			count(uid)
 			}
 		}`
 		resp, err := gc.Query(query)

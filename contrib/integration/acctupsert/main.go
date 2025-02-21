@@ -71,18 +71,13 @@ func main() {
 
 func setup(c *dgo.Dgraph) {
 	ctx := context.Background()
-	x.Check(c.Alter(ctx, &api.Operation{
-		DropAll: true,
-	}))
-	op := &api.Operation{
-		Schema: `
+	x.Check(c.DropAll(ctx))
+	dbSchema := `
 			first:  string   @index(term) @upsert .
 			last:   string   @index(hash) @upsert .
 			age:    int      @index(int)  @upsert .
-			when:   int                   .
-		`,
-	}
-	x.Check(c.Alter(ctx, op))
+			when:   int                   .`
+	x.Check(c.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 }
 
 func doUpserts(c *dgo.Dgraph) {

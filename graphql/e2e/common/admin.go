@@ -157,7 +157,7 @@ func admin(t *testing.T) {
 
 	oldCounter := RetryProbeGraphQL(t, Alpha1HTTP, nil).SchemaUpdateCounter
 	client := dgo.NewDgraphClient(api.NewDgraphClient(d))
-	testutil.DropAll(t, client)
+	require.NoError(t, client.DropAll(context.Background()))
 	AssertSchemaUpdateCounterIncrement(t, Alpha1HTTP, oldCounter, nil)
 
 	hasSchema, err := hasCurrentGraphQLSchema(GraphqlAdminURL)
@@ -171,7 +171,7 @@ func admin(t *testing.T) {
 	gqlSchemaNodeHasXid(t, client)
 
 	// restore the state to the initial schema and data.
-	testutil.DropAll(t, client)
+	require.NoError(t, client.DropAll(context.Background()))
 
 	schemaFile := "schema.graphql"
 	schema, err := os.ReadFile(schemaFile)

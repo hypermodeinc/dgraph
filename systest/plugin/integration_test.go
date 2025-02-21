@@ -8,6 +8,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -31,7 +32,7 @@ func (psuite *PluginTestSuite) TearDownTest() {
 	gcli, cleanup, err := psuite.dc.Client()
 	require.NoError(t, err)
 	defer cleanup()
-	require.NoError(t, gcli.DropAll())
+	require.NoError(t, gcli.DropAll(context.Background()))
 }
 
 func (psuite *PluginTestSuite) Upgrade() {

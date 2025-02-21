@@ -27,8 +27,7 @@ func TestLivePassword(t *testing.T) {
 				t.Fatalf("Error while getting a dgraph client: %v", err)
 			}
 			fn(t, dg)
-			require.NoError(t, dg.Alter(
-				context.Background(), &api.Operation{DropAll: true}))
+			require.NoError(t, dg.DropAll(context.Background()))
 		}
 	}
 

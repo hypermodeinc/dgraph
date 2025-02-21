@@ -28,7 +28,7 @@ func TestNamespaces(t *testing.T) {
 	// Drop all data
 	require.NoError(t, client.LoginUser(context.Background(),
 		dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
-	require.NoError(t, client.DropAll())
+	require.NoError(t, client.DropAll(context.Background()))
 
 	// Create two namespaces
 	ctx := context.Background()
@@ -112,7 +112,7 @@ func TestNamespacesPreV25(t *testing.T) {
 	// Drop all data
 	require.NoError(t, client.LoginUser(context.Background(),
 		dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
-	require.NoError(t, client.DropAll())
+	require.NoError(t, client.DropAll(context.Background()))
 
 	// Add two pre v25 namespaces
 	ns1, err := hc.AddNamespace()
@@ -183,7 +183,7 @@ func TestCreateNamespaceErr(t *testing.T) {
 	// Drop all data
 	require.NoError(t, client.LoginUser(context.Background(),
 		dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
-	require.NoError(t, client.DropAll())
+	require.NoError(t, client.DropAll(context.Background()))
 
 	// create ns1
 	ctx := context.Background()
@@ -225,7 +225,7 @@ func TestDropNamespaceErr(t *testing.T) {
 	// Drop all data
 	require.NoError(t, client.LoginUser(context.Background(),
 		dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
-	require.NoError(t, client.DropAll())
+	require.NoError(t, client.DropAll(context.Background()))
 
 	// create ns1
 	ctx := context.Background()
@@ -275,7 +275,7 @@ func TestRenameNamespaceErr(t *testing.T) {
 	// Drop all data
 	require.NoError(t, client.LoginUser(context.Background(),
 		dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
-	require.NoError(t, client.DropAll())
+	require.NoError(t, client.DropAll(context.Background()))
 
 	// create ns1
 	ctx := context.Background()
@@ -319,7 +319,7 @@ func TestListNamespacesErr(t *testing.T) {
 	// Drop all data
 	require.NoError(t, client.LoginUser(context.Background(),
 		dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
-	require.NoError(t, client.DropAll())
+	require.NoError(t, client.DropAll(context.Background()))
 
 	// create ns1
 	ctx := context.Background()

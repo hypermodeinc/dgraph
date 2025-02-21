@@ -2210,14 +2210,12 @@ upsert {
 
 func TestEmptyRequest(t *testing.T) {
 	// We are using the dgo client in this test here to test the grpc interface
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{
-		DropOp: api.Operation_ALL,
-	}))
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{
-		Schema: `
-name: string @index(exact) .
-branch: string .
-amount: float .`}))
+	require.NoError(t, dg.DropAll(context.Background()))
+	dbSchema := `
+    name: string @index(exact) .
+    branch: string .
+    amount: float .`
+	require.NoError(t, dg.SetSchema(context.Background(), dgo.RootNamespace, dbSchema))
 
 	req := &api.Request{}
 	_, err := dg.NewTxn().Do(context.Background(), req)

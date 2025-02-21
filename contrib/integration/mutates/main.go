@@ -47,12 +47,9 @@ func main() {
 
 func testInsert3Quads(ctx context.Context, c *dgo.Dgraph) {
 	// Set schema
-	op := &api.Operation{}
-	op.Schema = `name: string @index(fulltext) .`
-	x.Check(c.Alter(ctx, op))
+	x.Check(c.SetSchema(ctx, dgo.RootNamespace, `name: string @index(fulltext) .`))
 
 	txn := c.NewTxn()
-
 	mu := &api.Mutation{}
 	quad := &api.NQuad{
 		Subject:     "200",

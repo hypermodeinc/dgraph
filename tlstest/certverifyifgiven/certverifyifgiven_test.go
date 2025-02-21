@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/testutil"
 )
 
@@ -28,7 +27,7 @@ func TestAccessWithoutClientCert(t *testing.T) {
 
 	dg, err := testutil.DgraphClientWithCerts(testutil.SockAddrLocalhost, conf)
 	require.NoError(t, err, "Unable to get dgraph client: %v", err)
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{DropAll: true}))
+	require.NoError(t, dg.DropAll(context.Background()))
 }
 
 func TestAccessWithClientCert(t *testing.T) {
@@ -45,7 +44,7 @@ func TestAccessWithClientCert(t *testing.T) {
 
 	dg, err := testutil.DgraphClientWithCerts(testutil.SockAddrLocalhost, conf)
 	require.NoError(t, err, "Unable to get dgraph client: %v", err)
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{DropAll: true}))
+	require.NoError(t, dg.DropAll(context.Background()))
 }
 
 func TestCurlAccessWithoutClientCert(t *testing.T) {

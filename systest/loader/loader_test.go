@@ -42,7 +42,7 @@ func TestLoaderXidmap(t *testing.T) {
 	dg, err := testutil.DgraphClientWithCerts(testutil.SockAddrLocalhost, conf)
 	require.NoError(t, err)
 	ctx := context.Background()
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 	tmpDir := t.TempDir()
 
 	data, err := filepath.Abs("testdata/first.rdf.gz")

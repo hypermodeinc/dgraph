@@ -82,7 +82,7 @@ func runBenchmark() {
 	// Drop all existing data.
 	for {
 		// keep retrying until we succeed or receive a non-retriable error
-		err = dg.Alter(context.Background(), &api.Operation{DropAll: true})
+		err = dg.DropAll(context.Background())
 		if err == nil || !strings.Contains(err.Error(), "Please retry") {
 			break
 		}
@@ -91,9 +91,8 @@ func runBenchmark() {
 	x.Check(err)
 
 	// Initialize schema.
-	err = dg.Alter(context.Background(), &api.Operation{
-		Schema: "text: string @index(fulltext) @lang .",
-	})
+	err = dg.SetSchema(context.Background(), dgo.RootNamespace,
+		"text: string @index(fulltext) @lang .")
 	x.Check(err)
 
 	var triples []string

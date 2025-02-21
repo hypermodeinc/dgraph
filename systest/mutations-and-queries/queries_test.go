@@ -15,6 +15,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 
+	"github.com/dgraph-io/dgo/v240"
 	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/dgraphapi"
 	"github.com/hypermodeinc/dgraph/v24/testutil"
@@ -26,7 +27,7 @@ func (ssuite *SystestTestSuite) TestSchemaQueryCleanup() {
 	gcli, cleanup, err := doGrpcLogin(ssuite)
 	defer cleanup()
 	require.NoError(t, err)
-	require.NoError(t, gcli.Alter(context.Background(), &api.Operation{DropAll: true}))
+	require.NoError(t, gcli.DropAll(context.Background()))
 }
 
 func (ssuite *SystestTestSuite) TestMultipleBlockEval() {
@@ -36,13 +37,10 @@ func (ssuite *SystestTestSuite) TestMultipleBlockEval() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{
-		Schema: `
+	dbSchema := `
       entity: string @index(exact) .
-      stock: [uid] @reverse .
-    `,
-	}
-	require.NoError(t, gcli.Alter(ctx, op))
+      stock: [uid] @reverse .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(ctx, &api.Mutation{
@@ -209,15 +207,13 @@ func (ssuite *SystestTestSuite) TestUnmatchedVarEval() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{
-		Schema: `
+	dbSchema := `
       item: string @index(hash) .
       style.type: string .
       style.name: string .
-      style.cool: bool .
-    `,
-	}
-	require.NoError(t, gcli.Alter(ctx, op))
+      style.cool: bool .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
+
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(ctx, &api.Mutation{
 		SetNquads: []byte(`
@@ -311,8 +307,8 @@ func (ssuite *SystestTestSuite) TestSchemaQuery() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{Schema: `name: string @index(exact) .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := `name: string @index(exact) .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(ctx, &api.Mutation{
@@ -345,13 +341,10 @@ func (ssuite *SystestTestSuite) TestSchemaQueryPredicate1() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{
-		Schema: `
-      name: string @index(exact) .
-      age: int .
-    `,
-	}
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := `
+		name: string @index(exact) .
+		age: int .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(ctx, &api.Mutation{
@@ -435,8 +428,7 @@ func (ssuite *SystestTestSuite) TestSchemaQueryPredicate2() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{Schema: `name: string @index(exact) .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, `name: string @index(exact) .`))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(ctx, &api.Mutation{
@@ -478,13 +470,10 @@ func (ssuite *SystestTestSuite) TestSchemaQueryPredicate3() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{
-		Schema: `
+	dbSchema := `
       name: string @index(exact) .
-      age: int .
-    `,
-	}
-	require.NoError(t, gcli.Alter(ctx, op))
+      age: int .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(ctx, &api.Mutation{
@@ -530,8 +519,7 @@ func (ssuite *SystestTestSuite) TestSchemaQueryHTTP() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{Schema: `name: string @index(exact) .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, `name: string @index(exact) .`))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(ctx, &api.Mutation{
@@ -574,13 +562,10 @@ func (ssuite *SystestTestSuite) TestFuzzyMatch() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{
-		Schema: `
+	dbSchema := `
       term: string @index(trigram) .
-      name: string .
-    `,
-	}
-	require.NoError(t, gcli.Alter(ctx, op))
+      name: string .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(ctx, &api.Mutation{
@@ -730,8 +715,7 @@ func (ssuite *SystestTestSuite) TestCascadeParams() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{Schema: `name: string @index(fulltext) .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, `name: string @index(fulltext) .`))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(ctx, &api.Mutation{
@@ -1201,8 +1185,8 @@ func (ssuite *SystestTestSuite) TestQueryHashIndex() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{Schema: `name: string @index(hash) @lang .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := `name: string @index(hash) @lang .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(ctx, &api.Mutation{
@@ -1322,8 +1306,8 @@ func (ssuite *SystestTestSuite) TestRegexpToggleTrigramIndex() {
 	defer cleanup()
 	require.NoError(t, err)
 	ctx := context.Background()
-	op := &api.Operation{Schema: `name: string @index(term) @lang .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := `name: string @index(term) @lang .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	txn := gcli.NewTxn()
 	_, err = txn.Mutate(ctx, &api.Mutation{
@@ -1371,8 +1355,8 @@ func (ssuite *SystestTestSuite) TestRegexpToggleTrigramIndex() {
 		dgraphapi.CompareJSON(tc.out, string(resp.Json))
 	}
 
-	op = &api.Operation{Schema: `name: string @index(trigram) @lang .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema = `name: string @index(trigram) @lang .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	t.Log("testing with trigram index")
 	for _, tc := range tests {
@@ -1381,11 +1365,8 @@ func (ssuite *SystestTestSuite) TestRegexpToggleTrigramIndex() {
 		dgraphapi.CompareJSON(tc.out, string(resp.Json))
 	}
 
-	require.NoError(t, gcli.Alter(ctx, &api.Operation{
-		Schema: `
-      name: string @index(term) @lang .
-    `,
-	}))
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, `
+      name: string @index(term) @lang .`))
 
 	t.Log("testing without trigram index at root")
 	_, err = gcli.NewTxn().Query(ctx, `{q(func:regexp(name, /art/)) {name}}`)
@@ -1401,8 +1382,8 @@ func (ssuite *SystestTestSuite) TestEqWithAlteredIndexOrder() {
 	require.NoError(t, err)
 	// first, let's set the schema with term before trigram
 	ctx := context.Background()
-	op := &api.Operation{Schema: `name: string @index(term, trigram) .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema := `name: string @index(term, trigram) .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	// fill up some data
 	txn := gcli.NewTxn()
@@ -1430,8 +1411,8 @@ func (ssuite *SystestTestSuite) TestEqWithAlteredIndexOrder() {
 	dgraphapi.CompareJSON(expectedResult, string(resp.Json))
 
 	// now, let's set the schema with trigram before term
-	op = &api.Operation{Schema: `name: string @index(trigram, term) .`}
-	require.NoError(t, gcli.Alter(ctx, op))
+	dbSchema = `name: string @index(trigram, term) .`
+	require.NoError(t, gcli.SetSchema(ctx, dgo.RootNamespace, dbSchema))
 
 	// querying with eq should still work
 	resp, err = gcli.NewReadOnlyTxn().Query(ctx, q)
@@ -1500,8 +1481,8 @@ func doGrpcLogin(ssuite *SystestTestSuite) (*dgraphapi.GrpcClient, func(), error
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "error creating grpc client")
 	}
-	err = gcli.LoginIntoNamespace(context.Background(),
-		dgraphapi.DefaultUser, dgraphapi.DefaultPassword, x.GalaxyNamespace)
+	err = gcli.LoginUser(context.Background(),
+		dgraphapi.DefaultUser, dgraphapi.DefaultPassword)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "groot login into galaxy namespace failed")
 	}

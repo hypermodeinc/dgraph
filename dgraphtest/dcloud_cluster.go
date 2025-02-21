@@ -141,7 +141,7 @@ func (c1 *DCloudCluster) AssignUids(client *dgo.Dgraph, num uint64) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
-	if err := client.Alter(ctx, &api.Operation{DropAll: true}); err != nil {
+	if err := client.DropAll(ctx); err != nil {
 		return errors.Wrap(err, "error in DropAll during AssignUID")
 	}
 

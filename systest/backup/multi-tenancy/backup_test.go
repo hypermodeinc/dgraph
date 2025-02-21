@@ -32,7 +32,7 @@ func TestBackupMultiTenancy(t *testing.T) {
 	ctx := context.Background()
 
 	dg := testutil.DgClientWithLogin(t, "groot", "password", x.GalaxyNamespace)
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	galaxyCreds := &testutil.LoginParams{UserID: "groot", Passwd: "password", Namespace: x.GalaxyNamespace}
 	galaxyToken, err := testutil.Login(t, galaxyCreds)
@@ -93,7 +93,7 @@ func TestBackupMultiTenancy(t *testing.T) {
 
 	// Send backup request.
 	_ = runBackup(t, galaxyToken, 3, 1)
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 	sendRestoreRequest(t, alphaBackupDir, galaxyToken.AccessJwt)
 	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
 
@@ -104,10 +104,10 @@ func TestBackupMultiTenancy(t *testing.T) {
 	testutil.VerifyQueryResponse(t, dg2, query, expectedResponse)
 
 	// Call drop data from namespace ns2.
-	require.NoError(t, dg2.Alter(ctx, &api.Operation{DropOp: api.Operation_DATA}))
+	require.NoError(t, dg2.DropAllData(ctx))
 	// Send backup request.
 	_ = runBackup(t, galaxyToken, 6, 2)
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 	sendRestoreRequest(t, alphaBackupDir, galaxyToken.AccessJwt)
 	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
 	testutil.VerifyQueryResponse(t, dg, query, expectedResponse)
@@ -118,7 +118,7 @@ func TestBackupMultiTenancy(t *testing.T) {
 	// banned namespace.
 	require.NoError(t, testutil.DeleteNamespace(t, galaxyToken, ns1))
 	_ = runBackup(t, galaxyToken, 9, 3)
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 	sendRestoreRequest(t, alphaBackupDir, galaxyToken.AccessJwt)
 	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
 	query = `{ q(func: has(movie)) { count(uid) } }`

@@ -53,16 +53,18 @@ func TestBackupNonHAClust(t *testing.T) {
 func backupRestoreTest(t *testing.T, backupAlphaSocketAddr string, restoreAlphaAddr string,
 	backupZeroAddr string, backupDst string, backupAlphaSocketAddrHttp string) {
 
-	conn, err := grpc.Dial(backupAlphaSocketAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	dg, err := dgo.NewClient(backupAlphaSocketAddr, dgo.WithGrpcOption(
+		grpc.WithTransportCredentials(insecure.NewCredentials())))
 	require.NoError(t, err)
-	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
+	defer dg.Close()
+
 	ctx := context.Background()
-	require.NoError(t, dg.Alter(ctx, &api.Operation{DropAll: true}))
+	require.NoError(t, dg.DropAll(ctx))
 	// Add schema and types.
-	require.NoError(t, dg.Alter(ctx, &api.Operation{Schema: `movie: string .
+	require.NoError(t, dg.SetSchema(ctx, dgo.RootNamespace, `movie: string .
 		 type Node {
 			 movie
-		 }`}))
+		 }`))
 
 	// Add initial data.
 	original, err := dg.NewTxn().Mutate(ctx, &api.Mutation{

@@ -21,6 +21,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/stretchr/testify/require"
 
+	"github.com/dgraph-io/dgo/v240"
 	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/dgraphapi"
 	"github.com/hypermodeinc/dgraph/v24/dgraphtest"
@@ -94,9 +95,9 @@ func FastParse(b []byte, op int) ([]*api.NQuad, error) {
 func (exp *Experiment) verify() {
 	// insert the data into dgraph
 	ctx := context.Background()
-	require.NoError(exp.t, dg.Login(ctx, dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
-	require.NoError(exp.t, dg.Alter(ctx, &api.Operation{DropAll: true}), "drop all failed")
-	require.NoError(exp.t, dg.Alter(ctx, &api.Operation{Schema: exp.schema}),
+	require.NoError(exp.t, dg.LoginUser(context.Background(), dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
+	require.NoError(exp.t, dg.DropAll(context.Background()), "drop all failed")
+	require.NoError(exp.t, dg.SetSchema(context.Background(), dgo.RootNamespace, exp.schema),
 		"schema change failed")
 	_, err := dg.NewTxn().Mutate(ctx,
 		&api.Mutation{Set: exp.nqs, CommitNow: true})

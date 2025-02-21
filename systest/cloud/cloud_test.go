@@ -15,7 +15,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/graphql/e2e/common"
 	"github.com/hypermodeinc/dgraph/v24/testutil"
 	"github.com/hypermodeinc/dgraph/v24/x"
@@ -23,7 +22,7 @@ import (
 
 func setup(t *testing.T) {
 	dc := testutil.DgClientWithLogin(t, "groot", "password", x.GalaxyNamespace)
-	require.NoError(t, dc.Alter(context.Background(), &api.Operation{DropAll: true}))
+	require.NoError(t, dc.DropAll(context.Background()))
 }
 
 func readFile(t *testing.T, path string) []byte {

@@ -22,6 +22,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/dgraph-io/dgo/v240"
 	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/dgraphapi"
 	"github.com/hypermodeinc/dgraph/v24/ee/enc"
@@ -139,7 +140,7 @@ func setDQLSchema(c *LocalCluster, files []string) error {
 		if err != nil {
 			return err
 		}
-		if err := gc.SetupSchema(string(data)); err != nil {
+		if err := gc.SetSchema(context.Background(), dgo.RootNamespace, string(data)); err != nil {
 			return errors.Wrapf(err, "error setting up DQL schema [%v]", string(data))
 		}
 	}
@@ -493,7 +494,8 @@ func (c *LocalCluster) BulkLoad(opts BulkOpts) error {
 
 // AddData will insert a total of end-start triples into the database.
 func AddData(gc *dgraphapi.GrpcClient, pred string, start, end int) error {
-	if err := gc.SetupSchema(fmt.Sprintf(`%v: string @index(exact) .`, pred)); err != nil {
+	if err := gc.SetSchema(context.Background(), dgo.RootNamespace,
+		fmt.Sprintf(`%v: string @index(exact) .`, pred)); err != nil {
 		return err
 	}
 

@@ -8,6 +8,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -29,7 +30,7 @@ func (ssuite *SystestTestSuite) SetupTest() {
 	gcli, cleanup, err := doGrpcLogin(ssuite)
 	defer cleanup()
 	require.NoError(t, err)
-	require.NoError(t, gcli.DropAll())
+	require.NoError(t, gcli.DropAll(context.Background()))
 }
 
 func (ssuite *SystestTestSuite) CheckAllowedErrorPreUpgrade(err error) bool {

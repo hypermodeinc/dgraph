@@ -327,7 +327,7 @@ func TestUpdateGQLSchemaAfterDropAll(t *testing.T) {
 	// now do drop_all
 	dg, err := testutil.DgraphClient(groupOnegRPC)
 	require.NoError(t, err)
-	testutil.DropAll(t, dg)
+	require.NoError(t, dg.DropAll(context.Background()))
 
 	// need to wait a bit, because the update notification takes time to reach the alpha
 	common.AssertSchemaUpdateCounterIncrement(t, groupOneHTTP, oldCounter, nil)
@@ -356,7 +356,7 @@ func TestGQLSchemaAfterDropData(t *testing.T) {
 	// now do drop_data
 	dg, err := testutil.DgraphClient(groupOnegRPC)
 	require.NoError(t, err)
-	require.NoError(t, dg.Alter(context.Background(), &api.Operation{DropOp: api.Operation_DATA}))
+	require.NoError(t, dg.DropAllData(context.Background()))
 
 	// lets wait a bit to be sure that the update notification has reached the alpha,
 	// otherwise we are anyways gonna get the previous schema from the in-memory schema

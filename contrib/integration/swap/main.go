@@ -172,12 +172,8 @@ func createSentences(n int) []string {
 func setup(c *dgo.Dgraph, sentences []string) []string {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*timeout)*time.Second)
 	defer cancel()
-	x.Check(c.Alter(ctx, &api.Operation{
-		DropAll: true,
-	}))
-	x.Check(c.Alter(ctx, &api.Operation{
-		Schema: `sentence: string @index(term) .`,
-	}))
+	x.Check(c.DropAll(ctx))
+	x.Check(c.SetSchema(ctx, dgo.RootNamespace, `sentence: string @index(term) .`))
 
 	rdfs := ""
 	for i, s := range sentences {

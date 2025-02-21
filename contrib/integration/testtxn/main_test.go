@@ -46,7 +46,7 @@ func TestMain(m *testing.M) {
 	x.Panic(err)
 	defer cleanup()
 
-	x.Panic(dg.Login(context.Background(), dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
+	x.Panic(dg.LoginUser(context.Background(), dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
 	x.Panic(c.AssignUids(dg.Dgraph, 200))
 	s.dg = dg
 	_ = m.Run()
@@ -54,9 +54,7 @@ func TestMain(m *testing.M) {
 
 // readTs == startTs
 func TestTxnRead1(t *testing.T) {
-	op := &api.Operation{}
-	op.DropAll = true
-	require.NoError(t, s.dg.Alter(context.Background(), op))
+	require.NoError(t, s.dg.DropAll(context.Background()))
 
 	txn := s.dg.NewTxn()
 	mu := &api.Mutation{}
@@ -109,11 +107,9 @@ func TestTxnRead2(t *testing.T) {
 
 // readTs > commitTs
 func TestTxnRead3(t *testing.T) {
-	op := &api.Operation{}
-	op.DropAttr = "name"
 	attempts := 0
 	for attempts < 10 {
-		if err := s.dg.Alter(context.Background(), op); err == nil {
+		if err := s.dg.DropPredicate(context.Background(), dgo.RootNamespace, "name"); err == nil {
 			break
 		}
 		attempts++
@@ -237,12 +233,9 @@ func TestTxnRead5(t *testing.T) {
 }
 
 func TestConflict(t *testing.T) {
-	op := &api.Operation{}
-	op.DropAll = true
-	require.NoError(t, s.dg.Alter(context.Background(), op))
+	require.NoError(t, s.dg.DropAll(context.Background()))
 
 	txn := s.dg.NewTxn()
-
 	mu := &api.Mutation{}
 	mu.SetJson = []byte(`{"name": "Manish"}`)
 	assigned, err := txn.Mutate(context.Background(), mu)
@@ -359,13 +352,8 @@ func TestConflictTimeout2(t *testing.T) {
 }
 
 func TestIgnoreIndexConflict(t *testing.T) {
-	op := &api.Operation{}
-	op.DropAll = true
-	require.NoError(t, s.dg.Alter(context.Background(), op))
-
-	op = &api.Operation{}
-	op.Schema = `name: string @index(exact) .`
-	if err := s.dg.Alter(context.Background(), op); err != nil {
+	require.NoError(t, s.dg.DropAll(context.Background()))
+	if err := s.dg.SetSchema(context.Background(), dgo.RootNamespace, `name: string @index(exact) .`); err != nil {
 		log.Fatal(err)
 	}
 
@@ -410,13 +398,10 @@ func TestIgnoreIndexConflict(t *testing.T) {
 }
 
 func TestReadIndexKeySameTxn(t *testing.T) {
-	op := &api.Operation{}
-	op.DropAll = true
-	require.NoError(t, s.dg.Alter(context.Background(), op))
+	require.NoError(t, s.dg.DropAll(context.Background()))
 
-	op = &api.Operation{}
-	op.Schema = `name: string @index(exact) .`
-	if err := s.dg.Alter(context.Background(), op); err != nil {
+	dbSchema := `name: string @index(exact) .`
+	if err := s.dg.SetSchema(context.Background(), dgo.RootNamespace, dbSchema); err != nil {
 		log.Fatal(err)
 	}
 
@@ -449,13 +434,10 @@ func TestReadIndexKeySameTxn(t *testing.T) {
 }
 
 func TestEmailUpsert(t *testing.T) {
-	op := &api.Operation{}
-	op.DropAll = true
-	require.NoError(t, s.dg.Alter(context.Background(), op))
+	require.NoError(t, s.dg.DropAll(context.Background()))
 
-	op = &api.Operation{}
-	op.Schema = `email: string @index(exact) @upsert .`
-	if err := s.dg.Alter(context.Background(), op); err != nil {
+	dbSchema := `email: string @index(exact) @upsert .`
+	if err := s.dg.SetSchema(context.Background(), dgo.RootNamespace, dbSchema); err != nil {
 		log.Fatal(err)
 	}
 
@@ -485,14 +467,10 @@ func TestEmailUpsert(t *testing.T) {
 // TestFriendList tests that we are not able to set a node to node edge between
 // the same nodes concurrently.
 func TestFriendList(t *testing.T) {
-	op := &api.Operation{}
-	op.DropAll = true
-	require.NoError(t, s.dg.Alter(context.Background(), op))
+	require.NoError(t, s.dg.DropAll(context.Background()))
 
-	op = &api.Operation{}
-	op.Schema = `
-	friend: [uid] @reverse .`
-	if err := s.dg.Alter(context.Background(), op); err != nil {
+	dbSchema := `friend: [uid] @reverse .`
+	if err := s.dg.SetSchema(context.Background(), dgo.RootNamespace, dbSchema); err != nil {
 		log.Fatal(err)
 	}
 
@@ -522,13 +500,10 @@ func TestFriendList(t *testing.T) {
 // TestNameSet tests that we are not able to set a property edge for the same
 // subject id concurrently.
 func TestNameSet(t *testing.T) {
-	op := &api.Operation{}
-	op.DropAll = true
-	require.NoError(t, s.dg.Alter(context.Background(), op))
+	require.NoError(t, s.dg.DropAll(context.Background()))
 
-	op = &api.Operation{}
-	op.Schema = `name: string .`
-	if err := s.dg.Alter(context.Background(), op); err != nil {
+	dbSchema := `name: string .`
+	if err := s.dg.SetSchema(context.Background(), dgo.RootNamespace, dbSchema); err != nil {
 		log.Fatal(err)
 	}
 
@@ -574,13 +549,8 @@ func retrieveUids(t *testing.T, uidMap map[string]string) []string {
 }
 
 func TestSPStar(t *testing.T) {
-	op := &api.Operation{}
-	op.DropAll = true
-	require.NoError(t, s.dg.Alter(context.Background(), op))
-
-	op = &api.Operation{}
-	op.Schema = `friend: [uid] .`
-	require.NoError(t, s.dg.Alter(context.Background(), op))
+	require.NoError(t, s.dg.DropAll(context.Background()))
+	require.NoError(t, s.dg.SetSchema(context.Background(), "root", `friend: [uid] .`))
 
 	txn := s.dg.NewTxn()
 	mu := &api.Mutation{}
@@ -623,13 +593,10 @@ func TestSPStar(t *testing.T) {
 }
 
 func TestSPStar2(t *testing.T) {
-	op := &api.Operation{}
-	op.DropAll = true
-	require.NoError(t, s.dg.Alter(context.Background(), op))
+	require.NoError(t, s.dg.DropAll(context.Background()))
 
-	op = &api.Operation{}
-	op.Schema = `friend: [uid] .`
-	require.NoError(t, s.dg.Alter(context.Background(), op))
+	dbSchema := `friend: [uid] .`
+	require.NoError(t, s.dg.SetSchema(context.Background(), dgo.RootNamespace, dbSchema))
 
 	// Add edge
 	txn := s.dg.NewTxn()
@@ -722,8 +689,8 @@ query countAnswers($num: int) {
 )
 
 func TestCountIndexConcurrentTxns(t *testing.T) {
-	require.NoError(t, s.dg.DropAll())
-	require.NoError(t, s.dg.SetupSchema("answer: [uid] @count ."))
+	require.NoError(t, s.dg.DropAll(context.Background()))
+	require.NoError(t, s.dg.SetSchema(context.Background(), "root", "answer: [uid] @count ."))
 
 	// Expected edge count of 0x100: 1
 	txn0 := s.dg.NewTxn()
@@ -773,8 +740,8 @@ func TestCountIndexConcurrentTxns(t *testing.T) {
 }
 
 func TestCountIndexSerialTxns(t *testing.T) {
-	require.NoError(t, s.dg.DropAll())
-	require.NoError(t, s.dg.SetupSchema("answer: [uid] @count ."))
+	require.NoError(t, s.dg.DropAll(context.Background()))
+	require.NoError(t, s.dg.SetSchema(context.Background(), "root", "answer: [uid] @count ."))
 
 	// Expected Edge count of 0x100: 1
 	txn0 := s.dg.NewTxn()
@@ -818,8 +785,8 @@ func TestCountIndexSerialTxns(t *testing.T) {
 }
 
 func TestCountIndexSameTxn(t *testing.T) {
-	require.NoError(t, s.dg.DropAll())
-	require.NoError(t, s.dg.SetupSchema("answer: [uid] @count ."))
+	require.NoError(t, s.dg.DropAll(context.Background()))
+	require.NoError(t, s.dg.SetSchema(context.Background(), "root", "answer: [uid] @count ."))
 
 	// Expected Edge count of 0x100: 1
 	txn0 := s.dg.NewTxn()
@@ -860,8 +827,8 @@ func TestCountIndexSameTxn(t *testing.T) {
 }
 
 func TestConcurrentQueryMutate(t *testing.T) {
-	require.NoError(t, s.dg.DropAll())
-	require.NoError(t, s.dg.SetupSchema("name: string ."))
+	require.NoError(t, s.dg.DropAll(context.Background()))
+	require.NoError(t, s.dg.SetSchema(context.Background(), "root", "name: string ."))
 	txn := s.dg.NewTxn()
 	defer func() { require.NoError(t, txn.Discard(context.Background())) }()
 
@@ -895,8 +862,8 @@ func TestConcurrentQueryMutate(t *testing.T) {
 }
 
 func TestTxnDiscardBeforeCommit(t *testing.T) {
-	require.NoError(t, s.dg.DropAll())
-	require.NoError(t, s.dg.SetupSchema("name: string ."))
+	require.NoError(t, s.dg.DropAll(context.Background()))
+	require.NoError(t, s.dg.SetSchema(context.Background(), "root", "name: string ."))
 
 	txn := s.dg.NewTxn()
 	mu := &api.Mutation{
@@ -911,6 +878,5 @@ func TestTxnDiscardBeforeCommit(t *testing.T) {
 }
 
 func alterSchema(t *testing.T, dg *dgo.Dgraph, schema string) {
-	op := api.Operation{Schema: schema}
-	require.NoError(t, dg.Alter(ctxb, &op))
+	require.NoError(t, dg.SetSchema(context.Background(), dgo.RootNamespace, schema))
 }

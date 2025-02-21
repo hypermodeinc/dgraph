@@ -52,7 +52,7 @@ func TestBackupMinioLarge(t *testing.T) {
 	require.NoError(t, err)
 	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
 	ctx := context.Background()
-	require.NoError(t, dg.Alter(ctx, &api.Operation{DropAll: true}))
+	require.NoError(t, dg.DropAll(ctx))
 
 	mc, err = testutil.NewMinioClient()
 	require.NoError(t, err)

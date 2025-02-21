@@ -16,7 +16,6 @@ import (
 	"github.com/minio/minio-go/v6"
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/testutil"
 )
 
@@ -177,9 +176,7 @@ func (s *bsuite) cleanup(t *testing.T) {
 	}
 	dg, err := testutil.DgraphClient(testutil.ContainerAddr("alpha1", 9080))
 	if err == nil {
-		_ = dg.Alter(context.Background(), &api.Operation{
-			DropAll: true,
-		})
+		_ = dg.DropAll(context.Background())
 	}
 	_ = os.RemoveAll(rootDir)
 }

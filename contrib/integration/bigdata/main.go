@@ -49,9 +49,7 @@ func main() {
 		// Run each schema alter separately so that there is an even
 		// distribution among all groups.
 		for _, s := range schema() {
-			x.Check(c.Alter(ctx, &api.Operation{
-				Schema: s,
-			}))
+			x.Check(c.SetSchema(ctx, dgo.RootNamespace, s))
 		}
 		x.Check2(c.NewTxn().Mutate(ctx, &api.Mutation{
 			CommitNow: true,
