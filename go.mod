@@ -1,6 +1,8 @@
 module github.com/hypermodeinc/dgraph/v24
 
-go 1.22.12
+go 1.23.0
+
+toolchain go1.24.0
 
 require (
 	contrib.go.opencensus.io/exporter/jaeger v0.2.1
@@ -24,26 +26,26 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/getsentry/sentry-go v0.31.1
 	github.com/go-jose/go-jose/v4 v4.0.5
-	github.com/go-sql-driver/mysql v1.8.1
+	github.com/go-sql-driver/mysql v1.9.0
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/golang/geo v0.0.0-20230421003525-6adc56603217
 	github.com/golang/glog v1.2.4
 	github.com/golang/snappy v0.0.4
 	github.com/google/codesearch v1.2.0
-	github.com/google/go-cmp v0.6.0
+	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/graph-gophers/graphql-go v1.5.0
+	github.com/graph-gophers/graphql-go v1.6.0
 	github.com/hashicorp/vault/api v1.16.0
 	github.com/minio/minio-go/v6 v6.0.57
 	github.com/mitchellh/panicwrap v1.0.0
 	github.com/paulmach/go.geojson v1.5.0
 	github.com/pkg/errors v0.9.1
 	github.com/pkg/profile v1.7.0
-	github.com/prometheus/client_golang v1.20.5
+	github.com/prometheus/client_golang v1.21.0
 	github.com/soheilhy/cmux v0.1.5
 	github.com/spf13/cast v1.7.1
-	github.com/spf13/cobra v1.9.0
+	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.6
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
@@ -53,8 +55,8 @@ require (
 	go.etcd.io/etcd/raft/v3 v3.5.18
 	go.opencensus.io v0.24.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/crypto v0.33.0
-	golang.org/x/exp v0.0.0-20250210185358-939b2ce775ac
+	golang.org/x/crypto v0.34.0
+	golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa
 	golang.org/x/mod v0.23.0
 	golang.org/x/net v0.35.0
 	golang.org/x/sync v0.11.0
