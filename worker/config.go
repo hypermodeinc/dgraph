@@ -52,11 +52,11 @@ type Options struct {
 	CachePercentage string
 	// CacheMb is the total memory allocated between all the caches.
 	CacheMb int64
-	// DeleteOnUpdates is the parameter that allows the user to set if the cache should keep the items that were
+	// RemoveOnUpdate is the parameter that allows the user to set if the cache should keep the items that were
 	// just mutated. Keeping these items are good when there is a mixed workload where you are updating the
 	// same element multiple times. However, for a heavy mutation workload, not keeping these items would be better
 	// , as keeping these elements bloats the cache making it slow.
-	DeleteOnUpdates bool
+	RemoveOnUpdate bool
 
 	Audit *x.LoggerConf
 
