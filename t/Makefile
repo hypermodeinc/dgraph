@@ -6,7 +6,7 @@
 # linux || darwin
 GOOS          ?= $(shell go env GOOS)
 GOPATH        ?= $(shell go env GOPATH)
-MIN_GO_VERSION = "1.22.12"
+MIN_GO_VERSION = "1.23.6"
 
 all: test
 
@@ -26,10 +26,9 @@ check:
 		echo "Error: dgraph binary not found in $(GOPATH)/bin" && exit 1; \
 	fi
 	@echo "The dgraph binary is a Linux executable (as required)"
-	
 
 .PHONY: test
-test: check	
+test: check
 # 	build the t.go binary
 	@go build .
 #	clean go testcache

@@ -6,7 +6,6 @@
 package types
 
 import (
-	"errors"
 	"math/big"
 	"time"
 
@@ -221,20 +220,6 @@ func GoodTimeZone(offset int) bool {
 // ParseTime parses the time from string trying various datetime formats.
 // By default, Go parses time in UTC unless specified in the data itself.
 func ParseTime(val string) (time.Time, error) {
-	t, err := parseTimeNonStrict(val)
-	if err != nil {
-		return t, err
-	}
-
-	_, offset := t.Zone()
-	if !GoodTimeZone(offset) {
-		return time.Time{}, errors.New("timezone outside of range [-23:59,23:59]")
-	}
-
-	return t, nil
-}
-
-func parseTimeNonStrict(val string) (time.Time, error) {
 	if len(val) == len(dateFormatY) {
 		return time.Parse(dateFormatY, val)
 	}

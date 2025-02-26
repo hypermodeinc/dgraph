@@ -1,6 +1,6 @@
 module github.com/hypermodeinc/dgraph/graphql/e2e/custom_logic/cmd
 
-go 1.22.12
+go 1.23.6
 
 require (
 	github.com/graph-gophers/graphql-go v1.5.0

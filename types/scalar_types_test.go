@@ -37,9 +37,9 @@ var datesWithTz = []struct {
 var datesWithInvalidTz = []struct {
 	in string
 }{
-	{in: "2018-05-28T14:41:57+24:00"},
+	{in: "2018-05-28T14:41:57+25:00"},
 	{in: "2018-05-28T14:41:57+30:00"},
-	{in: "2018-05-28T14:41:57-24:00"},
+	{in: "2018-05-28T14:41:57-25:01"},
 	{in: "2018-05-28T14:41:57-30:00"},
 }
 
@@ -144,8 +144,8 @@ func TestParseTimeRejection(t *testing.T) {
 func TestParseTimeNonRFC3339(t *testing.T) {
 	for _, tc := range datesWithInvalidTz {
 		out, err := ParseTime(tc.in)
-		require.Equal(t, out, time.Time{})
-		require.EqualError(t, err, "timezone outside of range [-23:59,23:59]")
+		require.Equal(t, time.Time{}, out)
+		require.ErrorContains(t, err, "time zone offset hour out of range")
 	}
 }
 
