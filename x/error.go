@@ -30,7 +30,7 @@ func Check(err error) {
 	if err != nil {
 		err = errors.Wrap(err, "")
 		CaptureSentryException(err)
-		log.Fatalf("%+v", err)
+		log.Fatalf("FATAL ERROR: %+v", err)
 	}
 }
 
