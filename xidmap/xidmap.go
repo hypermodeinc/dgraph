@@ -215,6 +215,16 @@ func (m *XidMap) SetUid(xid string, uid uint64) {
 	sh.Lock()
 	defer sh.Unlock()
 	sh.tree.Set(farm.Fingerprint64([]byte(xid)), uid)
+	if m.writer != nil {
+		var uidBuf [8]byte
+		binary.BigEndian.PutUint64(uidBuf[:], uid)
+		m.kvBuf = append(m.kvBuf, kv{key: []byte(xid), value: uidBuf[:]})
+
+		if len(m.kvBuf) == 64 {
+			m.kvChan <- m.kvBuf
+			m.kvBuf = make([]kv, 0, 64)
+		}
+	}
 }
 
 func (m *XidMap) dbWriter() {
