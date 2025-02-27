@@ -465,7 +465,7 @@ func serveGRPC(l net.Listener, tlsCfg *tls.Config, closer *z.Closer) {
 
 	s := grpc.NewServer(opt...)
 	api.RegisterDgraphServer(s, &edgraph.Server{})
-	apiv25.RegisterDgraphHMServer(s, &edgraph.Server{})
+	apiv25.RegisterDgraphServer(s, &edgraph.ServerV25{})
 	hapi.RegisterHealthServer(s, health.NewServer())
 	worker.RegisterZeroProxyServer(s)
 

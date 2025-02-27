@@ -33,7 +33,6 @@ import (
 
 	"github.com/dgraph-io/dgo/v240"
 	"github.com/dgraph-io/dgo/v240/protos/api"
-	apiv25 "github.com/dgraph-io/dgo/v240/protos/api.v25"
 	"github.com/hypermodeinc/dgraph/v24/chunker"
 	"github.com/hypermodeinc/dgraph/v24/conn"
 	"github.com/hypermodeinc/dgraph/v24/dql"
@@ -94,7 +93,6 @@ var (
 type Server struct {
 	// embedding the api.UnimplementedZeroServer struct to ensure forward compatibility of the server.
 	api.UnimplementedDgraphServer
-	apiv25.UnimplementedDgraphHMServer
 }
 
 // graphQLSchemaNode represents the node which contains GraphQL schema
@@ -207,7 +205,7 @@ func UpdateGQLSchema(ctx context.Context, gqlSchema,
 		if err = validateAlterOperation(ctx, op); err != nil {
 			return nil, err
 		}
-		if parsedDgraphSchema, err = parseSchemaFromAlterOperation(ctx, op); err != nil {
+		if parsedDgraphSchema, err = parseSchemaFromAlterOperation(ctx, op.Schema); err != nil {
 			return nil, err
 		}
 	}
@@ -255,7 +253,7 @@ func validateAlterOperation(ctx context.Context, op *api.Operation) error {
 
 // parseSchemaFromAlterOperation parses the string schema given in input operation to a Go
 // struct, and performs some checks to make sure that the schema is valid.
-func parseSchemaFromAlterOperation(ctx context.Context, op *api.Operation) (
+func parseSchemaFromAlterOperation(ctx context.Context, sch string) (
 	*schema.ParsedSchema, error) {
 
 	// If a background task is already running, we should reject all the new alter requests.
@@ -283,7 +281,7 @@ func parseSchemaFromAlterOperation(ctx context.Context, op *api.Operation) (
 		}
 	}
 
-	result, err := schema.ParseWithNamespace(op.Schema, namespace)
+	result, err := schema.ParseWithNamespace(sch, namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -515,7 +513,7 @@ func (s *Server) Alter(ctx context.Context, op *api.Operation) (*api.Payload, er
 		_, err := query.ApplyMutations(ctx, m)
 		return empty, err
 	}
-	result, err := parseSchemaFromAlterOperation(ctx, op)
+	result, err := parseSchemaFromAlterOperation(ctx, op.Schema)
 	if err == errIndexingInProgress {
 		// Make the client wait a bit.
 		time.Sleep(time.Second)

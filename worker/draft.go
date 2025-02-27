@@ -335,6 +335,42 @@ func detectPendingTxns(attr string) error {
 func (n *node) applyMutations(ctx context.Context, proposal *pb.Proposal) (rerr error) {
 	span := otrace.FromContext(ctx)
 
+	if proposal.Mutations.DropOp == pb.Mutations_ALL_IN_NS {
+		ns, err := strconv.ParseUint(proposal.Mutations.DropValue, 0, 64)
+		if err != nil {
+			return err
+		}
+		// Ensures nothing get written to disk due to commit proposals.
+		posting.Oracle().ResetTxnsForNs(ns)
+		if err := posting.DeleteAllForNs(ns); err != nil {
+			return err
+		}
+
+		// TODO: What about multi shard cluster?
+		// It should be okay to set the schema at timestamp 1 after drop all operation.
+		if groups().groupId() == 1 {
+			initialSchema := schema.InitialSchema(ns)
+			for _, s := range initialSchema {
+				if err := applySchema(s, 1); err != nil {
+					return err
+				}
+			}
+		}
+
+		// Propose initial types as well after a drop all as they would have been cleared.
+		initialTypes := schema.InitialTypes(ns)
+		for _, t := range initialTypes {
+			if err := updateType(t.GetTypeName(), t, 1); err != nil {
+				return err
+			}
+		}
+
+		// TODO: Revisit this when we work on posting cache. Don't clear entire cache.
+		// We don't want to drop entire cache, just due to one namespace.
+		posting.ResetCache()
+		return nil
+	}
+
 	if proposal.Mutations.DropOp == pb.Mutations_DATA {
 		ns, err := strconv.ParseUint(proposal.Mutations.DropValue, 0, 64)
 		if err != nil {
