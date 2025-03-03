@@ -1816,6 +1816,12 @@ func DeleteAll() error {
 	return pstore.DropAll()
 }
 
+func DeleteAllForNs(ns uint64) error {
+	ResetCache()
+	schema.State().DeletePredsForNs(ns)
+	return DeleteData(ns)
+}
+
 // DeleteData deletes all data for the namespace but leaves types and schema intact.
 func DeleteData(ns uint64) error {
 	ResetCache()

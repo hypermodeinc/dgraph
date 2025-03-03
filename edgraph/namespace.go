@@ -55,11 +55,11 @@ type resultNamespaces struct {
 	} `json:"namespaces"`
 }
 
-func (s *Server) LoginUser(ctx context.Context,
+func (s *ServerV25) LoginUser(ctx context.Context,
 	request *apiv25.LoginUserRequest) (*apiv25.LoginUserResponse, error) {
 
 	req := &api.LoginRequest{Userid: request.UserId, Password: request.Password, Namespace: 0}
-	resp, err := s.Login(ctx, req)
+	resp, err := (&Server{}).Login(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (s *Server) LoginUser(ctx context.Context,
 	return &apiv25.LoginUserResponse{AccessJwt: jwt.AccessJwt, RefreshJwt: jwt.RefreshJwt}, nil
 }
 
-func (s *Server) CreateNamespace(ctx context.Context, in *apiv25.CreateNamespaceRequest) (
+func (s *ServerV25) CreateNamespace(ctx context.Context, in *apiv25.CreateNamespaceRequest) (
 	*apiv25.CreateNamespaceResponse, error) {
 
 	if err := AuthGuardianOfTheGalaxy(ctx); err != nil {
@@ -110,7 +110,7 @@ func (s *Server) CreateNamespace(ctx context.Context, in *apiv25.CreateNamespace
 	return &apiv25.CreateNamespaceResponse{}, nil
 }
 
-func (s *Server) DropNamespace(ctx context.Context, in *apiv25.DropNamespaceRequest) (
+func (s *ServerV25) DropNamespace(ctx context.Context, in *apiv25.DropNamespaceRequest) (
 	*apiv25.DropNamespaceResponse, error) {
 
 	if err := AuthGuardianOfTheGalaxy(ctx); err != nil {
@@ -165,7 +165,7 @@ func (s *Server) DropNamespace(ctx context.Context, in *apiv25.DropNamespaceRequ
 	return &apiv25.DropNamespaceResponse{}, nil
 }
 
-func (s *Server) UpdateNamespace(ctx context.Context, in *apiv25.UpdateNamespaceRequest) (
+func (s *ServerV25) UpdateNamespace(ctx context.Context, in *apiv25.UpdateNamespaceRequest) (
 	*apiv25.UpdateNamespaceResponse, error) {
 
 	if err := AuthGuardianOfTheGalaxy(ctx); err != nil {
@@ -194,7 +194,7 @@ func (s *Server) UpdateNamespace(ctx context.Context, in *apiv25.UpdateNamespace
 	return &apiv25.UpdateNamespaceResponse{}, nil
 }
 
-func (s *Server) ListNamespaces(ctx context.Context, in *apiv25.ListNamespacesRequest) (
+func (s *ServerV25) ListNamespaces(ctx context.Context, in *apiv25.ListNamespacesRequest) (
 	*apiv25.ListNamespacesResponse, error) {
 
 	if err := AuthGuardianOfTheGalaxy(ctx); err != nil {

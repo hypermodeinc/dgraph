@@ -186,7 +186,7 @@ func TestParseSchemaFromAlterOperation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			op := makeOp(tc.schema)
 
-			_, err := parseSchemaFromAlterOperation(ctx, op)
+			_, err := parseSchemaFromAlterOperation(ctx, op.Schema)
 
 			if tc.noError {
 				require.NoError(t, err, "Unexpected error for: %+v", tc.schema)

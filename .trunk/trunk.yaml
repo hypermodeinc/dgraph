@@ -24,7 +24,7 @@ lint:
     - linters: [ALL]
       paths:
         - contrib/**
-        - "*.pb.go"
+        - protos/pb/pb.pb.go
   enabled:
     - trivy@0.59.1
     - actionlint@1.7.7
