@@ -307,6 +307,7 @@ const (
 	Zero_RemoveNode_FullMethodName       = "/pb.Zero/RemoveNode"
 	Zero_MoveTablet_FullMethodName       = "/pb.Zero/MoveTablet"
 	Zero_ApplyLicense_FullMethodName     = "/pb.Zero/ApplyLicense"
+	Zero_ApplyDrainmode_FullMethodName   = "/pb.Zero/ApplyDrainmode"
 )
 
 // ZeroClient is the client API for Zero service.
@@ -328,6 +329,7 @@ type ZeroClient interface {
 	RemoveNode(ctx context.Context, in *RemoveNodeRequest, opts ...grpc.CallOption) (*Status, error)
 	MoveTablet(ctx context.Context, in *MoveTabletRequest, opts ...grpc.CallOption) (*Status, error)
 	ApplyLicense(ctx context.Context, in *ApplyLicenseRequest, opts ...grpc.CallOption) (*Status, error)
+	ApplyDrainmode(ctx context.Context, in *Drainmode, opts ...grpc.CallOption) (*Status, error)
 }
 
 type zeroClient struct {
@@ -510,6 +512,15 @@ func (c *zeroClient) ApplyLicense(ctx context.Context, in *ApplyLicenseRequest, 
 	return out, nil
 }
 
+func (c *zeroClient) ApplyDrainmode(ctx context.Context, in *Drainmode, opts ...grpc.CallOption) (*Status, error) {
+	out := new(Status)
+	err := c.cc.Invoke(ctx, Zero_ApplyDrainmode_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ZeroServer is the server API for Zero service.
 // All implementations must embed UnimplementedZeroServer
 // for forward compatibility
@@ -529,6 +540,7 @@ type ZeroServer interface {
 	RemoveNode(context.Context, *RemoveNodeRequest) (*Status, error)
 	MoveTablet(context.Context, *MoveTabletRequest) (*Status, error)
 	ApplyLicense(context.Context, *ApplyLicenseRequest) (*Status, error)
+	ApplyDrainmode(context.Context, *Drainmode) (*Status, error)
 	mustEmbedUnimplementedZeroServer()
 }
 
@@ -577,6 +589,9 @@ func (UnimplementedZeroServer) MoveTablet(context.Context, *MoveTabletRequest) (
 }
 func (UnimplementedZeroServer) ApplyLicense(context.Context, *ApplyLicenseRequest) (*Status, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ApplyLicense not implemented")
+}
+func (UnimplementedZeroServer) ApplyDrainmode(context.Context, *Drainmode) (*Status, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ApplyDrainmode not implemented")
 }
 func (UnimplementedZeroServer) mustEmbedUnimplementedZeroServer() {}
 
@@ -849,6 +864,24 @@ func _Zero_ApplyLicense_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Zero_ApplyDrainmode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Drainmode)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ZeroServer).ApplyDrainmode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Zero_ApplyDrainmode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ZeroServer).ApplyDrainmode(ctx, req.(*Drainmode))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Zero_ServiceDesc is the grpc.ServiceDesc for Zero service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -904,6 +937,10 @@ var Zero_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "ApplyLicense",
 			Handler:    _Zero_ApplyLicense_Handler,
 		},
+		{
+			MethodName: "ApplyDrainmode",
+			Handler:    _Zero_ApplyDrainmode_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -935,6 +972,7 @@ const (
 	Worker_UpdateGraphQLSchema_FullMethodName = "/pb.Worker/UpdateGraphQLSchema"
 	Worker_DeleteNamespace_FullMethodName     = "/pb.Worker/DeleteNamespace"
 	Worker_TaskStatus_FullMethodName          = "/pb.Worker/TaskStatus"
+	Worker_ApplyDrainmode_FullMethodName      = "/pb.Worker/ApplyDrainmode"
 )
 
 // WorkerClient is the client API for Worker service.
@@ -956,6 +994,7 @@ type WorkerClient interface {
 	UpdateGraphQLSchema(ctx context.Context, in *UpdateGraphQLSchemaRequest, opts ...grpc.CallOption) (*UpdateGraphQLSchemaResponse, error)
 	DeleteNamespace(ctx context.Context, in *DeleteNsRequest, opts ...grpc.CallOption) (*Status, error)
 	TaskStatus(ctx context.Context, in *TaskStatusRequest, opts ...grpc.CallOption) (*TaskStatusResponse, error)
+	ApplyDrainmode(ctx context.Context, in *Drainmode, opts ...grpc.CallOption) (*Status, error)
 }
 
 type workerClient struct {
@@ -1162,6 +1201,15 @@ func (c *workerClient) TaskStatus(ctx context.Context, in *TaskStatusRequest, op
 	return out, nil
 }
 
+func (c *workerClient) ApplyDrainmode(ctx context.Context, in *Drainmode, opts ...grpc.CallOption) (*Status, error) {
+	out := new(Status)
+	err := c.cc.Invoke(ctx, Worker_ApplyDrainmode_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WorkerServer is the server API for Worker service.
 // All implementations must embed UnimplementedWorkerServer
 // for forward compatibility
@@ -1181,6 +1229,7 @@ type WorkerServer interface {
 	UpdateGraphQLSchema(context.Context, *UpdateGraphQLSchemaRequest) (*UpdateGraphQLSchemaResponse, error)
 	DeleteNamespace(context.Context, *DeleteNsRequest) (*Status, error)
 	TaskStatus(context.Context, *TaskStatusRequest) (*TaskStatusResponse, error)
+	ApplyDrainmode(context.Context, *Drainmode) (*Status, error)
 	mustEmbedUnimplementedWorkerServer()
 }
 
@@ -1229,6 +1278,9 @@ func (UnimplementedWorkerServer) DeleteNamespace(context.Context, *DeleteNsReque
 }
 func (UnimplementedWorkerServer) TaskStatus(context.Context, *TaskStatusRequest) (*TaskStatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TaskStatus not implemented")
+}
+func (UnimplementedWorkerServer) ApplyDrainmode(context.Context, *Drainmode) (*Status, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ApplyDrainmode not implemented")
 }
 func (UnimplementedWorkerServer) mustEmbedUnimplementedWorkerServer() {}
 
@@ -1514,6 +1566,24 @@ func _Worker_TaskStatus_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Worker_ApplyDrainmode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Drainmode)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerServer).ApplyDrainmode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Worker_ApplyDrainmode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerServer).ApplyDrainmode(ctx, req.(*Drainmode))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Worker_ServiceDesc is the grpc.ServiceDesc for Worker service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1564,6 +1634,10 @@ var Worker_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TaskStatus",
 			Handler:    _Worker_TaskStatus_Handler,
+		},
+		{
+			MethodName: "ApplyDrainmode",
+			Handler:    _Worker_ApplyDrainmode_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

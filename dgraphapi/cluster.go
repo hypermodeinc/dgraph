@@ -18,10 +18,12 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/dgraph-io/dgo/v240"
 	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/graphql/schema"
+	"github.com/hypermodeinc/dgraph/v24/protos/pb"
 	"github.com/hypermodeinc/dgraph/v24/x"
 )
 
@@ -57,12 +59,13 @@ type HttpToken struct {
 // HTTPClient allows doing operations on Dgraph over http
 type HTTPClient struct {
 	*HttpToken
-	adminURL     string
-	graphqlURL   string
-	licenseURL   string
-	stateURL     string
-	dqlURL       string
-	dqlMutateUrl string
+	adminURL      string
+	graphqlURL    string
+	licenseURL    string
+	stateURL      string
+	dqlURL        string
+	dqlMutateUrl  string
+	alphaStateURL string
 }
 
 // GraphQLParams are used for making graphql requests to dgraph
@@ -656,7 +659,7 @@ func (hc *HTTPClient) ApplyLicenseGraphQL(license []byte) ([]byte, error) {
 	return hc.RunGraphqlQuery(params, true)
 }
 
-func (hc *HTTPClient) GetZeroState() (*LicenseResponse, error) {
+func (hc *HTTPClient) GetLicenseInfo() (*LicenseResponse, error) {
 	response, err := http.Get(hc.stateURL)
 	if err != nil {
 		return nil, errors.Wrap(err, "error getting zero state http response")
@@ -677,6 +680,27 @@ func (hc *HTTPClient) GetZeroState() (*LicenseResponse, error) {
 	}
 
 	return &stateResponse, nil
+}
+
+func (hc *HTTPClient) GetAlphaState() (*pb.MembershipState, error) {
+	req, err := http.NewRequest(http.MethodGet, hc.alphaStateURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	if hc.HttpToken != nil {
+		req.Header.Add("X-Dgraph-AccessToken", hc.AccessJwt)
+	}
+
+	resp, err := DoReq(req)
+	if err != nil {
+		return nil, err
+	}
+
+	var state pb.MembershipState
+	if err = protojson.Unmarshal(resp, &state); err != nil {
+		return nil, err
+	}
+	return &state, err
 }
 
 func (hc *HTTPClient) PostDqlQuery(query string) ([]byte, error) {
@@ -795,13 +819,15 @@ func GetHttpClient(alphaUrl, zeroUrl string) (*HTTPClient, error) {
 	stateUrl := "http://" + zeroUrl + "/state"
 	dqlUrl := "http://" + alphaUrl + "/query"
 	dqlMutateUrl := "http://" + alphaUrl + "/mutate"
+	alphaStateUrl := "http://" + alphaUrl + "/state"
 	return &HTTPClient{
-		adminURL:     adminUrl,
-		graphqlURL:   graphQLUrl,
-		licenseURL:   licenseUrl,
-		stateURL:     stateUrl,
-		dqlURL:       dqlUrl,
-		dqlMutateUrl: dqlMutateUrl,
-		HttpToken:    &HttpToken{},
+		adminURL:      adminUrl,
+		graphqlURL:    graphQLUrl,
+		licenseURL:    licenseUrl,
+		stateURL:      stateUrl,
+		dqlURL:        dqlUrl,
+		dqlMutateUrl:  dqlMutateUrl,
+		alphaStateURL: alphaStateUrl,
+		HttpToken:     &HttpToken{},
 	}, nil
 }
