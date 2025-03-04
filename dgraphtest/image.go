@@ -24,9 +24,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/pkg/errors"
 	"golang.org/x/mod/modfile"
+)
+
+var (
+	cloneOnce sync.Once
 )
 
 func (c *LocalCluster) dgraphImage() string {
@@ -34,6 +39,10 @@ func (c *LocalCluster) dgraphImage() string {
 }
 
 func (c *LocalCluster) setupBinary() error {
+	if err := ensureDgraphClone(); err != nil {
+		panic(err)
+	}
+
 	if c.conf.customPlugins {
 		race := false // Explicit var declaration to avoid confusion on the next line
 		if err := c.GeneratePlugins(race); err != nil {
@@ -63,28 +72,25 @@ func (c *LocalCluster) setupBinary() error {
 }
 
 func ensureDgraphClone() error {
-	if _, err := os.Stat(repoDir); err != nil {
-		return runGitClone()
-	}
-
-	if err := runGitStatus(); err != nil {
-		if ierr := cleanupRepo(); ierr != nil {
-			return ierr
+	f := func() error {
+		if _, err := os.Stat(repoDir); err != nil {
+			return runGitClone()
 		}
-		return runGitClone()
+
+		if err := runGitStatus(); err != nil {
+			if err := os.RemoveAll(repoDir); err != nil {
+				return err
+			}
+			return runGitClone()
+		}
+		return nil
 	}
 
-	// we do not return error if git fetch fails because maybe there are no changes
-	// to pull and it doesn't make sense to fail right now. We can fail later when we
-	// do not find the reference that we are looking for.
-	if err := runGitFetch(); err != nil {
-		log.Printf("[WARNING] error in fetching latest git changes: %v", err)
-	}
-	return nil
-}
-
-func cleanupRepo() error {
-	return os.RemoveAll(repoDir)
+	var err error
+	cloneOnce.Do(func() {
+		err = f()
+	})
+	return err
 }
 
 func runGitClone() error {
@@ -92,6 +98,7 @@ func runGitClone() error {
 	// a copy of this folder by running git clone using this already cloned dgraph
 	// repo. After the quick clone, we update the original URL to point to the
 	// GitHub dgraph repo and perform a "git fetch".
+	log.Printf("[INFO] cloning dgraph repo from [%v]", baseRepoDir)
 	cmd := exec.Command("git", "clone", baseRepoDir, repoDir)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return errors.Wrapf(err, "error cloning dgraph repo\noutput:%v", string(out))
@@ -256,8 +263,8 @@ func IsHigherVersion(higher, lower string) (bool, error) {
 	cmd := exec.Command("git", "merge-base", "--is-ancestor", lower, higher)
 	cmd.Dir = repoDir
 	if out, err := cmd.CombinedOutput(); err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok {
-			return exitError.ExitCode() == 0, nil
+		if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 1 {
+			return false, nil
 		}
 
 		return false, errors.Wrapf(err, "error checking if [%v] is ancestor of [%v]\noutput:%v",

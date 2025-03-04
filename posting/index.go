@@ -693,6 +693,7 @@ type rebuilder struct {
 }
 
 func (r *rebuilder) RunWithoutTemp(ctx context.Context) error {
+	ResetCache()
 	stream := pstore.NewStreamAt(r.startTs)
 	stream.LogPrefix = fmt.Sprintf("Rebuilding index for predicate %s (1/2):", r.attr)
 	stream.Prefix = r.prefix

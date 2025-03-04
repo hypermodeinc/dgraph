@@ -4,7 +4,7 @@ set -e
 readonly ME=${0##*/}
 readonly SRCDIR=$(dirname "$0")
 
-BENCHMARKS_REPO="${BENCHMARKS_REPO:-$(go env GOPATH)/src/github.com/dgraph-io/benchmarks}"
+BENCHMARKS_REPO="${BENCHMARKS_REPO:-$(go env GOPATH)/src/github.com/hypermodeinc/dgraph-benchmarks}"
 SCHEMA_FILE="${BENCHMARKS_REPO}/data/21million.schema"
 DATA_FILE="${BENCHMARKS_REPO}/data/21million.rdf.gz"
 

@@ -567,12 +567,12 @@ var (
 func alterPreDefinedPredicates(t *testing.T, dg *dgo.Dgraph, clusterVersion string) {
 	ctx := context.Background()
 
-	// Commit daa5805739ed258e913a157c6e0f126b2291b1b0 represents the latest update to the main branch.
+	// Commit 532df27a09ba25f88687bab344e3add2b81b5c23 represents the latest update to the main branch.
 	// In this commit, the @unique directive is not applied to ACL predicates.
 	// Therefore, we are now deciding which schema to test.
 	// 'newGrootSchema' refers to the default schema with the @unique directive defined on ACL predicates.
 	// 'oldGrootSchema' refers to the default schema without the @unique directive on ACL predicates.
-	supported, err := dgraphtest.IsHigherVersion(clusterVersion, "daa5805739ed258e913a157c6e0f126b2291b1b0")
+	supported, err := dgraphtest.IsHigherVersion(clusterVersion, "532df27a09ba25f88687bab344e3add2b81b5c23")
 	require.NoError(t, err)
 	if supported {
 		require.NoError(t, dg.Alter(ctx, &api.Operation{
@@ -2254,7 +2254,7 @@ func (asuite *AclTestSuite) TestSchemaQueryWithACL() {
 	require.NoError(t, gc.DropAll())
 	resp, err := gc.Query(schemaQuery)
 	require.NoError(t, err)
-	supported, err := dgraphtest.IsHigherVersion(asuite.dc.GetVersion(), "daa5805739ed258e913a157c6e0f126b2291b1b0")
+	supported, err := dgraphtest.IsHigherVersion(asuite.dc.GetVersion(), "532df27a09ba25f88687bab344e3add2b81b5c23")
 	require.NoError(t, err)
 	if supported {
 		require.JSONEq(t, newGrootSchema, string(resp.GetJson()))

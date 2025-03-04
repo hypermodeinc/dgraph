@@ -911,7 +911,7 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
     https://github.com/hypermodeinc/dgraph/pull/8479
     https://github.com/hypermodeinc/dgraph/pull/8488
     https://github.com/hypermodeinc/dgraph/pull/8433)
-  - [Coveralls](https://coveralls.io/github/dgraph-io/dgraph?branch=main) on CI is enhanced to
+  - [Coveralls](https://coveralls.io/github/hypermodeinc/dggraph?branch=main) on CI is enhanced to
     measure code coverage for integration tests (https://github.com/hypermodeinc/dgraph/pull/8494)
   - [**LDBC Benchmarking**](https://ldbcouncil.org) in enabled on
     [CI](https://github.com/hypermodeinc/dgraph/actions/workflows/ci-dgraph-ldbc-tests.yml)
@@ -1415,7 +1415,7 @@ https://discuss.dgraph.io/t/dgraph-v22-0-0-rc1-20221003-release-candidate/17839
   - Enabled
     [Load Tests](https://github.com/hypermodeinc/dgraph/actions/workflows/ci-dgraph-load-tests.yml)
   - Enabled [Linters](https://github.com/hypermodeinc/dgraph/actions/workflows/ci-golang-lint.yml)
-  - Enabled [Code Coverage](https://coveralls.io/github/dgraph-io/dgraph?branch=main)
+  - Enabled [Code Coverage](https://coveralls.io/github/hypermodeinc/dggraph?branch=main)
 - **CI Security**
   - Configured to run with
     [Github Actions](https://github.com/hypermodeinc/dgraph/blob/main/.github/workflows/ci-aqua-security-trivy-tests.yml)
@@ -4813,8 +4813,8 @@ Users can set `port_offset` flag, to modify these fixed ports.
 
 - Facets response structure has been modified and is a lot flatter. Facet key is now
   `predicate|facet_name`. Examples for
-  [Go client](https://godoc.org/github.com/dgraph-io/dgraph/client#example-Txn-Mutate-Facets) and
-  [HTTP](https://dgraph.io/docs/query-language/#facets-edge-attributes).
+  [Go client](https://godoc.org/github.com/hypermodeinc/dggraph/client#example-Txn-Mutate-Facets)
+  and [HTTP](https://dgraph.io/docs/query-language/#facets-edge-attributes).
 - Query latency is now returned as numeric (ns) instead of string.
 - [`Recurse`](https://dgraph.io/docs/query-language/#recurse-query) is now a directive. So queries
   with `recurse` keyword at root won't work anymore.
@@ -4855,10 +4855,10 @@ Users can set `port_offset` flag, to modify these fixed ports.
   `client.Unmarshal` method also goes away from the Go client. Users can use `json.Unmarshal` for
   unmarshalling the response.
 - Response for predicate of type `geo` can be unmarshalled into a struct. Example
-  [here](https://godoc.org/github.com/dgraph-io/dgraph/client#example-package--SetObject).
+  [here](https://godoc.org/github.com/hypermodeinc/dggraph/client#example-package--SetObject).
 - `Node` and `Edge` structs go away along with the `SetValue...` methods. We recommend using
-  [`SetJson`](https://godoc.org/github.com/dgraph-io/dgraph/client#example-package--SetObject) and
-  `DeleteJson` fields to do mutations.
+  [`SetJson`](https://godoc.org/github.com/hypermodeinc/dggraph/client#example-package--SetObject)
+  and `DeleteJson` fields to do mutations.
 - Examples of how to use transactions using the client can be found at
   https://dgraph.io/docs/clients/#go.
 

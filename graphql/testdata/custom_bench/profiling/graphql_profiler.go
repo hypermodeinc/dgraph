@@ -61,7 +61,7 @@ const (
 	baseDir              = "."
 	dataDir              = baseDir + "/__data"
 	resultsDir           = baseDir + "/results"
-	benchmarksDir        = baseDir + "/benchmarks"
+	benchmarksDir        = baseDir + "/dgraph-benchmarks"
 	benchQueriesDirName  = "queries"
 	benchSchemaFileName  = "schema.graphql"
 	tempDir              = baseDir + "/temp"

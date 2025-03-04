@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   dgraph-build-amd64:
-    runs-on: warp-ubuntu-latest-x64-16x
+    runs-on: warp-ubuntu-latest-x64-4x
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -121,7 +121,7 @@ jobs:
           path: dgraph-standalone-amd64.tar
 
   dgraph-build-arm64:
-    runs-on: warp-ubuntu-latest-arm64-16x
+    runs-on: warp-ubuntu-latest-arm64-4x
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -156,7 +156,7 @@ jobs:
         run: |
           #!/bin/bash
           GIT_TAG_NAME='${{ github.event.inputs.releasetag }}'
-          if [[ "$GIT_TAG_NAME" == "v"* ]]; 
+          if [[ "$GIT_TAG_NAME" == "v"* ]];
           then
             echo "this is a release branch"
           else
@@ -222,7 +222,7 @@ jobs:
 
   graph-docker-image-and-manifests-push:
     needs: [dgraph-build-amd64, dgraph-build-arm64]
-    runs-on: warp-ubuntu-latest-x64-16x
+    runs-on: warp-ubuntu-latest-x64-4x
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -232,7 +232,7 @@ jobs:
         run: |
           #!/bin/bash
           GIT_TAG_NAME='${{ github.event.inputs.releasetag }}'
-          if [[ "$GIT_TAG_NAME" == "v"* ]]; 
+          if [[ "$GIT_TAG_NAME" == "v"* ]];
           then
             echo "this is a release branch"
           else

@@ -36,4 +36,4 @@ jobs:
           #!/bin/bash
           # go env settings
           export GOPATH=~/go
-          go test ./dql -fuzz="Fuzz" -fuzztime="300s" -fuzzminimizetime="120s"
+          go test -v ./dql -fuzz="Fuzz" -fuzztime="300s" -fuzzminimizetime="120s"

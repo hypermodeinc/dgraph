@@ -24,7 +24,7 @@ jobs:
   dgraph-upgrade-tests:
     if: github.event.pull_request.draft == false
     runs-on: warp-ubuntu-latest-x64-4x
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,15 +45,14 @@ jobs:
           #!/bin/bash
           # go env settings
           export GOPATH=~/go
-          export DGRAPH_UPGRADE_MAIN_ONLY=true
           # move the binary
           cp dgraph/dgraph ~/go/bin/dgraph
           # run the sytem upgrade tests
-          go test -tags=upgrade  github.com/hypermodeinc/dgraph/v24/systest/mutations-and-queries \
-          github.com/hypermodeinc/dgraph/v24/systest/plugin \
-          github.com/hypermodeinc/dgraph/v24/systest/license \
-          github.com/hypermodeinc/dgraph/v24/systest/multi-tenancy \
-          -v -timeout=120m -failfast
+          go test -v -timeout=120m -failfast -tags=upgrade \
+            github.com/hypermodeinc/dgraph/v24/systest/mutations-and-queries \
+            github.com/hypermodeinc/dgraph/v24/systest/plugin \
+            github.com/hypermodeinc/dgraph/v24/systest/license \
+            github.com/hypermodeinc/dgraph/v24/systest/multi-tenancy
           # clean up docker containers after test execution
           go clean -testcache
           # sleep

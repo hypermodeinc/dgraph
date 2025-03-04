@@ -32,7 +32,7 @@ Command:  go test -bench=. -benchtime=60s
   go test -bench=. -benchtime=60s
   goos: linux
   goarch: amd64
-  pkg: github.com/dgraph-io/dgraph/graphql/e2e/auth/bench
+  pkg: github.com/hypermodeinc/dgraph/graphql/e2e/auth/bench
 Auth
   BenchmarkNestedQuery-8                88         815315761 ns/op
   BenchmarkOneLevelQuery-8            4357          15626384 ns/op

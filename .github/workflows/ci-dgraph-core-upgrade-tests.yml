@@ -45,15 +45,13 @@ jobs:
           #!/bin/bash
           # go env settings
           export GOPATH=~/go
-          export DGRAPH_UPGRADE_MAIN_ONLY=true
           # move the binary
           cp dgraph/dgraph ~/go/bin/dgraph
           # run the core upgrade tests
-          go test -tags=upgrade \
-          github.com/hypermodeinc/dgraph/v24/ee/acl \
-          github.com/hypermodeinc/dgraph/v24/worker \
-          github.com/hypermodeinc/dgraph/v24/query \
-          -v -timeout=120m -failfast
+          go test -v -timeout=120m -failfast -tags=upgrade \
+            github.com/hypermodeinc/dgraph/v24/ee/acl \
+            github.com/hypermodeinc/dgraph/v24/worker \
+            github.com/hypermodeinc/dgraph/v24/query
           # clean up docker containers after test execution
           go clean -testcache
           # sleep

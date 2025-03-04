@@ -401,7 +401,7 @@ func (c *Cache) clear() {
 
 type MemoryLayer struct {
 	// config
-	deleteOnUpdates bool
+	removeOnUpdate bool
 
 	// data
 	cache *Cache
@@ -421,9 +421,9 @@ func GetStatsHolder() *StatsHolder {
 	return memoryLayer.statsHolder
 }
 
-func initMemoryLayer(cacheSize int64, deleteOnUpdates bool) *MemoryLayer {
+func initMemoryLayer(cacheSize int64, removeOnUpdate bool) *MemoryLayer {
 	ml := &MemoryLayer{}
-	ml.deleteOnUpdates = deleteOnUpdates
+	ml.removeOnUpdate = removeOnUpdate
 	ml.statsHolder = NewStatsHolder()
 	if cacheSize > 0 {
 		cache, err := ristretto.NewCache[[]byte, *CachePL](&ristretto.Config[[]byte, *CachePL]{
@@ -487,7 +487,7 @@ func (ml *MemoryLayer) updateItemInCache(key string, delta []byte, startTs, comm
 		return
 	}
 
-	if ml.deleteOnUpdates {
+	if ml.removeOnUpdate {
 		// TODO We should mark the key as deleted instead of directly deleting from the cache.
 		ml.del([]byte(key))
 		return
@@ -504,8 +504,14 @@ func (ml *MemoryLayer) updateItemInCache(key string, delta []byte, startTs, comm
 		p := new(pb.PostingList)
 		x.Check(proto.Unmarshal(delta, p))
 
-		val.list.setMutationAfterCommit(startTs, commitTs, p, true)
-		checkForRollup([]byte(key), val.list)
+		if p.Pack == nil {
+			val.list.setMutationAfterCommit(startTs, commitTs, p, true)
+			checkForRollup([]byte(key), val.list)
+		} else {
+			// Data was rolled up. TODO figure out how is UpdateCachedKeys getting delta which is pack)
+			ml.del([]byte(key))
+		}
+
 	}
 }
 

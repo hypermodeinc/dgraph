@@ -25,7 +25,7 @@ permissions:
 jobs:
   dgraph-systest-tests:
     if: github.event.pull_request.draft == false
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: warp-ubuntu-latest-x64-16x
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4

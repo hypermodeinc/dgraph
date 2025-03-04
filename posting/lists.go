@@ -45,12 +45,12 @@ var (
 )
 
 // Init initializes the posting lists package, the in memory and dirty list hash.
-func Init(ps *badger.DB, cacheSize int64, deleteOnUpdates bool) {
+func Init(ps *badger.DB, cacheSize int64, removeOnUpdate bool) {
 	pstore = ps
 	closer = z.NewCloser(1)
 	go x.MonitorMemoryMetrics(closer)
 
-	memoryLayer = initMemoryLayer(cacheSize, deleteOnUpdates)
+	memoryLayer = initMemoryLayer(cacheSize, removeOnUpdate)
 }
 
 func UpdateMaxCost(maxCost int64) {

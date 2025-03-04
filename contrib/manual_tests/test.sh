@@ -14,10 +14,10 @@ readonly ENCRYPTION_KEY_PATH="${DGRAPH_PATH}/encryption_key_file"
 readonly ACL_SECRET_PATH="${DGRAPH_PATH}/acl_secret_file"
 readonly TLS_PATH="${DGRAPH_PATH}/tls"
 
-readonly DATASET_1MILLION_FILE_URL='https://github.com/dgraph-io/benchmarks/blob/master/data/1million.rdf.gz?raw=true'
+readonly DATASET_1MILLION_FILE_URL='https://github.com/hypermodeinc/dgraph-benchmarks/blob/main/data/1million.rdf.gz?raw=true'
 readonly DATASET_1MILLION_FILE_PATH="${DATA_PATH}/1million.rdf.gz"
 
-readonly DATASET_1MILLION_SCHEMA_URL='https://github.com/dgraph-io/benchmarks/blob/master/data/1million.schema?raw=true'
+readonly DATASET_1MILLION_SCHEMA_URL='https://github.com/hypermodeinc/dgraph-benchmarks/blob/main/data/1million.schema?raw=true'
 readonly DATASET_1MILLION_SCHEMA_PATH="${DATA_PATH}/1million.schema"
 
 source "log.sh"

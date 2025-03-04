@@ -4,9 +4,9 @@ set -e
 readonly ME=${0##*/}
 readonly SRCDIR=$(dirname "$0")
 
-BENCHMARKS_REPO="https://github.com/dgraph-io/benchmarks"
+BENCHMARKS_REPO="https://github.com/hypermodeinc/dgraph-benchmarks"
 BENCHMARK_SIZE=${BENCHMARK_SIZE:=big}
-SCHEMA_URL="${BENCHMARKS_REPO}/blob/master/data/21million.schema?raw=true"
+SCHEMA_URL="${BENCHMARKS_REPO}/blob/main/data/21million.schema?raw=true"
 DGRAPH_LOADER=${DGRAPH_LOADER:=bulk}
 
 function Info {
@@ -23,9 +23,9 @@ if [[ ${BENCHMARK_SIZE} != small && ${BENCHMARK_SIZE} != big ]]; then
 fi
 
 if [[ ${BENCHMARK_SIZE} == small ]]; then
-	DATA_URL="${BENCHMARKS_REPO}/blob/master/data/1million.rdf.gz?raw=true"
+	DATA_URL="${BENCHMARKS_REPO}/blob/main/data/1million.rdf.gz?raw=true"
 else
-	DATA_URL="${BENCHMARKS_REPO}/blob/master/data/21million.rdf.gz?raw=true"
+	DATA_URL="${BENCHMARKS_REPO}/blob/main/data/21million.rdf.gz?raw=true"
 fi
 
 if [[ ${DGRAPH_LOADER} != bulk && ${DGRAPH_LOADER} != live ]]; then

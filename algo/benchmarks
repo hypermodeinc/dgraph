@@ -167,4 +167,4 @@ BenchmarkListIntersectRatio/compressed:IntersectWithLin:ratio=1:size=1000000:ove
 BenchmarkListIntersectRatio/compressed:IntersectWithBin:ratio=1:size=1000000:overlap=0.01:-4        	      30	  38617011 ns/op
 
 PASS
-ok  	github.com/dgraph-io/dgraph/algo	206.835s
+ok  	github.com/hypermodeinc/dgraph/algo	206.835s

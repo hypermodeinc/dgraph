@@ -31,6 +31,7 @@ jobs:
           #!/bin/bash
           # go env settings
           export GOPATH=~/go
+          export DGRAPH_UPGRADE_MAIN_ONLY=false
           # move the binary
           cp dgraph/dgraph ~/go/bin/dgraph
           # run the tests
