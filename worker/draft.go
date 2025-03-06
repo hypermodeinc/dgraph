@@ -343,7 +343,7 @@ func (pp *PredicatePipeline) close() {
 	pp.wg.Done()
 }
 
-func (mp *MutationPipeline) ProcessPredicate(ctx context.Context, pipeline *PredicatePipeline) error {
+func (mp *MutationPipeline) ProcessPredicate(ctx context.Context, pipeline *PredicatePipeline) {
 	defer pipeline.close()
 	for edge := range pipeline.edges {
 		fmt.Println("RUNNIGN EDGE", edge)
@@ -354,13 +354,12 @@ func (mp *MutationPipeline) ProcessPredicate(ctx context.Context, pipeline *Pred
 			}
 			if err != posting.ErrRetry {
 				pipeline.errCh <- err
-				return err
+				return
 			}
 		}
 	}
 	fmt.Println("EDGE CLOSED")
 	pipeline.errCh <- nil
-	return nil
 }
 
 func (mp *MutationPipeline) Process(ctx context.Context, edges []*pb.DirectedEdge) error {
