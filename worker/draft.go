@@ -329,6 +329,71 @@ func detectPendingTxns(attr string) error {
 	return errHasPendingTxns
 }
 
+type MutationPipeline struct {
+	txn *posting.Txn
+}
+
+type PredicatePipeline struct {
+	edges chan *pb.DirectedEdge
+	wg    *sync.WaitGroup
+	errCh chan error
+}
+
+func (pp *PredicatePipeline) close() {
+	pp.wg.Done()
+}
+
+func (mp *MutationPipeline) ProcessPredicate(ctx context.Context, pipeline *PredicatePipeline) error {
+	defer pipeline.close()
+	for edge := range pipeline.edges {
+		for {
+			err := runMutation(ctx, edge, mp.txn)
+			if err == nil {
+				break
+			}
+			if err != posting.ErrRetry {
+				pipeline.errCh <- err
+				return err
+			}
+		}
+	}
+	pipeline.errCh <- nil
+	return nil
+}
+
+func (mp *MutationPipeline) Process(ctx context.Context, edges []*pb.DirectedEdge) error {
+	predicates := map[string]*PredicatePipeline{}
+	var wg sync.WaitGroup
+	errCh := make(chan error, 1000)
+	for _, edge := range edges {
+		pred, ok := predicates[edge.Attr]
+		if !ok {
+			pred = &PredicatePipeline{
+				edges: make(chan *pb.DirectedEdge, 1000),
+				wg:    &wg,
+				errCh: errCh,
+			}
+			predicates[edge.Attr] = pred
+			wg.Add(1)
+		}
+		pred.edges <- edge
+	}
+	for _, pred := range predicates {
+		close(pred.edges)
+	}
+	wg.Wait()
+	var errs error
+	for range predicates {
+		if err := <-errCh; err != nil {
+			if errs == nil {
+				errs = errors.New("Got error while running mutation")
+			}
+			errs = errors.Wrapf(err, errs.Error())
+		}
+	}
+	return errs
+}
+
 // We don't support schema mutations across nodes in a transaction.
 // Wait for all transactions to either abort or complete and all write transactions
 // involving the predicate are aborted until schema mutations are done.
@@ -500,6 +565,12 @@ func (n *node) applyMutations(ctx context.Context, proposal *pb.Proposal) (rerr 
 	}
 	// Discard the posting lists from cache to release memory at the end.
 	defer txn.Update()
+
+	featureFlag := true
+	if featureFlag {
+		mp := &MutationPipeline{txn: txn}
+		return mp.Process(ctx, m.Edges)
+	}
 
 	process := func(edges []*pb.DirectedEdge) error {
 		var retries int
