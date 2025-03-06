@@ -357,7 +357,6 @@ func (mp *MutationPipeline) ProcessPredicate(ctx context.Context, pipeline *Pred
 			}
 		}
 	}
-	fmt.Println("EDGE CLOSED")
 	pipeline.errCh <- nil
 }
 
@@ -387,9 +386,7 @@ func (mp *MutationPipeline) Process(ctx context.Context, edges []*pb.DirectedEdg
 	if numWg == 0 {
 		return nil
 	}
-	fmt.Println("WAITING", len(edges), numWg)
 	wg.Wait()
-	fmt.Println("DONE WAITING")
 	var errs error
 	for range predicates {
 		if err := <-errCh; err != nil {
