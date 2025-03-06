@@ -379,6 +379,7 @@ func (mp *MutationPipeline) Process(ctx context.Context, edges []*pb.DirectedEdg
 			predicates[edge.Attr] = pred
 			wg.Add(1)
 			numWg += 1
+			go mp.ProcessPredicate(ctx, pred)
 		}
 		pred.edges <- edge
 	}
