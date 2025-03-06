@@ -37,6 +37,7 @@ import (
 	"github.com/hypermodeinc/dgraph/v24/protos/pb"
 	"github.com/hypermodeinc/dgraph/v24/raftwal"
 	"github.com/hypermodeinc/dgraph/v24/schema"
+	"github.com/hypermodeinc/dgraph/v24/tok"
 	"github.com/hypermodeinc/dgraph/v24/types"
 	"github.com/hypermodeinc/dgraph/v24/x"
 )
@@ -344,16 +345,161 @@ func (pp *PredicatePipeline) close() {
 	pp.wg.Done()
 }
 
+type indexMutationInfo struct {
+	tokenizers   []tok.Tokenizer
+	factorySpecs []*tok.FactoryCreateSpec
+	edge         *pb.DirectedEdge // Represents the original uid -> value edge.
+	val          types.Val
+	op           pb.DirectedEdge_Op
+}
+
+// indexTokens return tokens, without the predicate prefix and
+// index rune, for specific tokenizers.
+func indexTokens(ctx context.Context, info *indexMutationInfo) ([]string, error) {
+	attr := info.edge.Attr
+	lang := info.edge.GetLang()
+
+	schemaType, err := schema.State().TypeOf(attr)
+	if err != nil || !schemaType.IsScalar() {
+		return nil, errors.Errorf("Cannot index attribute %s of type object.", attr)
+	}
+
+	if !schema.State().IsIndexed(ctx, attr) {
+		return nil, errors.Errorf("Attribute %s is not indexed.", attr)
+	}
+	sv, err := types.Convert(info.val, schemaType)
+	if err != nil {
+		return nil, err
+	}
+
+	var tokens []string
+	for _, it := range info.tokenizers {
+		toks, err := tok.BuildTokens(sv.Value, tok.GetTokenizerForLang(it, lang))
+		if err != nil {
+			return tokens, err
+		}
+		tokens = append(tokens, toks...)
+	}
+	return tokens, nil
+}
+
 func (mp *MutationPipeline) ProcessListIndex(ctx context.Context, pipeline *PredicatePipeline) {
 	// Can only come here if the schema is a list and there is no count index.
 	_, ok := schema.State().Get(ctx, pipeline.attr)
 
-	//tokenizers :=  schema.State().Tokenizer(ctx, pipeline.attr)
-	//factorySpecs, err := schema.State().FactoryCreateSpec(ctx, pipeline.attr)
-	//if err != nil {
-	//	pipeline.errCh <- err
-	//	return
-	//}
+	tokenizers := schema.State().Tokenizer(ctx, pipeline.attr)
+	factorySpecs, err := schema.State().FactoryCreateSpec(ctx, pipeline.attr)
+	if err != nil {
+		pipeline.errCh <- err
+		return
+	}
+	indexEdge := &pb.DirectedEdge{
+		Attr: pipeline.attr,
+	}
+	postings := map[uint64]*pb.PostingList{}
+	indexes := map[string]*pb.PostingList{}
+	info := &indexMutationInfo{
+		tokenizers:   tokenizers,
+		factorySpecs: factorySpecs,
+		op:           pb.DirectedEdge_SET,
+	}
+	maxLenToken := 0
+	for edge := range pipeline.edges {
+		for {
+			if edge.Op != pb.DirectedEdge_DEL {
+				if !ok {
+					pipeline.errCh <- errors.Errorf("runMutation: Unable to find schema for %s", edge.Attr)
+					return
+				}
+			}
+			var err error
+			if edge.Op == pb.DirectedEdge_DEL {
+				err = runMutation(ctx, edge, mp.txn)
+			} else {
+				uid := edge.Entity
+				if _, ok := postings[uid]; !ok {
+					postings[uid] = &pb.PostingList{}
+				}
+				mpost := posting.NewPosting(edge)
+				mpost.StartTs = mp.txn.StartTs
+				if mpost.PostingType != pb.Posting_REF {
+					edge.ValueId = posting.FingerprintEdge(edge)
+					mpost.Uid = edge.ValueId
+				}
+				postings[uid].Postings = append(postings[uid].Postings, mpost)
+				if edge.Op != pb.DirectedEdge_DEL {
+					val := types.Val{
+						Tid:   types.TypeID(edge.ValueType),
+						Value: edge.Value,
+					}
+					info.val = val
+					info.edge = edge
+
+					tokens, erri := indexTokens(ctx, info)
+					if erri != nil {
+						pipeline.errCh <- erri
+						return
+					}
+
+					for _, token := range tokens {
+						if _, ok := indexes[token]; !ok {
+							indexes[token] = &pb.PostingList{}
+						}
+						indexEdge.Op = edge.Op
+						indexEdge.ValueId = uid
+						mpost := posting.NewPosting(indexEdge)
+						mpost.StartTs = mp.txn.StartTs
+						mpost.Uid = edge.ValueId
+						indexes[token].Postings = append(indexes[token].Postings, mpost)
+						if len(token) > maxLenToken {
+							maxLenToken = len(token)
+						}
+					}
+				}
+			}
+			if err == nil {
+				break
+			}
+			if err != posting.ErrRetry {
+				pipeline.errCh <- err
+				return
+			}
+		}
+	}
+
+	mp.txn.LockCache()
+	defer mp.txn.UnlockCache()
+
+	dataKey := x.DataKey(pipeline.attr, 0)
+
+	for uid, pl := range postings {
+		data, err := proto.Marshal(pl)
+		if err != nil {
+			pipeline.errCh <- err
+			continue
+		}
+
+		rest := dataKey[len(dataKey)-8:]
+		binary.BigEndian.PutUint64(rest, uid)
+		mp.txn.AddDelta(string(dataKey), data)
+	}
+
+	for token, pl := range indexes {
+		data, err := proto.Marshal(pl)
+		if err != nil {
+			pipeline.errCh <- err
+			continue
+		}
+		key := x.IndexKey(pipeline.attr, token)
+		mp.txn.AddDelta(string(key), data)
+	}
+
+	pipeline.errCh <- nil
+}
+
+func (mp *MutationPipeline) ProcessListWithoutIndex(ctx context.Context, pipeline *PredicatePipeline) {
+	// Can only come here if the schema is a list and there is no count index.
+	_, ok := schema.State().Get(ctx, pipeline.attr)
 
 	postings := map[uint64]*pb.PostingList{}
 
@@ -419,18 +565,27 @@ func (mp *MutationPipeline) ProcessPredicate(ctx context.Context, pipeline *Pred
 	// isn't consistent across the entire cluster. We should just apply whatever is given to us.
 	su, ok := schema.State().Get(ctx, pipeline.attr)
 
-	runNewPipeline := false
+	processListWithoutIndex := false
+	processListWithIndexNoCount := false
 
 	if ok {
 		isList := su.GetList()
 		doUpdateIndex := schema.State().IsIndexed(ctx, pipeline.attr)
 		hasCountIndex := schema.State().HasCount(ctx, pipeline.attr)
 		if isList && !hasCountIndex && !doUpdateIndex {
-			runNewPipeline = true
+			processListWithoutIndex = true
+		}
+		if isList && !hasCountIndex && doUpdateIndex {
+			processListWithIndexNoCount = true
 		}
 	}
 
-	if runNewPipeline {
+	if processListWithoutIndex {
+		mp.ProcessListWithoutIndex(ctx, pipeline)
+		return
+	}
+
+	if processListWithIndexNoCount {
 		mp.ProcessListIndex(ctx, pipeline)
 		return
 	}
