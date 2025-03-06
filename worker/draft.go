@@ -346,7 +346,6 @@ func (pp *PredicatePipeline) close() {
 func (mp *MutationPipeline) ProcessPredicate(ctx context.Context, pipeline *PredicatePipeline) {
 	defer pipeline.close()
 	for edge := range pipeline.edges {
-		fmt.Println("RUNNIGN EDGE", edge)
 		for {
 			err := runMutation(ctx, edge, mp.txn)
 			if err == nil {
