@@ -590,6 +590,8 @@ func (mp *MutationPipeline) ProcessPredicate(ctx context.Context, pipeline *Pred
 		return
 	}
 
+	fmt.Println("PROCESS PREDICATE", pipeline.attr, processListWithIndexNoCount, processListWithoutIndex)
+
 	for edge := range pipeline.edges {
 		for {
 			if edge.Op != pb.DirectedEdge_DEL {
