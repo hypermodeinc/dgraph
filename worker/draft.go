@@ -580,6 +580,8 @@ func (mp *MutationPipeline) ProcessPredicate(ctx context.Context, pipeline *Pred
 		}
 	}
 
+	fmt.Println("PROCESS PREDICATE", pipeline.attr, processListWithIndexNoCount, processListWithoutIndex)
+
 	if processListWithoutIndex {
 		mp.ProcessListWithoutIndex(ctx, pipeline)
 		return
@@ -589,8 +591,6 @@ func (mp *MutationPipeline) ProcessPredicate(ctx context.Context, pipeline *Pred
 		mp.ProcessListIndex(ctx, pipeline)
 		return
 	}
-
-	fmt.Println("PROCESS PREDICATE", pipeline.attr, processListWithIndexNoCount, processListWithoutIndex)
 
 	for edge := range pipeline.edges {
 		for {
