@@ -830,6 +830,10 @@ func fingerprintEdge(t *pb.DirectedEdge) uint64 {
 	return id
 }
 
+func FingerprintEdge(t *pb.DirectedEdge) uint64 {
+	return fingerprintEdge(t)
+}
+
 func (l *List) addMutation(ctx context.Context, txn *Txn, t *pb.DirectedEdge) error {
 	l.Lock()
 	defer l.Unlock()

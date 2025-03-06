@@ -56,6 +56,18 @@ type Txn struct {
 	cache *LocalCache // This pointer does not get modified.
 }
 
+func (txn *Txn) AddDelta(key string, pl []byte) {
+	txn.cache.deltas[key] = pl
+}
+
+func (txn *Txn) LockCache() {
+	txn.cache.Lock()
+}
+
+func (txn *Txn) UnlockCache() {
+	txn.cache.Unlock()
+}
+
 // struct to implement Txn interface from vector-indexer
 // acts as wrapper for dgraph *Txn
 type viTxn struct {
