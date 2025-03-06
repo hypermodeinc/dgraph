@@ -37,6 +37,7 @@ import (
 	"github.com/hypermodeinc/dgraph/v24/protos/pb"
 	"github.com/hypermodeinc/dgraph/v24/raftwal"
 	"github.com/hypermodeinc/dgraph/v24/schema"
+	"github.com/hypermodeinc/dgraph/v24/tok"
 	"github.com/hypermodeinc/dgraph/v24/types"
 	"github.com/hypermodeinc/dgraph/v24/x"
 )
@@ -329,6 +330,391 @@ func detectPendingTxns(attr string) error {
 	return errHasPendingTxns
 }
 
+type MutationPipeline struct {
+	txn *posting.Txn
+}
+
+type PredicatePipeline struct {
+	attr  string
+	edges chan *pb.DirectedEdge
+	wg    *sync.WaitGroup
+	errCh chan error
+}
+
+func (pp *PredicatePipeline) close() {
+	pp.wg.Done()
+}
+
+type indexMutationInfo struct {
+	tokenizers   []tok.Tokenizer
+	factorySpecs []*tok.FactoryCreateSpec
+	edge         *pb.DirectedEdge // Represents the original uid -> value edge.
+	val          types.Val
+	op           pb.DirectedEdge_Op
+}
+
+// indexTokens return tokens, without the predicate prefix and
+// index rune, for specific tokenizers.
+func indexTokens(ctx context.Context, info *indexMutationInfo) ([]string, error) {
+	attr := info.edge.Attr
+	lang := info.edge.GetLang()
+
+	schemaType, err := schema.State().TypeOf(attr)
+	if err != nil || !schemaType.IsScalar() {
+		return nil, errors.Errorf("Cannot index attribute %s of type object.", attr)
+	}
+
+	if !schema.State().IsIndexed(ctx, attr) {
+		return nil, errors.Errorf("Attribute %s is not indexed.", attr)
+	}
+	sv, err := types.Convert(info.val, schemaType)
+	if err != nil {
+		return nil, err
+	}
+
+	var tokens []string
+	for _, it := range info.tokenizers {
+		toks, err := tok.BuildTokens(sv.Value, tok.GetTokenizerForLang(it, lang))
+		if err != nil {
+			return tokens, err
+		}
+		tokens = append(tokens, toks...)
+	}
+	return tokens, nil
+}
+
+func (mp *MutationPipeline) ProcessListIndex(ctx context.Context, pipeline *PredicatePipeline) {
+	// Can only come here if the schema is a list and there is no count index.
+	_, ok := schema.State().Get(ctx, pipeline.attr)
+
+	tokenizers := schema.State().Tokenizer(ctx, pipeline.attr)
+	factorySpecs, err := schema.State().FactoryCreateSpec(ctx, pipeline.attr)
+	if err != nil {
+		pipeline.errCh <- err
+		return
+	}
+	indexEdge := &pb.DirectedEdge{
+		Attr: pipeline.attr,
+	}
+	postings := map[uint64]*pb.PostingList{}
+	indexes := map[string]*pb.PostingList{}
+	info := &indexMutationInfo{
+		tokenizers:   tokenizers,
+		factorySpecs: factorySpecs,
+		op:           pb.DirectedEdge_SET,
+	}
+	maxLenToken := 0
+	for edge := range pipeline.edges {
+		for {
+			if edge.Op != pb.DirectedEdge_DEL {
+				if !ok {
+					pipeline.errCh <- errors.Errorf("runMutation: Unable to find schema for %s", edge.Attr)
+					return
+				}
+			}
+			var err error
+			if edge.Op == pb.DirectedEdge_DEL {
+				err = runMutation(ctx, edge, mp.txn)
+			} else {
+				uid := edge.Entity
+				if _, ok := postings[uid]; !ok {
+					postings[uid] = &pb.PostingList{}
+				}
+				mpost := posting.NewPosting(edge)
+				mpost.StartTs = mp.txn.StartTs
+				if mpost.PostingType != pb.Posting_REF {
+					edge.ValueId = posting.FingerprintEdge(edge)
+					mpost.Uid = edge.ValueId
+				}
+				postings[uid].Postings = append(postings[uid].Postings, mpost)
+				if edge.Op != pb.DirectedEdge_DEL {
+					val := types.Val{
+						Tid:   types.TypeID(edge.ValueType),
+						Value: edge.Value,
+					}
+					info.val = val
+					info.edge = edge
+
+					tokens, erri := indexTokens(ctx, info)
+					if erri != nil {
+						pipeline.errCh <- erri
+						return
+					}
+
+					for _, token := range tokens {
+						if _, ok := indexes[token]; !ok {
+							indexes[token] = &pb.PostingList{}
+						}
+						indexEdge.Op = edge.Op
+						indexEdge.ValueId = uid
+						mpost := posting.NewPosting(indexEdge)
+						mpost.StartTs = mp.txn.StartTs
+						mpost.Uid = edge.ValueId
+						indexes[token].Postings = append(indexes[token].Postings, mpost)
+						if len(token) > maxLenToken {
+							maxLenToken = len(token)
+						}
+					}
+				}
+			}
+			if err == nil {
+				break
+			}
+			if err != posting.ErrRetry {
+				pipeline.errCh <- err
+				return
+			}
+		}
+	}
+
+	mp.txn.LockCache()
+	defer mp.txn.UnlockCache()
+
+	dataKey := x.DataKey(pipeline.attr, 0)
+
+	for uid, pl := range postings {
+		data, err := proto.Marshal(pl)
+		if err != nil {
+			pipeline.errCh <- err
+			continue
+		}
+
+		rest := dataKey[len(dataKey)-8:]
+		binary.BigEndian.PutUint64(rest, uid)
+		mp.txn.AddDelta(string(dataKey), data)
+	}
+
+	for token, pl := range indexes {
+		data, err := proto.Marshal(pl)
+		if err != nil {
+			pipeline.errCh <- err
+			continue
+		}
+		key := x.IndexKey(pipeline.attr, token)
+		mp.txn.AddDelta(string(key), data)
+	}
+
+	pipeline.errCh <- nil
+}
+
+// var postingsPool = sync.Pool{
+// 	New: func() interface{} {
+// 		return &pb.PostingList{}
+// 	},
+// }
+
+func (mp *MutationPipeline) DefaultPipeline(ctx context.Context, pipeline *PredicatePipeline) {
+	_, ok := schema.State().Get(ctx, pipeline.attr)
+
+	for edge := range pipeline.edges {
+		for {
+			if edge.Op != pb.DirectedEdge_DEL {
+				if !ok {
+					pipeline.errCh <- errors.Errorf("runMutation: Unable to find schema for %s", edge.Attr)
+					return
+				}
+			}
+			err := runMutation(ctx, edge, mp.txn)
+			if err == nil {
+				break
+			}
+			if err != posting.ErrRetry {
+				pipeline.errCh <- err
+				return
+			}
+		}
+	}
+
+	mp.txn.Update()
+	pipeline.errCh <- nil
+}
+
+// // Sync pool for reusing posting buffers
+// var postingListPool = sync.Pool{
+// 	New: func() interface{} {
+// 		const batchSize = 1100
+// 		return make([]pb.PostingList, batchSize)
+// 	},
+// }
+
+// // Sync pool for reusing posting buffers
+// var postingPool = sync.Pool{
+// 	New: func() interface{} {
+// 		const batchSize = 1100
+// 		return make([]pb.Posting, batchSize)
+// 	},
+// }
+
+// var postingsMapPool = sync.Pool{
+// 	New: func() interface{} {
+// 		return make(map[uint64]*pb.PostingList, 1000)
+// 	},
+// }
+
+// var allocatedBytes = sync.Pool{
+// 	New: func() interface{} {
+// 		return make([]byte, 5000000)
+// 	},
+// }
+
+func (mp *MutationPipeline) ProcessListWithoutIndex(ctx context.Context, pipeline *PredicatePipeline) {
+	_, schemaExists := schema.State().Get(ctx, pipeline.attr)
+
+	postings := make(map[uint64]*pb.PostingList, 1000)
+
+	for edge := range pipeline.edges {
+		for {
+			if edge.Op != pb.DirectedEdge_DEL && !schemaExists {
+				pipeline.errCh <- errors.Errorf("runMutation: Unable to find schema for %s", edge.Attr)
+				return
+			}
+
+			if edge.Op == pb.DirectedEdge_DEL {
+				if err := runMutation(ctx, edge, mp.txn); err != nil {
+					if err == posting.ErrRetry {
+						continue
+					}
+					pipeline.errCh <- err
+					return
+				}
+			} else {
+				uid := edge.Entity
+				pl, exists := postings[uid]
+				if !exists {
+					pl = &pb.PostingList{}
+					postings[uid] = pl
+				}
+
+				mpost := posting.NewPosting(edge)
+				mpost.StartTs = mp.txn.StartTs
+				if mpost.PostingType != pb.Posting_REF {
+					edge.ValueId = posting.FingerprintEdge(edge)
+					mpost.Uid = edge.ValueId
+				}
+
+				pl.Postings = append(pl.Postings, mpost)
+			}
+			break
+		}
+	}
+
+	mp.txn.LockCache()
+	defer mp.txn.UnlockCache()
+
+	dataKey := x.DataKey(pipeline.attr, 0)
+	baseKey := string(dataKey[:len(dataKey)-8]) // Avoid repeated conversion
+
+	for uid, pl := range postings {
+		data, err := proto.Marshal(pl)
+
+		if err != nil {
+			pipeline.errCh <- err
+			continue
+		}
+
+		binary.BigEndian.PutUint64(dataKey[len(dataKey)-8:], uid)
+		mp.txn.AddDelta(baseKey+string(dataKey[len(dataKey)-8:]), data)
+	}
+
+	pipeline.errCh <- nil
+}
+
+func (mp *MutationPipeline) ProcessPredicate(ctx context.Context, pipeline *PredicatePipeline) {
+	defer pipeline.close()
+	ctx = schema.GetWriteContext(ctx)
+
+	// We shouldn't check whether this Alpha serves this predicate or not. Membership information
+	// isn't consistent across the entire cluster. We should just apply whatever is given to us.
+	su, ok := schema.State().Get(ctx, pipeline.attr)
+
+	processListWithoutIndex := false
+	processListWithIndexNoCount := false
+
+	if ok {
+		isList := su.GetList()
+		doUpdateIndex := schema.State().IsIndexed(ctx, pipeline.attr)
+		hasCountIndex := schema.State().HasCount(ctx, pipeline.attr)
+		if isList && !hasCountIndex && !doUpdateIndex {
+			processListWithoutIndex = true
+		}
+		if !hasCountIndex && doUpdateIndex {
+			processListWithIndexNoCount = true
+		}
+	}
+
+	fmt.Println("PROCESS PREDICATE", pipeline.attr, processListWithIndexNoCount, processListWithoutIndex)
+
+	if processListWithoutIndex {
+		mp.ProcessListWithoutIndex(ctx, pipeline)
+		return
+	}
+
+	if processListWithIndexNoCount {
+		mp.ProcessListIndex(ctx, pipeline)
+		return
+	}
+
+	for edge := range pipeline.edges {
+		for {
+			if edge.Op != pb.DirectedEdge_DEL {
+				if !ok {
+					pipeline.errCh <- errors.Errorf("runMutation: Unable to find schema for %s", edge.Attr)
+					return
+				}
+			}
+			err := runMutation(ctx, edge, mp.txn)
+			if err == nil {
+				break
+			}
+			if err != posting.ErrRetry {
+				pipeline.errCh <- err
+				return
+			}
+		}
+	}
+	pipeline.errCh <- nil
+}
+
+func (mp *MutationPipeline) Process(ctx context.Context, edges []*pb.DirectedEdge) error {
+	predicates := map[string]*PredicatePipeline{}
+	var wg sync.WaitGroup
+	numWg := 0
+	errCh := make(chan error, 1000)
+	for _, edge := range edges {
+		pred, ok := predicates[edge.Attr]
+		if !ok {
+			pred = &PredicatePipeline{
+				attr:  edge.Attr,
+				edges: make(chan *pb.DirectedEdge, 1000),
+				wg:    &wg,
+				errCh: errCh,
+			}
+			predicates[edge.Attr] = pred
+			wg.Add(1)
+			numWg += 1
+			go mp.ProcessPredicate(ctx, pred)
+		}
+		pred.edges <- edge
+	}
+	for _, pred := range predicates {
+		close(pred.edges)
+	}
+	if numWg == 0 {
+		return nil
+	}
+	wg.Wait()
+	var errs error
+	for range predicates {
+		if err := <-errCh; err != nil {
+			if errs == nil {
+				errs = errors.New("Got error while running mutation")
+			}
+			errs = errors.Wrapf(err, errs.Error())
+		}
+	}
+	return errs
+}
+
 // We don't support schema mutations across nodes in a transaction.
 // Wait for all transactions to either abort or complete and all write transactions
 // involving the predicate are aborted until schema mutations are done.
@@ -536,6 +922,12 @@ func (n *node) applyMutations(ctx context.Context, proposal *pb.Proposal) (rerr 
 	}
 	// Discard the posting lists from cache to release memory at the end.
 	defer txn.Update()
+
+	featureFlag := true
+	if featureFlag {
+		mp := &MutationPipeline{txn: txn}
+		return mp.Process(ctx, m.Edges)
+	}
 
 	process := func(edges []*pb.DirectedEdge) error {
 		var retries int
