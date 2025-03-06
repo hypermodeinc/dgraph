@@ -366,6 +366,7 @@ func (mp *MutationPipeline) ProcessPredicate(ctx context.Context, pipeline *Pred
 func (mp *MutationPipeline) Process(ctx context.Context, edges []*pb.DirectedEdge) error {
 	predicates := map[string]*PredicatePipeline{}
 	var wg sync.WaitGroup
+	numWg := 0
 	errCh := make(chan error, 1000)
 	for _, edge := range edges {
 		pred, ok := predicates[edge.Attr]
@@ -377,13 +378,17 @@ func (mp *MutationPipeline) Process(ctx context.Context, edges []*pb.DirectedEdg
 			}
 			predicates[edge.Attr] = pred
 			wg.Add(1)
+			numWg += 1
 		}
 		pred.edges <- edge
 	}
 	for _, pred := range predicates {
 		close(pred.edges)
 	}
-	fmt.Println("WAITING")
+	if numWg == 0 {
+		return nil
+	}
+	fmt.Println("WAITING", len(edges), numWg)
 	wg.Wait()
 	fmt.Println("DONE WAITING")
 	var errs error
