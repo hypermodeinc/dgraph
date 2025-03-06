@@ -575,7 +575,7 @@ func (mp *MutationPipeline) ProcessPredicate(ctx context.Context, pipeline *Pred
 		if isList && !hasCountIndex && !doUpdateIndex {
 			processListWithoutIndex = true
 		}
-		if isList && !hasCountIndex && doUpdateIndex {
+		if !hasCountIndex && doUpdateIndex {
 			processListWithIndexNoCount = true
 		}
 	}
