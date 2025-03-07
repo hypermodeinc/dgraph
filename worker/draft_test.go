@@ -96,19 +96,34 @@ func BenchmarkProcessListIndex(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		populatePipeline()
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			if 1 == 1 {
+
+	b.Run("DefaultPipeline", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			populatePipeline()
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				mp.DefaultPipeline(ctx, pipeline)
+				wg.Done()
+			}()
+			close(pipeline.edges)
+			wg.Wait()
+		}
+	})
+
+	b.Run("ProcessListWithoutIndex", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			populatePipeline()
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
 				mp.ProcessListWithoutIndex(ctx, pipeline)
-			}
-			wg.Done()
-		}()
-		close(pipeline.edges)
-		wg.Wait()
-	}
+				wg.Done()
+			}()
+			close(pipeline.edges)
+			wg.Wait()
+		}
+	})
 }
 
 func TestCalculateSnapshot(t *testing.T) {

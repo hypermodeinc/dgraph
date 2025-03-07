@@ -497,27 +497,51 @@ func (mp *MutationPipeline) ProcessListIndex(ctx context.Context, pipeline *Pred
 	pipeline.errCh <- nil
 }
 
-var postingsMapPool = sync.Pool{
-	New: func() interface{} {
-		return make(map[uint64]*pb.PostingList, 1000)
-	},
-}
+// var postingsMapPool = sync.Pool{
+// 	New: func() interface{} {
+// 		return make(map[uint64]*pb.PostingList, 1000)
+// 	},
+// }
 
-var postingsPool = sync.Pool{
-	New: func() interface{} {
-		return &pb.PostingList{}
-	},
+// var postingsPool = sync.Pool{
+// 	New: func() interface{} {
+// 		return &pb.PostingList{}
+// 	},
+// }
+
+func (mp *MutationPipeline) DefaultPipeline(ctx context.Context, pipeline *PredicatePipeline) {
+	_, ok := schema.State().Get(ctx, pipeline.attr)
+
+	for edge := range pipeline.edges {
+		for {
+			if edge.Op != pb.DirectedEdge_DEL {
+				if !ok {
+					pipeline.errCh <- errors.Errorf("runMutation: Unable to find schema for %s", edge.Attr)
+					return
+				}
+			}
+			err := runMutation(ctx, edge, mp.txn)
+			if err == nil {
+				break
+			}
+			if err != posting.ErrRetry {
+				pipeline.errCh <- err
+				return
+			}
+		}
+	}
+	pipeline.errCh <- nil
 }
 
 func (mp *MutationPipeline) ProcessListWithoutIndex(ctx context.Context, pipeline *PredicatePipeline) {
 	// Can only come here if the schema is a list and there is no count index.
 	_, ok := schema.State().Get(ctx, pipeline.attr)
 
-	//postings := postingsMapPool.Get().(map[uint64]*pb.PostingList)
-	//defer func() {
-	//	clear(postings)
-	//	postingsMapPool.Put(postings)
-	//}()
+	// postings := postingsMapPool.Get().(map[uint64]*pb.PostingList)
+	// defer func() {
+	// 	clear(postings)
+	// 	postingsMapPool.Put(postings)
+	// }()
 	postings := make(map[uint64]*pb.PostingList, 1000)
 
 	for edge := range pipeline.edges {
@@ -569,7 +593,7 @@ func (mp *MutationPipeline) ProcessListWithoutIndex(ctx context.Context, pipelin
 		rest := dataKey[len(dataKey)-8:]
 		binary.BigEndian.PutUint64(rest, uid)
 		mp.txn.AddDelta(string(dataKey), data)
-		postingsPool.Put(pl)
+		//postingsPool.Put(pl)
 	}
 
 	pipeline.errCh <- nil
