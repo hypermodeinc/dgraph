@@ -124,6 +124,20 @@ func BenchmarkProcessListIndex(b *testing.B) {
 			wg.Wait()
 		}
 	})
+
+	b.Run("ProcessListIndex", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			populatePipeline()
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				mp.ProcessListIndex(ctx, pipeline)
+				wg.Done()
+			}()
+			close(pipeline.edges)
+			wg.Wait()
+		}
+	})
 }
 
 func TestCalculateSnapshot(t *testing.T) {
