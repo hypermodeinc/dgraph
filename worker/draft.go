@@ -497,11 +497,28 @@ func (mp *MutationPipeline) ProcessListIndex(ctx context.Context, pipeline *Pred
 	pipeline.errCh <- nil
 }
 
+var postingsMapPool = sync.Pool{
+	New: func() interface{} {
+		return make(map[uint64]*pb.PostingList, 1000)
+	},
+}
+
+var postingsPool = sync.Pool{
+	New: func() interface{} {
+		return &pb.PostingList{}
+	},
+}
+
 func (mp *MutationPipeline) ProcessListWithoutIndex(ctx context.Context, pipeline *PredicatePipeline) {
 	// Can only come here if the schema is a list and there is no count index.
 	_, ok := schema.State().Get(ctx, pipeline.attr)
 
-	postings := map[uint64]*pb.PostingList{}
+	//postings := postingsMapPool.Get().(map[uint64]*pb.PostingList)
+	//defer func() {
+	//	clear(postings)
+	//	postingsMapPool.Put(postings)
+	//}()
+	postings := make(map[uint64]*pb.PostingList, 1000)
 
 	for edge := range pipeline.edges {
 		for {
@@ -552,6 +569,7 @@ func (mp *MutationPipeline) ProcessListWithoutIndex(ctx context.Context, pipelin
 		rest := dataKey[len(dataKey)-8:]
 		binary.BigEndian.PutUint64(rest, uid)
 		mp.txn.AddDelta(string(dataKey), data)
+		postingsPool.Put(pl)
 	}
 
 	pipeline.errCh <- nil
