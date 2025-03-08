@@ -530,51 +530,93 @@ func (mp *MutationPipeline) DefaultPipeline(ctx context.Context, pipeline *Predi
 			}
 		}
 	}
+
+	mp.txn.Update()
 	pipeline.errCh <- nil
 }
 
-func (mp *MutationPipeline) ProcessListWithoutIndex(ctx context.Context, pipeline *PredicatePipeline) {
-	// Can only come here if the schema is a list and there is no count index.
-	_, ok := schema.State().Get(ctx, pipeline.attr)
+// Sync pool for reusing posting buffers
+var postingListPool = sync.Pool{
+	New: func() interface{} {
+		const batchSize = 1100
+		return make([]pb.PostingList, batchSize)
+	},
+}
 
-	// postings := postingsMapPool.Get().(map[uint64]*pb.PostingList)
-	// defer func() {
-	// 	clear(postings)
-	// 	postingsMapPool.Put(postings)
-	// }()
-	postings := make(map[uint64]*pb.PostingList, 1000)
+// Sync pool for reusing posting buffers
+var postingPool = sync.Pool{
+	New: func() interface{} {
+		const batchSize = 1100
+		return make([]pb.Posting, batchSize)
+	},
+}
+
+var postings = make(map[uint64]*pb.PostingList, 1000)
+
+var k = make([]byte, 500000)
+
+func (mp *MutationPipeline) ProcessListWithoutIndex(ctx context.Context, pipeline *PredicatePipeline) {
+	_, schemaExists := schema.State().Get(ctx, pipeline.attr)
+
+	defer clear(postings)
+
+	// Get a batch of preallocated postings from the pool
+	mposts := postingPool.Get().([]pb.Posting)
+	defer postingPool.Put(mposts) // Return to pool after use
+	mpostIdx := 0
+
+	postingsLists := postingListPool.Get().([]pb.PostingList)
+	defer postingListPool.Put(postingsLists) // Return to pool after use
+	postingsListsIdx := 0
+
+	temp := k
+	defer func() {
+		k = temp
+	}()
 
 	for edge := range pipeline.edges {
 		for {
-			if edge.Op != pb.DirectedEdge_DEL {
-				if !ok {
-					pipeline.errCh <- errors.Errorf("runMutation: Unable to find schema for %s", edge.Attr)
+			if edge.Op != pb.DirectedEdge_DEL && !schemaExists {
+				pipeline.errCh <- errors.Errorf("runMutation: Unable to find schema for %s", edge.Attr)
+				return
+			}
+
+			if edge.Op == pb.DirectedEdge_DEL {
+				if err := runMutation(ctx, edge, mp.txn); err != nil {
+					if err == posting.ErrRetry {
+						continue
+					}
+					pipeline.errCh <- err
 					return
 				}
-			}
-			var err error
-			if edge.Op == pb.DirectedEdge_DEL {
-				err = runMutation(ctx, edge, mp.txn)
 			} else {
 				uid := edge.Entity
-				if _, ok := postings[uid]; !ok {
-					postings[uid] = &pb.PostingList{}
+				pl, exists := postings[uid]
+				if !exists {
+					pl = &postingsLists[postingsListsIdx]
+					pl.Postings = pl.Postings[:0]
+					postingsListsIdx++
+					postings[uid] = pl
 				}
-				mpost := posting.NewPosting(edge)
+
+				// Use preallocated posting from pool
+				if mpostIdx >= len(mposts) {
+					mposts = postingPool.Get().([]pb.Posting) // Get new batch from pool
+					mpostIdx = 0
+				}
+				mpost := &mposts[mpostIdx]
+				mpostIdx++
+
+				posting.NewPostingExisting(mpost, edge)
 				mpost.StartTs = mp.txn.StartTs
 				if mpost.PostingType != pb.Posting_REF {
 					edge.ValueId = posting.FingerprintEdge(edge)
 					mpost.Uid = edge.ValueId
 				}
-				postings[uid].Postings = append(postings[uid].Postings, mpost)
+
+				pl.Postings = append(pl.Postings, mpost)
 			}
-			if err == nil {
-				break
-			}
-			if err != posting.ErrRetry {
-				pipeline.errCh <- err
-				return
-			}
+			break
 		}
 	}
 
@@ -582,18 +624,20 @@ func (mp *MutationPipeline) ProcessListWithoutIndex(ctx context.Context, pipelin
 	defer mp.txn.UnlockCache()
 
 	dataKey := x.DataKey(pipeline.attr, 0)
+	baseKey := string(dataKey[:len(dataKey)-8]) // Avoid repeated conversion
 
 	for uid, pl := range postings {
-		data, err := proto.Marshal(pl)
+		size := proto.Size(pl)
+		data, err := x.MarshalToSizedBuffer(k[:size], pl)
+		//data, err := proto.Marshal(pl)
+		k = k[size:]
 		if err != nil {
 			pipeline.errCh <- err
 			continue
 		}
 
-		rest := dataKey[len(dataKey)-8:]
-		binary.BigEndian.PutUint64(rest, uid)
-		mp.txn.AddDelta(string(dataKey), data)
-		//postingsPool.Put(pl)
+		binary.BigEndian.PutUint64(dataKey[len(dataKey)-8:], uid)
+		mp.txn.AddDelta(baseKey+string(dataKey[len(dataKey)-8:]), data)
 	}
 
 	pipeline.errCh <- nil
