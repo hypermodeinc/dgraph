@@ -54,6 +54,20 @@ type Txn struct {
 	lastUpdate time.Time
 
 	cache *LocalCache // This pointer does not get modified.
+
+	pointers [](*[]byte)
+}
+
+func (txn *Txn) AddPointer(p *[]byte) {
+	if txn.pointers == nil {
+		txn.pointers = make([](*[]byte), 1)
+		txn.pointers[0] = p
+	}
+	txn.pointers = append(txn.pointers, p)
+}
+
+func (txn *Txn) GetPointers() [](*[]byte) {
+	return txn.pointers
 }
 
 func (txn *Txn) AddDelta(key string, pl []byte) {

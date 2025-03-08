@@ -575,7 +575,6 @@ func (mp *MutationPipeline) ProcessListWithoutIndex(ctx context.Context, pipelin
 
 	k := allocatedBytes.Get().([]byte)
 	temp := k
-	defer allocatedBytes.Put(temp)
 
 	for edge := range pipeline.edges {
 		for {
@@ -624,6 +623,10 @@ func (mp *MutationPipeline) ProcessListWithoutIndex(ctx context.Context, pipelin
 
 	mp.txn.LockCache()
 	defer mp.txn.UnlockCache()
+
+	if len(postings) > 0 {
+		mp.txn.AddPointer(&temp)
+	}
 
 	dataKey := x.DataKey(pipeline.attr, 0)
 	baseKey := string(dataKey[:len(dataKey)-8]) // Avoid repeated conversion
@@ -1293,6 +1296,10 @@ func (n *node) commitOrAbort(pkey uint64, delta *pb.OracleDelta) error {
 			glog.Errorf("Error while applying txn status to disk (%d -> %d): %v",
 				start, commit, err)
 			panic(err)
+		}
+
+		for _, p := range txn.GetPointers() {
+			allocatedBytes.Put(&p)
 		}
 	}
 
