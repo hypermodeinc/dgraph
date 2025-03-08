@@ -1299,7 +1299,7 @@ func (n *node) commitOrAbort(pkey uint64, delta *pb.OracleDelta) error {
 		}
 
 		for _, p := range txn.GetPointers() {
-			allocatedBytes.Put(&p)
+			allocatedBytes.Put(*p)
 		}
 	}
 
