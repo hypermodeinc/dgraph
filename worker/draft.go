@@ -497,12 +497,6 @@ func (mp *MutationPipeline) ProcessListIndex(ctx context.Context, pipeline *Pred
 	pipeline.errCh <- nil
 }
 
-// var postingsMapPool = sync.Pool{
-// 	New: func() interface{} {
-// 		return make(map[uint64]*pb.PostingList, 1000)
-// 	},
-// }
-
 // var postingsPool = sync.Pool{
 // 	New: func() interface{} {
 // 		return &pb.PostingList{}
@@ -551,14 +545,24 @@ var postingPool = sync.Pool{
 	},
 }
 
-var postings = make(map[uint64]*pb.PostingList, 1000)
+var postingsMapPool = sync.Pool{
+	New: func() interface{} {
+		return make(map[uint64]*pb.PostingList, 1000)
+	},
+}
 
-var k = make([]byte, 500000)
+var allocatedBytes = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 5000000)
+	},
+}
 
 func (mp *MutationPipeline) ProcessListWithoutIndex(ctx context.Context, pipeline *PredicatePipeline) {
 	_, schemaExists := schema.State().Get(ctx, pipeline.attr)
 
-	defer clear(postings)
+	postings := postingsMapPool.Get().(map[uint64]*pb.PostingList)
+	clear(postings)
+	defer postingsMapPool.Put(postings) // Return to pool after use
 
 	// Get a batch of preallocated postings from the pool
 	mposts := postingPool.Get().([]pb.Posting)
@@ -569,10 +573,9 @@ func (mp *MutationPipeline) ProcessListWithoutIndex(ctx context.Context, pipelin
 	defer postingListPool.Put(postingsLists) // Return to pool after use
 	postingsListsIdx := 0
 
+	k := allocatedBytes.Get().([]byte)
 	temp := k
-	defer func() {
-		k = temp
-	}()
+	defer allocatedBytes.Put(temp)
 
 	for edge := range pipeline.edges {
 		for {
@@ -598,7 +601,6 @@ func (mp *MutationPipeline) ProcessListWithoutIndex(ctx context.Context, pipelin
 					postingsListsIdx++
 					postings[uid] = pl
 				}
-
 				// Use preallocated posting from pool
 				if mpostIdx >= len(mposts) {
 					mposts = postingPool.Get().([]pb.Posting) // Get new batch from pool
