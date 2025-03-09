@@ -147,7 +147,10 @@ func NewLocalCache(startTs uint64) *LocalCache {
 // NoCache returns a new LocalCache instance, which won't cache anything. Useful to pass startTs
 // around.
 func NoCache(startTs uint64) *LocalCache {
-	return &LocalCache{startTs: startTs}
+	return &LocalCache{
+		startTs: startTs,
+		plists:  make(map[string]*PredicateHolder),
+	}
 }
 
 func (lc *LocalCache) UpdateCommitTs(commitTs uint64) {
