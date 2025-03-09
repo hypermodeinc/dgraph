@@ -535,7 +535,8 @@ func TestReadSingleValue(t *testing.T) {
 		}
 		for ; j < i+6; j++ {
 			tx := NewTxn(j)
-			k, err := tx.cache.GetSinglePosting(key)
+			postingListHolder := tx.cache.GetOrCreatePredicateHolder(x.GalaxyAttr("value"))
+			k, err := postingListHolder.readPostingListAt(key)
 			require.NoError(t, err)
 			checkValue(t, ol, string(k.Postings[0].Value), j)
 		}

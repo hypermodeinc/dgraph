@@ -72,7 +72,7 @@ func TestCacheAfterDeltaUpdateRecieved(t *testing.T) {
 
 	// Write delta to disk and call update
 	txn := Oracle().RegisterStartTs(5)
-	txn.cache.deltas[string(key)] = delta
+	txn.cache.GetOrCreatePredicateHolder(attr).deltas[string(key)] = delta
 
 	writer := NewTxnWriter(pstore)
 	require.NoError(t, txn.CommitToDisk(writer, 15))
@@ -118,7 +118,7 @@ func BenchmarkTestCache(b *testing.B) {
 		}
 		l, _ := GetNoStore(key, 1)
 		// No index entries added here as we do not call AddMutationWithIndex.
-		txn.cache.SetIfAbsent(string(l.key), l)
+		txn.cache.SetIfAbsent(string(l.key), attr, l)
 		err := l.addMutation(context.Background(), txn, edge)
 		if err != nil {
 			panic(err)

@@ -138,7 +138,7 @@ func addMutation(t *testing.T, l *List, edge *pb.DirectedEdge, op uint32,
 		x.Fatalf("Unhandled op: %v", op)
 	}
 	txn := Oracle().RegisterStartTs(startTs)
-	txn.cache.SetIfAbsent(string(l.key), l)
+	txn.cache.SetIfAbsent(string(l.key), edge.Attr, l)
 	if index {
 		require.NoError(t, l.AddMutationWithIndex(context.Background(), edge, txn))
 	} else {

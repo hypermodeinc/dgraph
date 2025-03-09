@@ -512,8 +512,8 @@ func (lc *LocalCache) UpdateDeltasAndDiscardLists() {
 			}
 			lc.maxVersions[key] = list.maxVersion()
 		}
+		ph.plists = make(map[string]*List)
 	}
-	lc.plists = make(map[string]*PredicateHolder)
 }
 
 func (lc *LocalCache) fillPreds(ctx *api.TxnContext, gid uint32) {
