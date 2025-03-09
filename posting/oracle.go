@@ -184,7 +184,11 @@ func (txn *Txn) Update() {
 
 // Store is used by tests.
 func (txn *Txn) Store(pl *List) *List {
-	return txn.cache.SetIfAbsent(string(pl.key), pl)
+	pk, err := x.Parse(pl.key)
+	if err != nil {
+		return nil
+	}
+	return txn.cache.SetIfAbsent(string(pl.key), pk.Attr, pl)
 }
 
 type oracle struct {

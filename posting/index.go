@@ -771,7 +771,7 @@ func (r *rebuilder) RunWithoutTemp(ctx context.Context) error {
 	}
 
 	if os.Getenv("DEBUG_SHOW_HNSW_TREE") != "" {
-		printTreeStats(txn)
+		printTreeStats(txn, r.attr)
 	}
 
 	txn.Update()
@@ -795,7 +795,7 @@ func (r *rebuilder) RunWithoutTemp(ctx context.Context) error {
 		})
 }
 
-func printTreeStats(txn *Txn) {
+func printTreeStats(txn *Txn, attr string) {
 	txn.cache.Lock()
 
 	numLevels := 20
@@ -803,7 +803,7 @@ func printTreeStats(txn *Txn) {
 	numConnections := make([]int, numLevels)
 
 	var temp [][]uint64
-	for key, pl := range txn.cache.plists {
+	for key, pl := range txn.cache.plists[attr].plists {
 		pk, _ := x.Parse([]byte(key))
 		if strings.HasSuffix(pk.Attr, "__vector_") {
 			data := pl.getPosting(txn.cache.startTs)
@@ -1793,7 +1793,11 @@ func rebuildListType(ctx context.Context, rb *IndexRebuild) error {
 
 		// Ensure that list is in the cache run by txn. Otherwise, nothing would
 		// get updated.
-		pl = txn.cache.SetIfAbsent(string(pl.key), pl)
+		pk, err := x.Parse(pl.key)
+		if err != nil {
+			return []*pb.DirectedEdge{}, err
+		}
+		pl = txn.cache.SetIfAbsent(string(pl.key), pk.Attr, pl)
 		if err := pl.addMutation(ctx, txn, t); err != nil {
 			return []*pb.DirectedEdge{}, err
 		}

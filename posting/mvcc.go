@@ -500,7 +500,6 @@ func (ml *MemoryLayer) updateItemInCache(key string, delta []byte, startTs, comm
 			// Data was rolled up. TODO figure out how is UpdateCachedKeys getting delta which is pack)
 			ml.del([]byte(key))
 		}
-
 	}
 }
 
