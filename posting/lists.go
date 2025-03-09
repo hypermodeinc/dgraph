@@ -56,7 +56,7 @@ func GetNoStore(key []byte, readTs uint64) (rlist *List, err error) {
 }
 
 type PredicateHolder struct {
-	sync.RWMutex
+	x.SafeMutex
 	attr    string
 	startTs uint64
 
@@ -275,6 +275,7 @@ func (lc *LocalCache) GetOrCreatePredicateHolder(attr string) *PredicateHolder {
 }
 
 func (ph *PredicateHolder) SetIfAbsent(key string, updated *List) *List {
+	x.AssertTruef(!ph.AlreadyLocked(), "PredicateHolder is locked")
 	ph.Lock()
 	defer ph.Unlock()
 	if _, ok := ph.plists[key]; !ok {
@@ -299,16 +300,7 @@ func newPredicateHolder(attr string, startTs uint64) *PredicateHolder {
 }
 
 func (ph *PredicateHolder) Get(key []byte) (*List, error) {
-	ph.RLock()
-	defer ph.RUnlock()
 	return ph.getInternal(key, true)
-}
-
-// Set adds or updates a list for the given key
-func (ph *PredicateHolder) Set(key string, list *List) {
-	ph.Lock()
-	defer ph.Unlock()
-	ph.plists[key] = list
 }
 
 // Delete removes a list for the given key
