@@ -275,7 +275,6 @@ func (lc *LocalCache) GetOrCreatePredicateHolder(attr string) *PredicateHolder {
 }
 
 func (ph *PredicateHolder) SetIfAbsent(key string, updated *List) *List {
-	x.AssertTruef(!ph.AlreadyLocked(), "PredicateHolder is locked")
 	ph.Lock()
 	defer ph.Unlock()
 	if _, ok := ph.plists[key]; !ok {
