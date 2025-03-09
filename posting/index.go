@@ -49,19 +49,19 @@ type indexMutationInfo struct {
 
 // indexTokens return tokens, without the predicate prefix and
 // index rune, for specific tokenizers.
-func indexTokens(ctx context.Context, info *indexMutationInfo) ([]string, error) {
+func indexTokens(ctx context.Context, info *indexMutationInfo, su *pb.SchemaUpdate) ([]string, error) {
 	attr := info.edge.Attr
 	lang := info.edge.GetLang()
 
-	schemaType, err := schema.State().TypeOf(attr)
-	if err != nil || !schemaType.IsScalar() {
+	if !su.List && su.ValueType != pb.Posting_UID {
 		return nil, errors.Errorf("Cannot index attribute %s of type object.", attr)
 	}
 
-	if !schema.State().IsIndexed(ctx, attr) {
+	if su.Directive != pb.SchemaUpdate_INDEX {
 		return nil, errors.Errorf("Attribute %s is not indexed.", attr)
 	}
-	sv, err := types.Convert(info.val, schemaType)
+
+	sv, err := types.Convert(info.val, types.TypeID(su.ValueType))
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func indexTokens(ctx context.Context, info *indexMutationInfo) ([]string, error)
 // but only for the given tokenizers.
 // TODO - See if we need to pass op as argument as t should already have Op.
 
-func (txn *Txn) addIndexMutations(ctx context.Context, info *indexMutationInfo) ([]*pb.DirectedEdge, error) {
+func (txn *Txn) addIndexMutations(ctx context.Context, info *indexMutationInfo, su *pb.SchemaUpdate) ([]*pb.DirectedEdge, error) {
 	if info.tokenizers == nil {
 		info.tokenizers = schema.State().Tokenizer(ctx, info.edge.Attr)
 	}
@@ -179,7 +179,7 @@ func (txn *Txn) addIndexMutations(ctx context.Context, info *indexMutationInfo) 
 		}
 	}
 
-	tokens, err := indexTokens(ctx, info)
+	tokens, err := indexTokens(ctx, info, su)
 	if err != nil {
 		// This data is not indexable
 		return []*pb.DirectedEdge{}, err
@@ -369,10 +369,10 @@ func (txn *Txn) addReverseAndCountMutation(ctx context.Context, t *pb.DirectedEd
 	return nil
 }
 
-func (l *List) handleDeleteAll(ctx context.Context, edge *pb.DirectedEdge, txn *Txn) error {
-	isReversed := schema.State().IsReversed(ctx, edge.Attr)
-	isIndexed := schema.State().IsIndexed(ctx, edge.Attr)
-	hasCount := schema.State().HasCount(ctx, edge.Attr)
+func (l *List) handleDeleteAll(ctx context.Context, edge *pb.DirectedEdge, txn *Txn, su *pb.SchemaUpdate) error {
+	isReversed := su.Directive == pb.SchemaUpdate_REVERSE
+	isIndexed := su.Directive == pb.SchemaUpdate_INDEX
+	hasCount := su.Count
 	delEdge := &pb.DirectedEdge{
 		Attr:   edge.Attr,
 		Op:     edge.Op,
@@ -403,7 +403,7 @@ func (l *List) handleDeleteAll(ctx context.Context, edge *pb.DirectedEdge, txn *
 				edge:         edge,
 				val:          val,
 				op:           pb.DirectedEdge_DEL,
-			})
+			}, su)
 			return err
 		default:
 			return nil
@@ -495,7 +495,7 @@ func countAfterMutation(countBefore int, found bool, op pb.DirectedEdge_Op, shou
 }
 
 func (txn *Txn) addMutationHelper(ctx context.Context, l *List, doUpdateIndex bool,
-	hasCountIndex bool, t *pb.DirectedEdge) (types.Val, bool, countParams, error) {
+	hasCountIndex bool, t *pb.DirectedEdge, su *pb.SchemaUpdate) (types.Val, bool, countParams, error) {
 
 	t1 := time.Now()
 	l.Lock()
@@ -514,16 +514,13 @@ func (txn *Txn) addMutationHelper(ctx context.Context, l *List, doUpdateIndex bo
 		return fingerprintEdge(t)
 	}
 
-	// For countIndex we need to check if some posting already exists for uid and length of posting
-	// list, hence will are calling l.getPostingAndLength(). If doUpdateIndex or delNonListPredicate
-	// is true, we just need to get the posting for uid, hence calling l.findPosting().
 	countBefore, countAfter := 0, 0
 	var currPost *pb.Posting
 	var val types.Val
 	var found bool
 	var err error
 
-	isScalarPredicate := !schema.State().IsList(t.Attr)
+	isScalarPredicate := !su.List
 	delNonListPredicate := isScalarPredicate &&
 		t.Op == pb.DirectedEdge_DEL && string(t.Value) != x.Star
 
@@ -540,17 +537,8 @@ func (txn *Txn) addMutationHelper(ctx context.Context, l *List, doUpdateIndex bo
 		}
 	}
 
-	// If the predicate schema is not a list, ignore delete triples whose object is not a star or
-	// a value that does not match the existing value.
 	if delNonListPredicate {
 		newPost := NewPosting(t)
-
-		// This is a scalar value of non-list type and a delete edge mutation, so if the value
-		// given by the user doesn't match the value we have, we return found to be false, to avoid
-		// deleting the uid from index posting list.
-		// This second check is required because we fingerprint the scalar values as math.MaxUint64,
-		// so even though they might be different the check in the doUpdateIndex block above would
-		// return found to be true.
 		if found && !(bytes.Equal(currPost.Value, newPost.Value) &&
 			types.TypeID(currPost.ValType) == types.TypeID(newPost.ValType)) {
 			return val, false, emptyCountParams, nil
@@ -583,28 +571,28 @@ func (txn *Txn) addMutationHelper(ctx context.Context, l *List, doUpdateIndex bo
 
 // AddMutationWithIndex is addMutation with support for indexing. It also
 // supports reverse edges.
-func (l *List) AddMutationWithIndex(ctx context.Context, edge *pb.DirectedEdge, txn *Txn) error {
+func (l *List) AddMutationWithIndex(ctx context.Context, edge *pb.DirectedEdge, txn *Txn, su *pb.SchemaUpdate) error {
 	if edge.Attr == "" {
 		return errors.Errorf("Predicate cannot be empty for edge with subject: [%v], object: [%v]"+
 			" and value: [%v]", edge.Entity, edge.ValueId, edge.Value)
 	}
 
 	if edge.Op == pb.DirectedEdge_DEL && string(edge.Value) == x.Star {
-		return l.handleDeleteAll(ctx, edge, txn)
+		return l.handleDeleteAll(ctx, edge, txn, su)
 	}
 
-	doUpdateIndex := pstore != nil && schema.State().IsIndexed(ctx, edge.Attr)
-	hasCountIndex := schema.State().HasCount(ctx, edge.Attr)
+	doUpdateIndex := pstore != nil && (su.Directive == pb.SchemaUpdate_INDEX)
+	hasCountIndex := pstore != nil && su.Count
 
 	// Add reverse mutation irrespective of hasMutated, server crash can happen after
 	// mutation is synced and before reverse edge is synced
-	if (pstore != nil) && (edge.ValueId != 0) && schema.State().IsReversed(ctx, edge.Attr) {
+	if (pstore != nil) && (edge.ValueId != 0) && (su.Directive == pb.SchemaUpdate_REVERSE) {
 		if err := txn.addReverseAndCountMutation(ctx, edge); err != nil {
 			return err
 		}
 	}
 
-	val, found, cp, err := txn.addMutationHelper(ctx, l, doUpdateIndex, hasCountIndex, edge)
+	val, found, cp, err := txn.addMutationHelper(ctx, l, doUpdateIndex, hasCountIndex, edge, su)
 	if err != nil {
 		return err
 	}
@@ -622,7 +610,7 @@ func (l *List) AddMutationWithIndex(ctx context.Context, edge *pb.DirectedEdge, 
 				edge:       edge,
 				val:        val,
 				op:         pb.DirectedEdge_DEL,
-			}); err != nil {
+			}, su); err != nil {
 				return err
 			}
 		}
@@ -636,7 +624,7 @@ func (l *List) AddMutationWithIndex(ctx context.Context, edge *pb.DirectedEdge, 
 				edge:       edge,
 				val:        val,
 				op:         pb.DirectedEdge_SET,
-			}); err != nil {
+			}, su); err != nil {
 				return err
 			}
 		}
@@ -1410,7 +1398,7 @@ func rebuildTokIndex(ctx context.Context, rb *IndexRebuild) error {
 					edge:         edge,
 					val:          val,
 					op:           pb.DirectedEdge_SET,
-				})
+				}, rb.CurrentSchema)
 				switch err {
 				case ErrRetry:
 					time.Sleep(10 * time.Millisecond)

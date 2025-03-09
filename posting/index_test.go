@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dgraph-io/badger/v4"
@@ -29,6 +30,10 @@ func uids(l *List, readTs uint64) []uint64 {
 
 // indexTokensForTest is just a wrapper around indexTokens used for convenience.
 func indexTokensForTest(attr, lang string, val types.Val) ([]string, error) {
+	su, ok := schema.State().Get(context.Background(), x.GalaxyAttr(attr))
+	if !ok {
+		return nil, errors.New("schema not found")
+	}
 	return indexTokens(context.Background(), &indexMutationInfo{
 		tokenizers: schema.State().Tokenizer(context.Background(), x.GalaxyAttr(attr)),
 		edge: &pb.DirectedEdge{
@@ -36,7 +41,7 @@ func indexTokensForTest(attr, lang string, val types.Val) ([]string, error) {
 			Lang: lang,
 		},
 		val: val,
-	})
+	}, &su)
 }
 
 func TestIndexingInt(t *testing.T) {
@@ -139,8 +144,9 @@ func addMutation(t *testing.T, l *List, edge *pb.DirectedEdge, op uint32,
 	}
 	txn := Oracle().RegisterStartTs(startTs)
 	txn.cache.SetIfAbsent(string(l.key), edge.Attr, l)
+	su, _ := schema.State().Get(context.Background(), edge.Attr)
 	if index {
-		require.NoError(t, l.AddMutationWithIndex(context.Background(), edge, txn))
+		require.NoError(t, l.AddMutationWithIndex(context.Background(), edge, txn, &su))
 	} else {
 		require.NoError(t, l.addMutation(context.Background(), txn, edge))
 	}

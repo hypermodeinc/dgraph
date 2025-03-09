@@ -13,7 +13,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dgraph-io/badger/v4"
 	"github.com/golang/glog"
 	ostats "go.opencensus.io/stats"
 
@@ -160,25 +159,12 @@ func (txn *Txn) GetPredicateHolder(attr string) *PredicateHolder {
 }
 
 func (txn *Txn) GetScalarList(key []byte) (*List, error) {
-	l, err := txn.cache.GetFromDelta(key)
+	pk, err := x.Parse(key)
 	if err != nil {
 		return nil, err
 	}
-	if l.mutationMap.len() == 0 && len(l.plist.Postings) == 0 {
-		pl, err := txn.cache.readPostingListAt(key)
-		if err == badger.ErrKeyNotFound {
-			return l, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-		if pl.CommitTs == 0 {
-			l.mutationMap.setCurrentEntries(txn.StartTs, pl)
-		} else {
-			l.mutationMap.insertCommittedPostings(pl)
-		}
-	}
-	return l, nil
+	ph := txn.GetPredicateHolder(pk.Attr)
+	return ph.GetScalarList(key)
 }
 
 // Update calls UpdateDeltasAndDiscardLists on the local cache.

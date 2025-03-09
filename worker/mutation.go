@@ -113,7 +113,7 @@ func runMutation(ctx context.Context, edge *pb.DirectedEdge, txn *posting.Txn) e
 	if err != nil {
 		return err
 	}
-	return plist.AddMutationWithIndex(ctx, edge, txn)
+	return plist.AddMutationWithIndex(ctx, edge, txn, &su)
 }
 
 func undoSchemaUpdate(predicate string) {
