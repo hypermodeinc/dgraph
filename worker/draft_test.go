@@ -6,8 +6,13 @@
 package worker
 
 import (
+	"context"
+	"fmt"
+	"math/rand"
+	"os"
 	"testing"
 
+	"github.com/dgraph-io/badger/v4"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	"google.golang.org/protobuf/proto"
@@ -15,6 +20,7 @@ import (
 	"github.com/hypermodeinc/dgraph/v24/posting"
 	"github.com/hypermodeinc/dgraph/v24/protos/pb"
 	"github.com/hypermodeinc/dgraph/v24/raftwal"
+	"github.com/hypermodeinc/dgraph/v24/schema"
 	"github.com/hypermodeinc/dgraph/v24/x"
 )
 
@@ -36,6 +42,62 @@ func getEntryForCommit(index, startTs, commitTs uint64) raftpb.Entry {
 	x.Check2(x.MarshalToSizedBuffer(data[8:], proposal))
 	data = data[:8+sz]
 	return raftpb.Entry{Index: index, Term: 1, Type: raftpb.EntryNormal, Data: data}
+}
+
+func BenchmarkProcessListIndex(b *testing.B) {
+	dir, err := os.MkdirTemp("", "storetest_")
+	x.Check(err)
+	defer os.RemoveAll(dir)
+
+	opt := badger.DefaultOptions(dir)
+	ps, err := badger.OpenManaged(opt)
+	x.Check(err)
+	pstore = ps
+	// Not using posting list cache
+	posting.Init(ps, 0, false)
+	Init(ps)
+	err = schema.ParseBytes([]byte("testAttr: [string] @index(exact) ."), 1)
+	require.NoError(b, err)
+
+	ctx := context.Background()
+
+	b.Run("runMutation", func(b *testing.B) {
+		b.ResetTimer()
+		for j := 0; j < b.N; j++ {
+			txn := posting.Oracle().RegisterStartTs(5)
+			for i := 0; i < 1000; i++ {
+				edge := &pb.DirectedEdge{
+					Entity:    uint64(i + 1),
+					Attr:      "0-testAttr",
+					Value:     []byte(fmt.Sprintf("value%d", rand.Intn(1000))),
+					ValueType: pb.Posting_STRING,
+					Op:        pb.DirectedEdge_SET,
+				}
+				runMutation(ctx, edge, txn)
+			}
+			txn.Update()
+		}
+	})
+
+	b.Run("runPMutation", func(b *testing.B) {
+		b.ResetTimer()
+		for j := 0; j < b.N; j++ {
+			txn := posting.Oracle().RegisterStartTs(5)
+			mp := newMutationPipeline(txn)
+			for i := 0; i < 1000; i++ {
+				edge := &pb.DirectedEdge{
+					Entity:    uint64(i + 1),
+					Attr:      "0-testAttr",
+					Value:     []byte(fmt.Sprintf("value%d", rand.Intn(1000))),
+					ValueType: pb.Posting_STRING,
+					Op:        pb.DirectedEdge_SET,
+				}
+				mp.RunMutation(ctx, edge)
+			}
+			mp.Wait()
+			txn.Update()
+		}
+	})
 }
 
 func TestCalculateSnapshot(t *testing.T) {

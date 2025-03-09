@@ -221,16 +221,6 @@ func (lc *LocalCache) Find(pred []byte, filter func([]byte) bool) (uint64, error
 	return 0, badger.ErrKeyNotFound
 }
 
-// getNoStore returns the list for a given key without storing it in cache
-func (lc *LocalCache) getNoStore(key string, attr string) *List {
-	lc.RLock()
-	defer lc.RUnlock()
-	if ph, ok := lc.plists[attr]; ok {
-		return ph.getNoStore(key)
-	}
-	return nil
-}
-
 func (lc *LocalCache) GetPredicateHolder(attr string) *PredicateHolder {
 	lc.RLock()
 	defer lc.RUnlock()
@@ -280,9 +270,6 @@ func (lc *LocalCache) GetFromDelta(key []byte) (*List, error) {
 func (lc *LocalCache) UpdateDeltasAndDiscardLists() {
 	lc.Lock()
 	defer lc.Unlock()
-	if len(lc.plists) == 0 {
-		return
-	}
 
 	for _, ph := range lc.plists {
 		for key, list := range ph.plists {

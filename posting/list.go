@@ -2097,7 +2097,7 @@ func (l *List) findPostingWithItr(readTs uint64, uid uint64, pitr pIterator) (fo
 	if pos != nil {
 		return true, pos, nil
 	}
-	if !searchFurther {
+	if !searchFurther || l.plist == nil {
 		return false, nil, nil
 	}
 

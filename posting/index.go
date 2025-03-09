@@ -581,7 +581,7 @@ func (l *List) AddMutationWithIndex(ctx context.Context, edge *pb.DirectedEdge, 
 		return l.handleDeleteAll(ctx, edge, txn, su)
 	}
 
-	doUpdateIndex := pstore != nil && (su.Directive == pb.SchemaUpdate_INDEX)
+	doUpdateIndex := pstore != nil && (len(su.IndexSpecs) > 0 || len(su.Tokenizer) > 0)
 	hasCountIndex := pstore != nil && su.Count
 
 	// Add reverse mutation irrespective of hasMutated, server crash can happen after

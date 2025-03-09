@@ -7,6 +7,7 @@ package posting
 
 import (
 	"context"
+	"encoding/binary"
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
@@ -30,21 +31,90 @@ type PredicateHolder struct {
 	// deltas keep track of the updates made by txn. These must be kept around until written to disk
 	// during commit.
 	deltas map[string][]byte // Store deltas at predicate level
+
+	dataLists map[uint64]*List
 }
 
 func newPredicateHolder(attr string, startTs uint64) *PredicateHolder {
 	return &PredicateHolder{
-		attr:    attr,
-		plists:  make(map[string]*List),
-		deltas:  make(map[string][]byte),
-		startTs: startTs,
+		attr:      attr,
+		plists:    make(map[string]*List),
+		deltas:    make(map[string][]byte),
+		dataLists: make(map[uint64]*List),
+		startTs:   startTs,
 	}
 }
 
-func (ph *PredicateHolder) getNoStore(key string) *List {
+func (ph *PredicateHolder) GetDataList(uid uint64) *List {
 	ph.RLock()
 	defer ph.RUnlock()
-	return ph.plists[key]
+	return ph.dataLists[uid]
+}
+
+func (ph *PredicateHolder) SetDataList(uid uint64, updated *List) {
+	ph.Lock()
+	defer ph.Unlock()
+	ph.dataLists[uid] = updated
+}
+
+func (ph *PredicateHolder) GetPartialDataList(uid uint64) *List {
+	ph.Lock()
+	defer ph.Unlock()
+	if val, ok := ph.dataLists[uid]; !ok {
+		key := x.DataKey(ph.attr, uid)
+		pl, err := ph.readPostingListAt(key)
+		if err != nil {
+			return nil
+		}
+
+		l := &List{
+			key:         key,
+			mutationMap: newMutableLayer(),
+		}
+
+		l.mutationMap.setCurrentEntries(ph.startTs, pl)
+		ph.dataLists[uid] = l
+		return l
+	} else {
+		return val
+	}
+}
+
+func (ph *PredicateHolder) GetDataListFromDisk(uid uint64) *List {
+	ph.Lock()
+	defer ph.Unlock()
+	if val, ok := ph.dataLists[uid]; !ok {
+		key := x.DataKey(ph.attr, uid)
+		pl, err := getNew(key, pstore, ph.startTs)
+		if err != nil {
+			return nil
+		}
+		ph.dataLists[uid] = pl
+	} else {
+		return val
+	}
+	return nil
+}
+
+func (ph *PredicateHolder) GetDataListFromDelta(uid uint64) *List {
+	ph.Lock()
+	defer ph.Unlock()
+	if _, ok := ph.dataLists[uid]; !ok {
+		ph.dataLists[uid] = &List{
+			mutationMap: newMutableLayer(),
+		}
+	}
+	return ph.dataLists[uid]
+}
+
+func (ph *PredicateHolder) UpdateUidDelta() {
+	dataKey := x.DataKey(ph.attr, 0)
+	ph.Lock()
+	defer ph.Unlock()
+	for uid, list := range ph.dataLists {
+		binary.BigEndian.PutUint64(dataKey[len(dataKey)-8:], uid)
+		ph.deltas[string(dataKey)] = list.getMutation(ph.startTs)
+	}
 }
 
 func (ph *PredicateHolder) SetIfAbsent(key string, updated *List) *List {
@@ -137,6 +207,10 @@ func (ph *PredicateHolder) readPostingListAt(key []byte) (*pb.PostingList, error
 }
 
 func (ph *PredicateHolder) GetScalarList(key []byte) (*List, error) {
+	return ph.getScalarList(key)
+}
+
+func (ph *PredicateHolder) getScalarList(key []byte) (*List, error) {
 	l, err := ph.getFromDelta(key)
 	if err != nil {
 		return nil, err
