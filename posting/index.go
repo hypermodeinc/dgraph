@@ -966,15 +966,17 @@ func (r *rebuilder) Run(ctx context.Context) error {
 		// Convert data into deltas.
 		streamTxn.Update()
 		// txn.cache.Lock() is not required because we are the only one making changes to txn.
-		for key, data := range streamTxn.cache.deltas {
-			version := atomic.AddUint64(&counter, 1)
-			kv := bpb.KV{
-				Key:      []byte(key),
-				Value:    data,
-				UserMeta: []byte{BitDeltaPosting},
-				Version:  version,
+		for _, ph := range streamTxn.cache.plists {
+			for key, data := range ph.deltas {
+				version := atomic.AddUint64(&counter, 1)
+				kv := bpb.KV{
+					Key:      []byte(key),
+					Value:    data,
+					UserMeta: []byte{BitDeltaPosting},
+					Version:  version,
+				}
+				kvs = append(kvs, &kv)
 			}
-			kvs = append(kvs, &kv)
 		}
 
 		return &bpb.KVList{Kv: kvs}, nil

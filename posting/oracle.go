@@ -155,6 +155,10 @@ func (txn *Txn) GetFromDelta(key []byte) (*List, error) {
 	return txn.cache.GetFromDelta(key)
 }
 
+func (txn *Txn) GetPredicateHolder(attr string) *PredicateHolder {
+	return txn.cache.GetOrCreatePredicateHolder(attr)
+}
+
 func (txn *Txn) GetScalarList(key []byte) (*List, error) {
 	l, err := txn.cache.GetFromDelta(key)
 	if err != nil {
@@ -321,8 +325,10 @@ func (o *oracle) ProcessDelta(delta *pb.OracleDelta) {
 	for _, status := range delta.Txns {
 		txn := o.pendingTxns[status.StartTs]
 		if txn != nil && status.CommitTs > 0 {
-			for k := range txn.cache.deltas {
-				IncrRollup.addKeyToBatch([]byte(k), 0)
+			for _, ph := range txn.cache.plists {
+				for key := range ph.deltas {
+					IncrRollup.addKeyToBatch([]byte(key), 0)
+				}
 			}
 		}
 		delete(o.pendingTxns, status.StartTs)
@@ -379,9 +385,11 @@ func (o *oracle) GetTxn(startTs uint64) *Txn {
 func (txn *Txn) matchesDelta(ok func(key []byte) bool) bool {
 	txn.Lock()
 	defer txn.Unlock()
-	for key := range txn.cache.deltas {
-		if ok([]byte(key)) {
-			return true
+	for _, ph := range txn.cache.plists {
+		for key := range ph.deltas {
+			if ok([]byte(key)) {
+				return true
+			}
 		}
 	}
 	return false

@@ -277,8 +277,10 @@ func (txn *Txn) CommitToDisk(writer *TxnWriter, commitTs uint64) error {
 	defer cache.Unlock()
 
 	var keys []string
-	for key := range cache.deltas {
-		keys = append(keys, key)
+	for _, ph := range cache.plists {
+		for key := range ph.deltas {
+			keys = append(keys, key)
+		}
 	}
 
 	defer func() {
@@ -297,7 +299,11 @@ func (txn *Txn) CommitToDisk(writer *TxnWriter, commitTs uint64) error {
 		err := writer.update(commitTs, func(btxn *badger.Txn) error {
 			for ; idx < len(keys); idx++ {
 				key := keys[idx]
-				data := cache.deltas[key]
+				pk, err := x.Parse([]byte(key))
+				if err != nil {
+					return err
+				}
+				data := cache.plists[pk.Attr].deltas[key]
 				if len(data) == 0 {
 					continue
 				}
@@ -307,7 +313,7 @@ func (txn *Txn) CommitToDisk(writer *TxnWriter, commitTs uint64) error {
 					// not output anything here.
 					continue
 				}
-				err := btxn.SetEntry(&badger.Entry{
+				err = btxn.SetEntry(&badger.Entry{
 					Key:      []byte(key),
 					Value:    data,
 					UserMeta: BitDeltaPosting,
@@ -510,8 +516,10 @@ func (txn *Txn) UpdateCachedKeys(commitTs uint64) {
 	}
 
 	memoryLayer.wait()
-	for key, delta := range txn.cache.deltas {
-		memoryLayer.updateItemInCache(key, delta, txn.StartTs, commitTs)
+	for _, ph := range txn.cache.plists {
+		for key, delta := range ph.deltas {
+			memoryLayer.updateItemInCache(key, delta, txn.StartTs, commitTs)
+		}
 	}
 }
 

@@ -54,6 +54,7 @@ func isDeletePredicateEdge(edge *pb.DirectedEdge) bool {
 // runMutation goes through all the edges and applies them.
 func runMutation(ctx context.Context, edge *pb.DirectedEdge, txn *posting.Txn) error {
 	ctx = schema.GetWriteContext(ctx)
+	postingHolder := txn.GetPredicateHolder(edge.Attr)
 
 	// We shouldn't check whether this Alpha serves this predicate or not. Membership information
 	// isn't consistent across the entire cluster. We should just apply whatever is given to us.
@@ -87,18 +88,18 @@ func runMutation(ctx context.Context, edge *pb.DirectedEdge, txn *posting.Txn) e
 	switch {
 	case len(edge.Lang) == 0 && !isList:
 		// Scalar Predicates, without lang
-		getFn = txn.GetScalarList
+		getFn = postingHolder.GetScalarList
 	case len(edge.Lang) > 0 || su.GetCount():
 		// Language or Count Index
-		getFn = txn.Get
+		getFn = postingHolder.Get
 	case edge.Op == pb.DirectedEdge_DEL:
 		// Covers various delete cases to keep things simple.
-		getFn = txn.Get
+		getFn = postingHolder.Get
 	default:
 		// Only count index needs to be read. For other indexes on list, we don't need to read any data.
 		// For indexes on scalar prediactes, only the last element needs to be left.
 		// Delete cases covered above.
-		getFn = txn.GetFromDelta
+		getFn = postingHolder.GetFromDelta
 	}
 
 	t := time.Now()

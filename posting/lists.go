@@ -56,7 +56,17 @@ func GetNoStore(key []byte, readTs uint64) (rlist *List, err error) {
 }
 
 type PredicateHolder struct {
+	sync.RWMutex
+	attr    string
+	startTs uint64
+
+	// plists are posting lists in memory. They can be discarded to reclaim space.
 	plists map[string]*List
+
+	// The keys for these maps is a string representation of the Badger key for the posting list.
+	// deltas keep track of the updates made by txn. These must be kept around until written to disk
+	// during commit.
+	deltas map[string][]byte // Store deltas at predicate level
 }
 
 // LocalCache stores a cache of posting lists and deltas.
@@ -67,11 +77,6 @@ type LocalCache struct {
 
 	startTs  uint64
 	commitTs uint64
-
-	// The keys for these maps is a string representation of the Badger key for the posting list.
-	// deltas keep track of the updates made by txn. These must be kept around until written to disk
-	// during commit.
-	deltas map[string][]byte
 
 	// max committed timestamp of the read posting lists.
 	maxVersions map[string]uint64
@@ -134,7 +139,6 @@ func NewViLocalCache(delegate *LocalCache) *viLocalCache {
 func NewLocalCache(startTs uint64) *LocalCache {
 	return &LocalCache{
 		startTs:     startTs,
-		deltas:      make(map[string][]byte),
 		plists:      make(map[string]*PredicateHolder),
 		maxVersions: make(map[string]uint64),
 	}
@@ -234,69 +238,107 @@ func (lc *LocalCache) Find(pred []byte, filter func([]byte) bool) (uint64, error
 	return 0, badger.ErrKeyNotFound
 }
 
+func (ph *PredicateHolder) getNoStore(key string) *List {
+	ph.RLock()
+	defer ph.RUnlock()
+	return ph.plists[key]
+}
+
+// getNoStore returns the list for a given key without storing it in cache
 func (lc *LocalCache) getNoStore(key string, attr string) *List {
 	lc.RLock()
 	defer lc.RUnlock()
-	if l, ok := lc.plists[attr]; ok {
-		if list, ok := l.plists[key]; ok {
-			return list
-		}
+	if ph, ok := lc.plists[attr]; ok {
+		return ph.getNoStore(key)
 	}
 	return nil
 }
 
-// SetIfAbsent adds the list for the specified key to the cache. If a list for the same
-// key already exists, the cache will not be modified and the existing list
-// will be returned instead. This behavior is meant to prevent the goroutines
-// using the cache from ending up with an orphaned version of a list.
+func (lc *LocalCache) GetPredicateHolder(attr string) *PredicateHolder {
+	lc.RLock()
+	defer lc.RUnlock()
+	return lc.plists[attr]
+}
+
+func (lc *LocalCache) GetOrCreatePredicateHolder(attr string) *PredicateHolder {
+	ph := lc.GetPredicateHolder(attr)
+	if ph == nil {
+		ph = newPredicateHolder(attr, lc.startTs)
+		lc.Lock()
+		defer lc.Unlock()
+		lc.plists[attr] = ph
+	}
+	return ph
+}
+
+func (ph *PredicateHolder) SetIfAbsent(key string, updated *List) *List {
+	ph.Lock()
+	defer ph.Unlock()
+	if _, ok := ph.plists[key]; !ok {
+		ph.plists[key] = updated
+	}
+	return ph.plists[key]
+}
+
+// SetIfAbsent adds the list for the specified key to the cache
 func (lc *LocalCache) SetIfAbsent(key string, attr string, updated *List) *List {
-	lc.Lock()
-	defer lc.Unlock()
-	if l, ok := lc.plists[attr]; ok {
-		if list, ok := l.plists[key]; ok {
-			return list
-		}
-		l.plists[key] = updated
-	} else {
-		m := newPredicateHolder(attr)
-		lc.plists[attr] = m
-		m.plists[key] = updated
-	}
-	return updated
+	ph := lc.GetOrCreatePredicateHolder(attr)
+	return ph.SetIfAbsent(key, updated)
 }
 
-func newPredicateHolder(attr string) *PredicateHolder {
+func newPredicateHolder(attr string, startTs uint64) *PredicateHolder {
 	return &PredicateHolder{
-		plists: make(map[string]*List),
+		attr:    attr,
+		plists:  make(map[string]*List),
+		deltas:  make(map[string][]byte),
+		startTs: startTs,
 	}
 }
 
-func (lc *LocalCache) getInternal(key []byte, attr string, readFromDisk bool) (*List, error) {
+func (ph *PredicateHolder) Get(key []byte) (*List, error) {
+	ph.RLock()
+	defer ph.RUnlock()
+	return ph.getInternal(key, true)
+}
+
+// Set adds or updates a list for the given key
+func (ph *PredicateHolder) Set(key string, list *List) {
+	ph.Lock()
+	defer ph.Unlock()
+	ph.plists[key] = list
+}
+
+// Delete removes a list for the given key
+func (ph *PredicateHolder) Delete(key string) {
+	ph.Lock()
+	defer ph.Unlock()
+	delete(ph.plists, key)
+}
+
+// Len returns the number of lists in this holder
+func (ph *PredicateHolder) Len() int {
+	ph.RLock()
+	defer ph.RUnlock()
+	return len(ph.plists)
+}
+
+// getInternal retrieves or creates a new list for the given key
+func (ph *PredicateHolder) getInternal(key []byte, readFromDisk bool) (*List, error) {
 	skey := string(key)
-	getNewPlistNil := func() (*List, error) {
-		lc.RLock()
-		defer lc.RUnlock()
-		if lc.plists == nil {
-			lc.plists = make(map[string]*PredicateHolder)
-			lc.plists[attr] = newPredicateHolder(attr)
-			return getNew(key, pstore, lc.startTs)
-		}
-		if l, ok := lc.plists[attr]; ok {
-			if list, ok := l.plists[skey]; ok {
-				return list, nil
-			}
-		}
-		return nil, nil
-	}
 
-	if l, err := getNewPlistNil(); l != nil || err != nil {
-		return l, err
+	// Try to get from cache first
+	ph.RLock()
+	if list, ok := ph.plists[skey]; ok {
+		ph.RUnlock()
+		return list, nil
 	}
+	ph.RUnlock()
 
+	// Create new list if not found
 	var pl *List
 	if readFromDisk {
 		var err error
-		pl, err = getNew(key, pstore, lc.startTs)
+		pl, err = getNew(key, pstore, ph.startTs)
 		if err != nil {
 			return nil, err
 		}
@@ -308,17 +350,22 @@ func (lc *LocalCache) getInternal(key []byte, attr string, readFromDisk bool) (*
 		}
 	}
 
-	// If we just brought this posting list into memory and we already have a delta for it, let's
-	// apply it before returning the list.
-	lc.RLock()
-	if delta, ok := lc.deltas[skey]; ok && len(delta) > 0 {
-		pl.setMutation(lc.startTs, delta)
+	// Apply any pending deltas
+	ph.RLock()
+	if delta, ok := ph.deltas[skey]; ok && len(delta) > 0 {
+		pl.setMutation(ph.startTs, delta)
 	}
-	lc.RUnlock()
-	return lc.SetIfAbsent(skey, attr, pl), nil
+	ph.RUnlock()
+
+	return ph.SetIfAbsent(skey, pl), nil
 }
 
 func (lc *LocalCache) readPostingListAt(key []byte) (*pb.PostingList, error) {
+	ph := lc.GetOrCreatePredicateHolder(string(key))
+	return ph.readPostingListAt(key)
+}
+
+func (pc *PredicateHolder) readPostingListAt(key []byte) (*pb.PostingList, error) {
 	start := time.Now()
 	defer func() {
 		pk, _ := x.Parse(key)
@@ -330,7 +377,7 @@ func (lc *LocalCache) readPostingListAt(key []byte) (*pb.PostingList, error) {
 	}()
 
 	pl := &pb.PostingList{}
-	txn := pstore.NewTransactionAt(lc.startTs, false)
+	txn := pstore.NewTransactionAt(pc.startTs, false)
 	defer txn.Discard()
 
 	item, err := txn.Get(key)
@@ -345,43 +392,61 @@ func (lc *LocalCache) readPostingListAt(key []byte) (*pb.PostingList, error) {
 	return pl, err
 }
 
-// GetSinglePosting retrieves the cached version of the first item in the list associated with the
-// given key. This is used for retrieving the value of a scalar predicats.
-func (lc *LocalCache) GetSinglePosting(key []byte) (*pb.PostingList, error) {
-	// This would return an error if there is some data in the local cache, but we couldn't read it.
-	getListFromLocalCache := func() (*pb.PostingList, error) {
-		lc.RLock()
-		defer lc.RUnlock()
+func (ph *PredicateHolder) GetScalarList(key []byte) (*List, error) {
+	l, err := ph.getFromDelta(key)
+	if err != nil {
+		return nil, err
+	}
+	if l.mutationMap.len() == 0 && len(l.plist.Postings) == 0 {
+		pl, err := ph.GetSinglePosting(key)
+		if err == badger.ErrKeyNotFound {
+			return l, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if pl.CommitTs == 0 {
+			l.mutationMap.setCurrentEntries(ph.startTs, pl)
+		} else {
+			l.mutationMap.insertCommittedPostings(pl)
+		}
+	}
+	return l, nil
+}
 
-		pl := &pb.PostingList{}
-		if delta, ok := lc.deltas[string(key)]; ok && len(delta) > 0 {
+// GetSinglePosting retrieves the cached version of the first item in the list
+func (ph *PredicateHolder) GetSinglePosting(key []byte) (*pb.PostingList, error) {
+	skey := string(key)
+
+	// Check deltas first
+	checkInMemory := func() (*pb.PostingList, error) {
+		ph.RLock()
+		if delta, ok := ph.deltas[skey]; ok && len(delta) > 0 {
+			ph.RUnlock()
+			pl := &pb.PostingList{}
 			err := proto.Unmarshal(delta, pl)
 			return pl, err
 		}
 
-		pk, err := x.Parse(key)
-		if err != nil {
-			return nil, err
+		// Check cached list
+		if list, ok := ph.plists[skey]; ok {
+			ph.RUnlock()
+			return list.StaticValue(ph.startTs)
 		}
-
-		if l, ok := lc.plists[pk.Attr]; ok {
-			if list, ok := l.plists[string(key)]; ok {
-				return list.StaticValue(lc.startTs)
-			}
-		}
-
+		ph.RUnlock()
 		return nil, nil
 	}
 
+	// Read from disk if not founc() (*pb.PostingList, error) {
 	getPostings := func() (*pb.PostingList, error) {
-		pl, err := getListFromLocalCache()
+		pl, err := checkInMemory()
 		// If both pl and err are empty, that means that there was no data in local cache, hence we should
 		// read the data from badger.
 		if pl != nil || err != nil {
 			return pl, err
 		}
 
-		return lc.readPostingListAt(key)
+		return ph.readPostingListAt(key)
 	}
 
 	pl, err := getPostings()
@@ -413,7 +478,18 @@ func (lc *LocalCache) Get(key []byte) (*List, error) {
 	if err != nil {
 		return nil, err
 	}
-	return lc.getInternal(key, pk.Attr, true)
+	ph := lc.GetOrCreatePredicateHolder(pk.Attr)
+	return ph.getInternal(key, true)
+}
+
+func (ph *PredicateHolder) GetFromDelta(key []byte) (*List, error) {
+	return ph.getFromDelta(key)
+}
+
+func (ph *PredicateHolder) getFromDelta(key []byte) (*List, error) {
+	ph.RLock()
+	defer ph.RUnlock()
+	return ph.getInternal(key, false)
 }
 
 // GetFromDelta gets the cached version of the list without reading from disk
@@ -424,7 +500,8 @@ func (lc *LocalCache) GetFromDelta(key []byte) (*List, error) {
 	if err != nil {
 		return nil, err
 	}
-	return lc.getInternal(key, pk.Attr, false)
+	ph := lc.GetOrCreatePredicateHolder(pk.Attr)
+	return ph.getInternal(key, false)
 }
 
 // UpdateDeltasAndDiscardLists updates the delta cache before removing the stored posting lists.
@@ -439,7 +516,7 @@ func (lc *LocalCache) UpdateDeltasAndDiscardLists() {
 		for key, list := range ph.plists {
 			data := list.getMutation(lc.startTs)
 			if len(data) > 0 {
-				lc.deltas[key] = data
+				ph.deltas[key] = data
 			}
 			lc.maxVersions[key] = list.maxVersion()
 		}
@@ -450,7 +527,7 @@ func (lc *LocalCache) UpdateDeltasAndDiscardLists() {
 func (lc *LocalCache) fillPreds(ctx *api.TxnContext, gid uint32) {
 	lc.RLock()
 	defer lc.RUnlock()
-	for key := range lc.deltas {
+	for key := range lc.maxVersions {
 		pk, err := x.Parse([]byte(key))
 		x.Check(err)
 		if len(pk.Attr) == 0 {

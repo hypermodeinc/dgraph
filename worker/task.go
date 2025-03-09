@@ -418,6 +418,8 @@ func (qs *queryState) handleValuePostings(ctx context.Context, args funcArgs) er
 	hasLang := schema.State().HasLang(q.Attr)
 	getMultiplePosting := q.DoCount || q.ExpandAll || listType || hasLang || q.FacetParam != nil
 
+	postingHolder := qs.cache.GetOrCreatePredicateHolder(q.Attr)
+
 	calculate := func(start, end int) error {
 		x.AssertTrue(start%width == 0)
 		out := &pb.Result{}
@@ -437,7 +439,7 @@ func (qs *queryState) handleValuePostings(ctx context.Context, args funcArgs) er
 			fcs := &pb.FacetsList{FacetsList: make([]*pb.Facets, 0)} // TODO Figure out how it is stored
 
 			if !getMultiplePosting {
-				pl, err := qs.cache.GetSinglePosting(key)
+				pl, err := postingHolder.GetSinglePosting(key)
 				if err != nil {
 					return err
 				}
