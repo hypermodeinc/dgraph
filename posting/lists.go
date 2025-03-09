@@ -490,8 +490,6 @@ func (ph *PredicateHolder) GetFromDelta(key []byte) (*List, error) {
 }
 
 func (ph *PredicateHolder) getFromDelta(key []byte) (*List, error) {
-	ph.RLock()
-	defer ph.RUnlock()
 	return ph.getInternal(key, false)
 }
 
