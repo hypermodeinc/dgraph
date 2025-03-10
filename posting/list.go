@@ -750,6 +750,43 @@ func getPostingFromPool(txn *Txn) *pb.Posting {
 }
 
 // NewPosting takes the given edge and returns its equivalent representation as a posting.
+func NewPosting1(t *pb.DirectedEdge) *pb.Posting {
+	var op uint32
+	switch t.Op {
+	case pb.DirectedEdge_SET:
+		op = Set
+	case pb.DirectedEdge_OVR:
+		op = Ovr
+	case pb.DirectedEdge_DEL:
+		op = Del
+	default:
+		x.Fatalf("Unhandled operation: %+v", t)
+	}
+
+	var postingType pb.Posting_PostingType
+	switch {
+	case len(t.Lang) > 0:
+		postingType = pb.Posting_VALUE_LANG
+	case t.ValueId == 0:
+		postingType = pb.Posting_VALUE
+	default:
+		postingType = pb.Posting_REF
+	}
+
+	p := &pb.Posting{
+		Uid:         t.ValueId,
+		Value:       t.Value,
+		ValType:     t.ValueType,
+		PostingType: postingType,
+		LangTag:     []byte(t.Lang),
+		Op:          op,
+		Facets:      t.Facets,
+	}
+
+	return p
+}
+
+// NewPosting takes the given edge and returns its equivalent representation as a posting.
 func NewPosting(t *pb.DirectedEdge, txn *Txn) *pb.Posting {
 	var op uint32
 	switch t.Op {

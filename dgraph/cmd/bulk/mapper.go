@@ -394,7 +394,7 @@ func (m *mapper) createPostings(nq dql.NQuad,
 
 	m.schema.validateType(de, nq.ObjectValue == nil)
 
-	p := posting.NewPosting(de)
+	p := posting.NewPosting1(de)
 	sch := m.schema.getSchema(x.NamespaceAttr(nq.GetNamespace(), nq.GetPredicate()))
 	if nq.GetObjectValue() != nil {
 		lang := de.GetLang()
@@ -418,7 +418,7 @@ func (m *mapper) createPostings(nq dql.NQuad,
 	x.AssertTruef(nq.GetObjectValue() == nil, "only has reverse schema if object is UID")
 	de.Entity, de.ValueId = de.ValueId, de.Entity
 	m.schema.validateType(de, true)
-	rp := posting.NewPosting(de)
+	rp := posting.NewPosting1(de)
 
 	de.Entity, de.ValueId = de.ValueId, de.Entity // de reused so swap back.
 
