@@ -53,7 +53,7 @@ func indexTokens(ctx context.Context, info *indexMutationInfo, su *pb.SchemaUpda
 	attr := info.edge.Attr
 	lang := info.edge.GetLang()
 
-	if !su.List && su.ValueType != pb.Posting_UID {
+	if !su.List && su.ValueType == pb.Posting_UID {
 		return nil, errors.Errorf("Cannot index attribute %s of type object.", attr)
 	}
 
@@ -514,6 +514,9 @@ func (txn *Txn) addMutationHelper(ctx context.Context, l *List, doUpdateIndex bo
 		return fingerprintEdge(t)
 	}
 
+	// For countIndex we need to check if some posting already exists for uid and length of posting
+	// list, hence will are calling l.getPostingAndLength(). If doUpdateIndex or delNonListPredicate
+	// is true, we just need to get the posting for uid, hence calling l.findPosting().
 	countBefore, countAfter := 0, 0
 	var currPost *pb.Posting
 	var val types.Val
@@ -537,8 +540,17 @@ func (txn *Txn) addMutationHelper(ctx context.Context, l *List, doUpdateIndex bo
 		}
 	}
 
+	// If the predicate schema is not a list, ignore delete triples whose object is not a star or
+	// a value that does not match the existing value.
 	if delNonListPredicate {
 		newPost := NewPosting(t)
+
+		// This is a scalar value of non-list type and a delete edge mutation, so if the value
+		// given by the user doesn't match the value we have, we return found to be false, to avoid
+		// deleting the uid from index posting list.
+		// This second check is required because we fingerprint the scalar values as math.MaxUint64,
+		// so even though they might be different the check in the doUpdateIndex block above would
+		// return found to be true.
 		if found && !(bytes.Equal(currPost.Value, newPost.Value) &&
 			types.TypeID(currPost.ValType) == types.TypeID(newPost.ValType)) {
 			return val, false, emptyCountParams, nil
@@ -556,8 +568,7 @@ func (txn *Txn) addMutationHelper(ctx context.Context, l *List, doUpdateIndex bo
 	}
 
 	if hasCountIndex {
-		pk, _ := x.Parse(l.key)
-		shouldCountOneUid := isScalarPredicate && !pk.IsReverse()
+		shouldCountOneUid := su.List && su.Directive == pb.SchemaUpdate_REVERSE
 		countAfter = countAfterMutation(countBefore, found, t.Op, shouldCountOneUid)
 		return val, found, countParams{
 			attr:        t.Attr,

@@ -172,7 +172,12 @@ func (pp *PredicatePipeline) runPredicateMutation(ctx context.Context) {
 					"GetLru took %s", dur)
 			}
 		}
-		plist.AddMutationWithIndex(ctx, edge, pp.txn, &su)
+		x.AssertTrue(plist != nil)
+		err = plist.AddMutationWithIndex(ctx, edge, pp.txn, &su)
+		if err != nil {
+			pp.errCh <- err
+			return
+		}
 	}
 
 	postingHolder.UpdateUidDelta()
