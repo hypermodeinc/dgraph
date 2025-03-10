@@ -141,7 +141,7 @@ func (lsuite *LicenseTestSuite) TestEnterpriseLicenseWithGraphqlEndPoint() {
 }
 
 func assertLicenseNotEnabled(t *testing.T, hcli *dgraphapi.HTTPClient, user string) {
-	response, err := hcli.GetZeroState()
+	response, err := hcli.GetLicenseInfo()
 	require.NoError(t, err)
 
 	require.Equal(t, response.Extensions["user"], user)

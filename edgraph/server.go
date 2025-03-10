@@ -33,6 +33,7 @@ import (
 
 	"github.com/dgraph-io/dgo/v240"
 	"github.com/dgraph-io/dgo/v240/protos/api"
+	apiv25 "github.com/dgraph-io/dgo/v240/protos/api.v25"
 	"github.com/hypermodeinc/dgraph/v24/chunker"
 	"github.com/hypermodeinc/dgraph/v24/conn"
 	"github.com/hypermodeinc/dgraph/v24/dql"
@@ -1880,6 +1881,55 @@ func (s *Server) CheckVersion(ctx context.Context, c *api.Check) (v *api.Version
 	v = new(api.Version)
 	v.Tag = x.Version()
 	return v, nil
+}
+
+func (s *ServerV25) InitiateSnapShotStream(ctx context.Context,
+	c *apiv25.InitiateSnapShotStreamRequest) (v *apiv25.InitiateSnapShotStreamResponse, err error) {
+	leaders := make(map[uint32]string)
+	ms := worker.GetMembershipState()
+
+	for groupID, n := range ms.Groups {
+		for _, a := range n.Members {
+			if a.Leader {
+				leaders[uint32(groupID)] = a.GrpcAddr
+			}
+		}
+	}
+
+	drainMode := &pb.Drainmode{State: true}
+	if err := worker.ProposeDrain(ctx, drainMode); err != nil {
+		return nil, err
+	}
+
+	resp := &apiv25.InitiateSnapShotStreamResponse{
+		LeaderAlphas: leaders,
+	}
+
+	return resp, nil
+}
+
+func (s *ServerV25) StreamPSnapshot(stream apiv25.Dgraph_StreamPSnapshotServer) error {
+	leaders := make(map[uint32]string)
+	ms := worker.GetMembershipState()
+
+	for groupID, n := range ms.Groups {
+		for _, a := range n.Members {
+			if a.Leader {
+				leaders[uint32(groupID)] = a.GrpcAddr
+			}
+		}
+	}
+
+	if err := worker.FlushKvs(stream); err != nil {
+		return err
+	}
+
+	drainMode := &pb.Drainmode{State: false}
+	if err := worker.ProposeDrain(stream.Context(), drainMode); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // -------------------------------------------------------------------------------------------------

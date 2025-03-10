@@ -11,7 +11,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/blevesearch/bleve/v2 v2.4.4
 	github.com/dgraph-io/badger/v4 v4.6.0
-	github.com/dgraph-io/dgo/v240 v240.1.1-0.20250304130327-2843f027cbe2
+	github.com/dgraph-io/dgo/v240 v240.1.1-0.20250310071638-edbfb65921ae
 	github.com/dgraph-io/gqlgen v0.13.2
 	github.com/dgraph-io/gqlparser/v2 v2.2.2
 	github.com/dgraph-io/graphql-transport-ws v0.0.0-20210511143556-2cef522f1f15

@@ -678,6 +678,10 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 		n.elog.Printf("Applying Oracle Delta for key: %d", key)
 		return n.commitOrAbort(key, proposal.Delta)
 
+	case proposal.Drainmode != nil:
+		x.UpdateDrainingMode(proposal.Drainmode.State)
+		return nil
+
 	case proposal.Snapshot != nil:
 		existing, err := n.Store.Snapshot()
 		if err != nil {

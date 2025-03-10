@@ -284,6 +284,10 @@ func run() {
 		x.WorkerConfig.MyAddr = fmt.Sprintf("localhost:%d", x.PortZeroGrpc+opts.portOffset)
 	}
 
+	if x.WorkerConfig.MyGrpcAddr == "" {
+		x.WorkerConfig.MyGrpcAddr = fmt.Sprintf("localhost:%d", x.Config.PortOffset+x.PortGrpc)
+	}
+
 	nodeId := opts.raft.GetUint64("idx")
 	if nodeId == 0 {
 		log.Fatalf("ERROR: raft.idx flag cannot be 0. Please set idx to a unique positive integer.")

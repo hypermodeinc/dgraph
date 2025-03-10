@@ -636,6 +636,10 @@ func run() {
 	removeOnUpdate := cache.GetBool("remove-on-update")
 	cachePercent, err := x.GetCachePercentages(cachePercentage, 3)
 	x.Check(err)
+	x.CachePercent = cachePercent
+	x.RemoveOnUpdate = removeOnUpdate
+	x.TotalCache = totalCache
+
 	postingListCacheSize := (cachePercent[0] * (totalCache << 20)) / 100
 	pstoreBlockCacheSize := (cachePercent[1] * (totalCache << 20)) / 100
 	pstoreIndexCacheSize := (cachePercent[2] * (totalCache << 20)) / 100

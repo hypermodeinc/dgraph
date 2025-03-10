@@ -842,7 +842,7 @@ func (c *LocalCluster) serverURL(server, endpoint string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	url := "0.0.0.0:" + pubPort + endpoint
+	url := GetLocalHostUrl(pubPort, endpoint)
 	return url, nil
 }
 
@@ -1188,4 +1188,8 @@ func (c *LocalCluster) GetZeroGrpcPublicPort() (string, error) {
 
 func (c *LocalCluster) GetTempDir() string {
 	return c.tempBinDir
+}
+
+func GetLocalHostUrl(pubPort, endpoint string) string {
+	return "0.0.0.0:" + pubPort + endpoint
 }
