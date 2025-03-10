@@ -543,8 +543,7 @@ func (n *node) applyMutations(ctx context.Context, proposal *pb.Proposal) (rerr 
 		for _, edge := range m.Edges {
 			mp.RunMutation(ctx, edge)
 		}
-		mp.Wait()
-		return nil
+		return mp.Wait()
 	}
 
 	process := func(edges []*pb.DirectedEdge) error {

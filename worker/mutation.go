@@ -78,11 +78,18 @@ func (mp *MutationPipeline) RunMutation(ctx context.Context, edges *pb.DirectedE
 	pipeline.edges <- edges
 }
 
-func (mp *MutationPipeline) Wait() {
+func (mp *MutationPipeline) Wait() error {
 	for _, pipeline := range mp.predicatePipelines {
 		close(pipeline.edges)
 	}
 	mp.wg.Wait()
+	for _, pipeline := range mp.predicatePipelines {
+		err := <-pipeline.errCh
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (mp *MutationPipeline) getOrCreatePipeline(ctx context.Context, predicate string) *PredicatePipeline {
@@ -98,6 +105,7 @@ func (mp *MutationPipeline) newPredicatePipeline(ctx context.Context, predicate 
 		edges:     make(chan *pb.DirectedEdge, 1000),
 		txn:       mp.txn,
 		wg:        mp.wg,
+		errCh:     make(chan error, 1),
 	}
 	mp.predicatePipelines[predicate] = p
 	go func() {
@@ -108,30 +116,33 @@ func (mp *MutationPipeline) newPredicatePipeline(ctx context.Context, predicate 
 	return p
 }
 
-func (pp *PredicatePipeline) runPredicateMutation(ctx context.Context) error {
+func (pp *PredicatePipeline) runPredicateMutation(ctx context.Context) {
 	postingHolder := pp.txn.GetPredicateHolder(pp.predicate)
 	su, ok := schema.State().Get(ctx, pp.predicate)
 
 	for edge := range pp.edges {
 		if edge.Op != pb.DirectedEdge_DEL {
 			if !ok {
-				return errors.Errorf("runMutation: Unable to find schema for %s", edge.Attr)
+				pp.errCh <- errors.Errorf("runMutation: Unable to find schema for %s", edge.Attr)
+				return
 			}
 		}
 
 		if isDeletePredicateEdge(edge) {
-			return errors.New("We should never reach here")
+			pp.errCh <- errors.New("We should never reach here")
+			return
 		}
 
 		// Once mutation comes via raft we do best effort conversion
 		// Type check is done before proposing mutation, in case schema is not
 		// present, some invalid entries might be written initially
 		if err := ValidateAndConvert(edge, &su); err != nil {
-			return err
+			pp.errCh <- err
+			return
 		}
 
 		isList := su.GetList()
-		var getFn func(uid uint64) *posting.List
+		var getFn func(uid uint64) (*posting.List, error)
 		switch {
 		case len(edge.Lang) == 0 && !isList:
 			// Scalar Predicates, without lang
@@ -150,19 +161,22 @@ func (pp *PredicatePipeline) runPredicateMutation(ctx context.Context) error {
 		}
 
 		t := time.Now()
-		plist := getFn(edge.Entity)
+		plist, err := getFn(edge.Entity)
+		if err != nil {
+			pp.errCh <- err
+			return
+		}
 		if dur := time.Since(t); dur > time.Millisecond {
 			if span := otrace.FromContext(ctx); span != nil {
 				span.Annotatef([]otrace.Attribute{otrace.BoolAttribute("slow-get", true)},
 					"GetLru took %s", dur)
 			}
 		}
-		x.AssertTrue(plist != nil)
 		plist.AddMutationWithIndex(ctx, edge, pp.txn, &su)
 	}
 
 	postingHolder.UpdateUidDelta()
-	return nil
+	pp.errCh <- nil
 }
 
 // runMutation goes through all the edges and applies them.

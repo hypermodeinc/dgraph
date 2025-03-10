@@ -57,14 +57,14 @@ func (ph *PredicateHolder) SetDataList(uid uint64, updated *List) {
 	ph.dataLists[uid] = updated
 }
 
-func (ph *PredicateHolder) GetPartialDataList(uid uint64) *List {
+func (ph *PredicateHolder) GetPartialDataList(uid uint64) (*List, error) {
 	ph.Lock()
 	defer ph.Unlock()
 	if val, ok := ph.dataLists[uid]; !ok {
 		key := x.DataKey(ph.attr, uid)
 		pl, err := ph.readPostingListAt(key)
 		if err != nil {
-			return nil
+			return nil, err
 		}
 
 		l := &List{
@@ -74,29 +74,29 @@ func (ph *PredicateHolder) GetPartialDataList(uid uint64) *List {
 
 		l.mutationMap.setCurrentEntries(ph.startTs, pl)
 		ph.dataLists[uid] = l
-		return l
+		return l, nil
 	} else {
-		return val
+		return val, nil
 	}
 }
 
-func (ph *PredicateHolder) GetDataListFromDisk(uid uint64) *List {
+func (ph *PredicateHolder) GetDataListFromDisk(uid uint64) (*List, error) {
 	ph.Lock()
 	defer ph.Unlock()
 	if val, ok := ph.dataLists[uid]; !ok {
 		key := x.DataKey(ph.attr, uid)
 		pl, err := getNew(key, pstore, ph.startTs)
 		if err != nil {
-			return nil
+			return nil, err
 		}
 		ph.dataLists[uid] = pl
+		return pl, nil
 	} else {
-		return val
+		return val, nil
 	}
-	return nil
 }
 
-func (ph *PredicateHolder) GetDataListFromDelta(uid uint64) *List {
+func (ph *PredicateHolder) GetDataListFromDelta(uid uint64) (*List, error) {
 	ph.Lock()
 	defer ph.Unlock()
 	if _, ok := ph.dataLists[uid]; !ok {
@@ -104,7 +104,7 @@ func (ph *PredicateHolder) GetDataListFromDelta(uid uint64) *List {
 			mutationMap: newMutableLayer(),
 		}
 	}
-	return ph.dataLists[uid]
+	return ph.dataLists[uid], nil
 }
 
 func (ph *PredicateHolder) UpdateUidDelta() {
