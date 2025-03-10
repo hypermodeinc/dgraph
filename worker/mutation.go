@@ -79,6 +79,9 @@ func (mp *MutationPipeline) RunMutation(ctx context.Context, edges *pb.DirectedE
 }
 
 func (mp *MutationPipeline) Wait() error {
+	if len(mp.predicatePipelines) == 0 {
+		return nil
+	}
 	for _, pipeline := range mp.predicatePipelines {
 		close(pipeline.edges)
 	}
