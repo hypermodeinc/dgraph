@@ -63,7 +63,7 @@ func (ph *PredicateHolder) GetPartialDataList(uid uint64) (*List, error) {
 	if val, ok := ph.dataLists[uid]; !ok {
 		key := x.DataKey(ph.attr, uid)
 		pl, err := ph.readPostingListAt(key)
-		if err != nil {
+		if err != nil && err != badger.ErrKeyNotFound {
 			return nil, err
 		}
 
@@ -72,7 +72,9 @@ func (ph *PredicateHolder) GetPartialDataList(uid uint64) (*List, error) {
 			mutationMap: newMutableLayer(),
 		}
 
-		l.mutationMap.setCurrentEntries(ph.startTs, pl)
+		if pl != nil {
+			l.mutationMap.setCurrentEntries(ph.startTs, pl)
+		}
 		ph.dataLists[uid] = l
 		return l, nil
 	} else {
