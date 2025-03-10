@@ -8,6 +8,7 @@ package worker
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -85,6 +86,7 @@ func (mp *MutationPipeline) Wait() error {
 	for _, pipeline := range mp.predicatePipelines {
 		close(pipeline.edges)
 	}
+	fmt.Println("Waiting for pipelines to finish", len(mp.predicatePipelines))
 	mp.wg.Wait()
 	for _, pipeline := range mp.predicatePipelines {
 		err := <-pipeline.errCh
