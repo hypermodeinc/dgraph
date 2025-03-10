@@ -541,6 +541,8 @@ func (txn *Txn) addMutationHelper(ctx context.Context, l *List, doUpdateIndex bo
 		}
 	}
 
+	// fmt.Println("HERE", delNonListPredicate, found, currPost, hasCountIndex, l.print())
+	// debug.PrintStack()
 	// If the predicate schema is not a list, ignore delete triples whose object is not a star or
 	// a value that does not match the existing value.
 	if delNonListPredicate {

@@ -388,6 +388,7 @@ func (mm *MutableLayer) populateUidMap(pl *pb.PostingList) {
 
 // insertPosting inserts a new posting in the mutable layers. It updates the currentUids map.
 func (mm *MutableLayer) insertPosting(mpost *pb.Posting, hasCountIndex bool) {
+	//fmt.Println("INSERT POSTING", mpost, mm.currentEntries.Postings)
 	if mm.readTs != 0 {
 		x.AssertTrue(mpost.StartTs == mm.readTs)
 	}
@@ -405,8 +406,32 @@ func (mm *MutableLayer) insertPosting(mpost *pb.Posting, hasCountIndex bool) {
 		// current entries, we dont' insert the delete posting. If we insert the delete posting, there won't be
 		// any set posting in the list. This would mess up the count. We can do this for all types, however,
 		// there might be a performance hit becasuse of it.
-		mm.currentEntries.Postings = append(mm.currentEntries.Postings, mpost)
-		return
+		//mm.populateUidMap(mm.currentEntries)
+		//if postIndex, ok := mm.currentUids[mpost.Uid]; ok {
+		//	if hasCountIndex && mpost.Op == Del {
+		//		// If the posting was there before, just remove it from the map, and then remove it
+		//		// from the array.
+		//		post := mm.currentEntries.Postings[postIndex]
+		//		if post.Op == Del {
+		//			// No need to do anything
+		//			mm.currentEntries.Postings[postIndex] = mpost
+		//			return
+		//		}
+		//		res := mm.currentEntries.Postings[:postIndex]
+		//		if postIndex+1 <= len(mm.currentEntries.Postings) {
+		//			mm.currentEntries.Postings = append(res,
+		//				mm.currentEntries.Postings[(postIndex+1):]...)
+		//		}
+		//		mm.currentUids = nil
+		//		mm.currentEntries.Postings = res
+		//		return
+		//	}
+		//	mm.currentEntries.Postings[postIndex] = mpost
+		//} else {
+		//	mm.currentEntries.Postings = append(mm.currentEntries.Postings, mpost)
+		//	mm.currentUids[mpost.Uid] = len(mm.currentEntries.Postings) - 1
+		//}
+		//return
 	}
 
 	mm.currentEntries.Postings = append(mm.currentEntries.Postings, mpost)
@@ -424,6 +449,10 @@ func (mm *MutableLayer) print() string {
 
 func (l *List) print() string {
 	return fmt.Sprintf("minTs: %d, plist: %+v, mutationMap: %s", l.minTs, l.plist, l.mutationMap.print())
+}
+
+func (l *List) Print() {
+	fmt.Println(l.print())
 }
 
 // Return if piterator needs to be searched or not after mutable map and the posting if found.
@@ -860,7 +889,7 @@ func putPostingListInPool(pl *pb.PostingList) {
 // Ensure that you either abort the uncommitted postings or commit them before calling me.
 func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountIndex bool, txn *Txn) error {
 	l.AssertLock()
-	fmt.Println(mpost.Uid, mpost.Value, mpost.Op)
+	//fmt.Println("INSERTING EDGE", mpost.Uid, mpost.Value, mpost.Op)
 	x.AssertTrue(mpost.Op == Set || mpost.Op == Del || mpost.Op == Ovr)
 
 	if l.mutationMap == nil {

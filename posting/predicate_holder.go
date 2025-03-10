@@ -8,6 +8,7 @@ package posting
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
@@ -178,7 +179,8 @@ func (ph *PredicateHolder) UpdateUidDelta() {
 	defer ph.Unlock()
 	for uid, list := range ph.dataLists {
 		binary.BigEndian.PutUint64(dataKey[len(dataKey)-8:], uid)
-		ph.deltas[string(dataKey)] = list.getMutationAndRelease(ph.startTs)
+		data := list.getMutationAndRelease(ph.startTs)
+		ph.deltas[string(dataKey)] = data
 	}
 }
 
@@ -272,16 +274,23 @@ func (ph *PredicateHolder) readPostingListAt(key []byte) (*pb.PostingList, error
 }
 
 func (ph *PredicateHolder) GetScalarList(key []byte) (*List, error) {
-	return ph.getScalarList(key)
+	l, err := ph.getScalarList(key)
+	if err != nil {
+		return l, err
+	}
+	l = ph.SetIfAbsent(string(key), l)
+	fmt.Println("GET SCALAR LIST", ph.plists)
+	return l, nil
 }
 
 func (ph *PredicateHolder) getScalarList(key []byte) (*List, error) {
+	fmt.Println("GETTING SCALAR LIST", key)
 	l, err := ph.getFromDelta(key)
 	if err != nil {
 		return nil, err
 	}
 	if l.mutationMap.len() == 0 && len(l.plist.Postings) == 0 {
-		pl, err := ph.GetSinglePosting(key)
+		pl, err := ph.readPostingListAt(key)
 		if err == badger.ErrKeyNotFound {
 			return l, nil
 		}

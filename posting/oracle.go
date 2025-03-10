@@ -178,6 +178,10 @@ func (txn *Txn) GetScalarList(key []byte) (*List, error) {
 // Update calls UpdateDeltasAndDiscardLists on the local cache.
 func (txn *Txn) Update() {
 	txn.cache.UpdateDeltasAndDiscardLists()
+	for _, ph := range txn.cache.plists {
+		ph.UpdateUidDelta()
+		ph.UpdateIndexDelta()
+	}
 	for _, batch := range txn.batch {
 		postingListPool.Put(batch)
 	}
