@@ -118,8 +118,10 @@ func (txn *Txn) addIndexMutations(ctx context.Context, info *indexMutationInfo, 
 		Op:      info.op,
 	}
 
+	ph := txn.cache.GetPredicateHolder(attr)
+
 	for _, token := range tokens {
-		if err := txn.addIndexMutation(ctx, edge, token); err != nil {
+		if err := txn.addIndexMutation(ctx, edge, token, ph); err != nil {
 			return []*pb.DirectedEdge{}, err
 		}
 	}
@@ -197,12 +199,14 @@ func (txn *Txn) addVectorIndexMutations(ctx context.Context, info *indexMutation
 	return []*pb.DirectedEdge{}, nil
 }
 
-func (txn *Txn) addIndexMutation(ctx context.Context, edge *pb.DirectedEdge, token string) error {
-	key := x.IndexKey(edge.Attr, token)
-	plist, err := txn.cache.GetFromDelta(key)
+func (txn *Txn) addIndexMutation(ctx context.Context, edge *pb.DirectedEdge, token string, ph *PredicateHolder) error {
+	plist, err := ph.GetIndexListFromDelta(token)
 	if err != nil {
 		return err
 	}
+
+	key := x.IndexKey(edge.Attr, token)
+	plist.SetKey(&key)
 
 	x.AssertTrue(plist != nil)
 	if err = plist.addMutation(ctx, txn, edge); err != nil {

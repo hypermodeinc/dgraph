@@ -32,16 +32,18 @@ type PredicateHolder struct {
 	// during commit.
 	deltas map[string][]byte // Store deltas at predicate level
 
-	dataLists map[uint64]*List
+	dataLists  map[uint64]*List
+	indexLists map[string]*List
 }
 
 func newPredicateHolder(attr string, startTs uint64) *PredicateHolder {
 	return &PredicateHolder{
-		attr:      attr,
-		plists:    make(map[string]*List),
-		deltas:    make(map[string][]byte),
-		dataLists: make(map[uint64]*List),
-		startTs:   startTs,
+		attr:       attr,
+		plists:     make(map[string]*List),
+		deltas:     make(map[string][]byte),
+		dataLists:  make(map[uint64]*List),
+		indexLists: make(map[string]*List),
+		startTs:    startTs,
 	}
 }
 
@@ -55,6 +57,58 @@ func (ph *PredicateHolder) SetDataList(uid uint64, updated *List) {
 	ph.Lock()
 	defer ph.Unlock()
 	ph.dataLists[uid] = updated
+}
+
+func (ph *PredicateHolder) GetPartialIndexList(token string) (*List, error) {
+	ph.Lock()
+	defer ph.Unlock()
+	if val, ok := ph.indexLists[token]; !ok {
+		key := x.IndexKey(ph.attr, token)
+		pl, err := ph.readPostingListAt(key)
+		if err != nil && err != badger.ErrKeyNotFound {
+			return nil, err
+		}
+
+		l := &List{
+			key:         key,
+			mutationMap: newMutableLayer(),
+		}
+
+		if pl != nil {
+			l.mutationMap.setCurrentEntries(ph.startTs, pl)
+		}
+		ph.indexLists[token] = l
+		return l, nil
+	} else {
+		return val, nil
+	}
+}
+
+func (ph *PredicateHolder) GetIndexListFromDisk(token string) (*List, error) {
+	ph.Lock()
+	defer ph.Unlock()
+	if val, ok := ph.indexLists[token]; !ok {
+		key := x.IndexKey(ph.attr, token)
+		pl, err := getNew(key, pstore, ph.startTs)
+		if err != nil {
+			return nil, err
+		}
+		ph.indexLists[token] = pl
+		return pl, nil
+	} else {
+		return val, nil
+	}
+}
+
+func (ph *PredicateHolder) GetIndexListFromDelta(token string) (*List, error) {
+	ph.Lock()
+	defer ph.Unlock()
+	if _, ok := ph.indexLists[token]; !ok {
+		ph.indexLists[token] = &List{
+			mutationMap: newMutableLayer(),
+		}
+	}
+	return ph.indexLists[token], nil
 }
 
 func (ph *PredicateHolder) GetPartialDataList(uid uint64) (*List, error) {
@@ -107,6 +161,15 @@ func (ph *PredicateHolder) GetDataListFromDelta(uid uint64) (*List, error) {
 		}
 	}
 	return ph.dataLists[uid], nil
+}
+
+func (ph *PredicateHolder) UpdateIndexDelta() {
+	ph.Lock()
+	defer ph.Unlock()
+	for token, list := range ph.indexLists {
+		dataKey := x.IndexKey(ph.attr, token)
+		ph.deltas[string(dataKey)] = list.getMutationAndRelease(ph.startTs)
+	}
 }
 
 func (ph *PredicateHolder) UpdateUidDelta() {

@@ -188,6 +188,7 @@ func (pp *PredicatePipeline) runPredicateMutation(ctx context.Context) {
 	}
 
 	postingHolder.UpdateUidDelta()
+	postingHolder.UpdateIndexDelta()
 	pp.errCh <- nil
 }
 
