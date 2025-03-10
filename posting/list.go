@@ -860,6 +860,7 @@ func putPostingListInPool(pl *pb.PostingList) {
 // Ensure that you either abort the uncommitted postings or commit them before calling me.
 func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountIndex bool, txn *Txn) error {
 	l.AssertLock()
+	fmt.Println(mpost.Uid, mpost.Value, mpost.Op)
 	x.AssertTrue(mpost.Op == Set || mpost.Op == Del || mpost.Op == Ovr)
 
 	if l.mutationMap == nil {
