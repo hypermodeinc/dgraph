@@ -580,6 +580,10 @@ func (txn *Txn) addMutationHelper(ctx context.Context, l *List, doUpdateIndex bo
 	return val, found, emptyCountParams, nil
 }
 
+func (l *List) SetKey(key *[]byte) {
+	l.key = *key
+}
+
 // AddMutationWithIndex is addMutation with support for indexing. It also
 // supports reverse edges.
 func (l *List) AddMutationWithIndex(ctx context.Context, edge *pb.DirectedEdge, txn *Txn, su *pb.SchemaUpdate) error {

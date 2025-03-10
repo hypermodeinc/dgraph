@@ -8,7 +8,7 @@ package worker
 import (
 	"bytes"
 	"context"
-	"fmt"
+	"encoding/binary"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -86,7 +86,6 @@ func (mp *MutationPipeline) Wait() error {
 	for _, pipeline := range mp.predicatePipelines {
 		close(pipeline.edges)
 	}
-	fmt.Println("Waiting for pipelines to finish", len(mp.predicatePipelines))
 	mp.wg.Wait()
 	for _, pipeline := range mp.predicatePipelines {
 		err := <-pipeline.errCh
@@ -124,6 +123,7 @@ func (mp *MutationPipeline) newPredicatePipeline(ctx context.Context, predicate 
 func (pp *PredicatePipeline) runPredicateMutation(ctx context.Context) {
 	postingHolder := pp.txn.GetPredicateHolder(pp.predicate)
 	su, ok := schema.State().Get(ctx, pp.predicate)
+	dataKey := x.DataKey(pp.predicate, 0)
 
 	for edge := range pp.edges {
 		if edge.Op != pb.DirectedEdge_DEL {
@@ -178,6 +178,8 @@ func (pp *PredicatePipeline) runPredicateMutation(ctx context.Context) {
 			}
 		}
 		x.AssertTrue(plist != nil)
+		binary.BigEndian.PutUint64(dataKey[len(dataKey)-8:], edge.Entity)
+		plist.SetKey(&dataKey)
 		err = plist.AddMutationWithIndex(ctx, edge, pp.txn, &su)
 		if err != nil {
 			pp.errCh <- err
