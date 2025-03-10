@@ -53,6 +53,12 @@ type Txn struct {
 	lastUpdate time.Time
 
 	cache *LocalCache // This pointer does not get modified.
+
+	// Batch of posting lists for efficient allocation
+	batch []*postingListBatch
+
+	// Batch of postings for efficient allocation
+	postingBatch []*postingBatch
 }
 
 // struct to implement Txn interface from vector-indexer
@@ -138,9 +144,11 @@ func (vt *viTxn) UnlockKey(key []byte) {
 // NewTxn returns a new Txn instance.
 func NewTxn(startTs uint64) *Txn {
 	return &Txn{
-		StartTs:    startTs,
-		cache:      NewLocalCache(startTs),
-		lastUpdate: time.Now(),
+		StartTs:      startTs,
+		cache:        NewLocalCache(startTs),
+		lastUpdate:   time.Now(),
+		batch:        nil, // Will be initialized when first needed
+		postingBatch: nil, // Will be initialized when first needed
 	}
 }
 
@@ -170,6 +178,12 @@ func (txn *Txn) GetScalarList(key []byte) (*List, error) {
 // Update calls UpdateDeltasAndDiscardLists on the local cache.
 func (txn *Txn) Update() {
 	txn.cache.UpdateDeltasAndDiscardLists()
+	for _, batch := range txn.batch {
+		postingListPool.Put(batch)
+	}
+	for _, batch := range txn.postingBatch {
+		postingPool.Put(batch)
+	}
 }
 
 // Store is used by tests.

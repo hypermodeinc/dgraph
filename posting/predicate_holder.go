@@ -115,7 +115,7 @@ func (ph *PredicateHolder) UpdateUidDelta() {
 	defer ph.Unlock()
 	for uid, list := range ph.dataLists {
 		binary.BigEndian.PutUint64(dataKey[len(dataKey)-8:], uid)
-		ph.deltas[string(dataKey)] = list.getMutation(ph.startTs)
+		ph.deltas[string(dataKey)] = list.getMutationAndRelease(ph.startTs)
 	}
 }
 

@@ -44,6 +44,31 @@ func getEntryForCommit(index, startTs, commitTs uint64) raftpb.Entry {
 	return raftpb.Entry{Index: index, Term: 1, Type: raftpb.EntryNormal, Data: data}
 }
 
+func BenchmarkInsertPosting(b *testing.B) {
+
+	b.Run("insert1", func(b *testing.B) {
+		for j := 0; j < b.N; j++ {
+			a := &pb.PostingList{}
+			for i := 0; i < 1000; i++ {
+				a.Postings = append(a.Postings, &pb.Posting{
+					Uid: uint64(i),
+				})
+			}
+		}
+	})
+
+	b.Run("insert2", func(b *testing.B) {
+		a := &pb.PostingList{}
+		a.Postings = make([]*pb.Posting, 1000)
+		for j := 0; j < b.N; j++ {
+			for i := 0; i < 1000; i++ {
+				a.Postings = append(a.Postings, &pb.Posting{Uid: uint64(i)})
+			}
+			a.Postings = a.Postings[:0]
+		}
+	})
+}
+
 func BenchmarkProcessListIndex(b *testing.B) {
 	dir, err := os.MkdirTemp("", "storetest_")
 	x.Check(err)

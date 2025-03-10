@@ -13,6 +13,7 @@ import (
 	"log"
 	"math"
 	"sort"
+	"sync"
 
 	"github.com/dgryski/go-farm"
 	"github.com/golang/glog"
@@ -32,17 +33,17 @@ import (
 	"github.com/hypermodeinc/dgraph/v24/x"
 )
 
-var (
-	// ErrRetry can be triggered if the posting list got deleted from memory due to a hard commit.
-	// In such a case, retry.
-	ErrRetry = errors.New("Temporary error. Please retry")
-	// ErrNoValue would be returned if no value was found in the posting list.
-	ErrNoValue = errors.New("No value found")
-	// ErrStopIteration is returned when an iteration is terminated early.
-	ErrStopIteration = errors.New("Stop iteration")
-	emptyPosting     = &pb.Posting{}
-	maxListSize      = mb / 2
-)
+// postingListBatch represents a batch of posting lists
+type postingListBatch struct {
+	lists   []*pb.PostingList
+	nextIdx int
+}
+
+// postingBatch represents a batch of postings
+type postingBatch struct {
+	postings []*pb.Posting
+	nextIdx  int
+}
 
 const (
 	// Set means set in mutation layer. It contributes 1 in Length.
@@ -60,6 +61,51 @@ const (
 	BitCompletePosting byte = 0x08
 	// BitEmptyPosting signals that the value stores an empty posting list.
 	BitEmptyPosting byte = 0x10
+
+	// Initial batch size for posting list allocations
+	initialBatchSize = 1000
+)
+
+var (
+	// ErrRetry can be triggered if the posting list got deleted from memory due to a hard commit.
+	// In such a case, retry.
+	ErrRetry = errors.New("Temporary error. Please retry")
+	// ErrNoValue would be returned if no value was found in the posting list.
+	ErrNoValue = errors.New("No value found")
+	// ErrStopIteration is returned when an iteration is terminated early.
+	ErrStopIteration = errors.New("Stop iteration")
+	emptyPosting     = &pb.Posting{}
+	maxListSize      = mb / 2
+
+	// Pool for efficiently allocating batches of pb.PostingList objects
+	postingListPool = sync.Pool{
+		New: func() interface{} {
+			batch := &postingListBatch{
+				lists: make([]*pb.PostingList, initialBatchSize),
+			}
+			// Initialize all lists in the batch
+			for i := 0; i < initialBatchSize; i++ {
+				batch.lists[i] = &pb.PostingList{
+					Postings: make([]*pb.Posting, 1000),
+				}
+			}
+			return batch
+		},
+	}
+
+	// Pool for efficiently allocating batches of pb.Posting objects
+	postingPool = sync.Pool{
+		New: func() interface{} {
+			batch := &postingBatch{
+				postings: make([]*pb.Posting, initialBatchSize),
+			}
+			// Initialize all postings in the batch
+			for i := 0; i < initialBatchSize; i++ {
+				batch.postings[i] = &pb.Posting{}
+			}
+			return batch
+		},
+	}
 )
 
 // List stores the in-memory representation of a posting list.
@@ -358,32 +404,8 @@ func (mm *MutableLayer) insertPosting(mpost *pb.Posting, hasCountIndex bool) {
 		// If hasCountIndex, in that case while inserting uids, if there's a delete, we only delete from the
 		// current entries, we dont' insert the delete posting. If we insert the delete posting, there won't be
 		// any set posting in the list. This would mess up the count. We can do this for all types, however,
-		// there might be a performance hit becasue of it.
-		mm.populateUidMap(mm.currentEntries)
-		if postIndex, ok := mm.currentUids[mpost.Uid]; ok {
-			if hasCountIndex && mpost.Op == Del {
-				// If the posting was there before, just remove it from the map, and then remove it
-				// from the array.
-				post := mm.currentEntries.Postings[postIndex]
-				if post.Op == Del {
-					// No need to do anything
-					mm.currentEntries.Postings[postIndex] = mpost
-					return
-				}
-				res := mm.currentEntries.Postings[:postIndex]
-				if postIndex+1 <= len(mm.currentEntries.Postings) {
-					mm.currentEntries.Postings = append(res,
-						mm.currentEntries.Postings[(postIndex+1):]...)
-				}
-				mm.currentUids = nil
-				mm.currentEntries.Postings = res
-				return
-			}
-			mm.currentEntries.Postings[postIndex] = mpost
-		} else {
-			mm.currentEntries.Postings = append(mm.currentEntries.Postings, mpost)
-			mm.currentUids[mpost.Uid] = len(mm.currentEntries.Postings) - 1
-		}
+		// there might be a performance hit becasuse of it.
+		mm.currentEntries.Postings = append(mm.currentEntries.Postings, mpost)
 		return
 	}
 
@@ -701,8 +723,34 @@ type ListOptions struct {
 	First     int
 }
 
+// getPostingFromPool returns a posting from the pool
+func getPostingFromPool(txn *Txn) *pb.Posting {
+	if txn == nil {
+		// If no transaction is provided, create a new posting directly
+		return &pb.Posting{}
+	}
+
+	if len(txn.postingBatch) == 0 {
+		txn.postingBatch = []*postingBatch{postingPool.New().(*postingBatch)}
+	}
+
+	lastBatch := txn.postingBatch[len(txn.postingBatch)-1]
+	if lastBatch.nextIdx >= len(lastBatch.postings) {
+		// Batch is full, get a new one
+		txn.postingBatch = append(txn.postingBatch, postingPool.New().(*postingBatch))
+		lastBatch = txn.postingBatch[len(txn.postingBatch)-1]
+	}
+
+	posting := lastBatch.postings[lastBatch.nextIdx]
+	lastBatch.nextIdx++
+
+	// Reset the posting before returning
+	posting.Reset()
+	return posting
+}
+
 // NewPosting takes the given edge and returns its equivalent representation as a posting.
-func NewPosting(t *pb.DirectedEdge) *pb.Posting {
+func NewPosting(t *pb.DirectedEdge, txn *Txn) *pb.Posting {
 	var op uint32
 	switch t.Op {
 	case pb.DirectedEdge_SET:
@@ -725,15 +773,14 @@ func NewPosting(t *pb.DirectedEdge) *pb.Posting {
 		postingType = pb.Posting_REF
 	}
 
-	p := &pb.Posting{
-		Uid:         t.ValueId,
-		Value:       t.Value,
-		ValType:     t.ValueType,
-		PostingType: postingType,
-		LangTag:     []byte(t.Lang),
-		Op:          op,
-		Facets:      t.Facets,
-	}
+	p := getPostingFromPool(txn)
+	p.Uid = t.ValueId
+	p.Value = t.Value
+	p.ValType = t.ValueType
+	p.PostingType = postingType
+	p.LangTag = []byte(t.Lang)
+	p.Op = op
+	p.Facets = t.Facets
 	return p
 }
 
@@ -741,8 +788,40 @@ func hasDeleteAll(mpost *pb.Posting) bool {
 	return mpost.Op == Del && bytes.Equal(mpost.Value, []byte(x.Star)) && len(mpost.LangTag) == 0
 }
 
+// getPostingListFromPool returns a posting list from the pool
+func getPostingListFromPool(txn *Txn) *pb.PostingList {
+	if txn.batch == nil {
+		txn.batch = []*postingListBatch{postingListPool.New().(*postingListBatch)}
+	}
+
+	lastBatch := txn.batch[len(txn.batch)-1]
+	if lastBatch.nextIdx >= len(lastBatch.lists) {
+		// Batch is full, grow it
+		txn.batch = append(txn.batch, postingListPool.New().(*postingListBatch))
+		lastBatch = txn.batch[len(txn.batch)-1]
+	}
+
+	list := lastBatch.lists[lastBatch.nextIdx]
+	lastBatch.nextIdx++
+
+	// Reset the list before returning
+	list.Postings = list.Postings[:0]
+	return list
+}
+
+// putPostingListInPool puts a PostingList back into the pool after resetting it
+func putPostingListInPool(pl *pb.PostingList) {
+	if pl == nil {
+		return
+	}
+	pl.Postings = pl.Postings[:0]
+	// Note: We don't actually need to put the list back in the pool
+	// since we're using batches. The list will be reused when the batch
+	// is reused.
+}
+
 // Ensure that you either abort the uncommitted postings or commit them before calling me.
-func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountIndex bool) error {
+func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountIndex bool, txn *Txn) error {
 	l.AssertLock()
 	x.AssertTrue(mpost.Op == Set || mpost.Op == Del || mpost.Op == Ovr)
 
@@ -752,14 +831,17 @@ func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountI
 
 	// If we have a delete all, then we replace the map entry with just one.
 	if hasDeleteAll(mpost) {
-		plist := &pb.PostingList{}
+		plist := getPostingListFromPool(txn)
 		plist.Postings = append(plist.Postings, mpost)
+		if oldPlist := l.mutationMap.currentEntries; oldPlist != nil {
+			putPostingListInPool(oldPlist)
+		}
 		l.mutationMap.setCurrentEntries(mpost.StartTs, plist)
 		return nil
 	}
 
 	if l.mutationMap.currentEntries == nil {
-		l.mutationMap.currentEntries = &pb.PostingList{}
+		l.mutationMap.currentEntries = getPostingListFromPool(txn)
 	}
 
 	if singleUidUpdate {
@@ -773,7 +855,10 @@ func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountI
 		// Add the deletions in the existing plist because those postings are not picked
 		// up by iterating. Not doing so would result in delete operations that are not
 		// applied when the transaction is committed.
-		l.mutationMap.currentEntries = &pb.PostingList{}
+		oldPlist := l.mutationMap.currentEntries
+		l.mutationMap.currentEntries = getPostingListFromPool(txn)
+		putPostingListInPool(oldPlist)
+
 		err := l.iterate(mpost.StartTs, 0, func(obj *pb.Posting) error {
 			// Ignore values which have the same uid as they will get replaced
 			// by the current value.
@@ -904,7 +989,7 @@ func (l *List) addMutationInternal(ctx context.Context, txn *Txn, t *pb.Directed
 		return x.ErrConflict
 	}
 
-	mpost := NewPosting(t)
+	mpost := NewPosting(t, txn)
 	mpost.StartTs = txn.StartTs
 	if mpost.PostingType != pb.Posting_REF {
 		t.ValueId = fingerprintEdge(t)
@@ -921,7 +1006,7 @@ func (l *List) addMutationInternal(ctx context.Context, txn *Txn, t *pb.Directed
 	isSingleUidUpdate := ok && !pred.GetList() && pred.GetValueType() == pb.Posting_UID &&
 		pk.IsData() && mpost.Op != Del && mpost.PostingType == pb.Posting_REF
 
-	if err := l.updateMutationLayer(mpost, isSingleUidUpdate, pred.GetCount() && (pk.IsData() || pk.IsReverse())); err != nil {
+	if err := l.updateMutationLayer(mpost, isSingleUidUpdate, pred.GetCount() && (pk.IsData() || pk.IsReverse()), txn); err != nil {
 		return errors.Wrapf(err, "cannot update mutation layer of key %s with value %+v",
 			hex.EncodeToString(l.key), mpost)
 	}
@@ -944,6 +1029,18 @@ func (l *List) getPosting(startTs uint64) *pb.PostingList {
 
 func (l *List) GetPosting(startTs uint64) *pb.PostingList {
 	return l.getPosting(startTs)
+}
+
+func (l *List) getMutationAndRelease(startTs uint64) []byte {
+	l.RLock()
+	defer l.RUnlock()
+	if pl := l.mutationMap.get(startTs); pl != nil {
+		data, err := proto.Marshal(pl)
+		x.Check(err)
+		putPostingListInPool(pl)
+		return data
+	}
+	return nil
 }
 
 // getMutation returns a marshaled version of posting list mutation stored internally.

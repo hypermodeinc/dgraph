@@ -273,7 +273,7 @@ func (lc *LocalCache) UpdateDeltasAndDiscardLists() {
 
 	for _, ph := range lc.plists {
 		for key, list := range ph.plists {
-			data := list.getMutation(lc.startTs)
+			data := list.getMutationAndRelease(lc.startTs)
 			if len(data) > 0 {
 				ph.deltas[key] = data
 			}
