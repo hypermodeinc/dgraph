@@ -386,6 +386,10 @@ func (mm *MutableLayer) populateUidMap(pl *pb.PostingList) {
 
 	mm.currentUids = make(map[uint64]int, len(pl.Postings))
 	for i, post := range pl.Postings {
+		if post == nil {
+			fmt.Println("POPULATE UID MAP", pl.Postings, mm.currentUids)
+			panic("post is nil")
+		}
 		mm.currentUids[post.Uid] = i
 	}
 
