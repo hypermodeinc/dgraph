@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
-	"fmt"
 	"math"
 	"strconv"
 	"sync"
@@ -305,7 +304,6 @@ func (txn *Txn) CommitToDisk(writer *TxnWriter, commitTs uint64) error {
 					return err
 				}
 				data := cache.plists[pk.Attr].deltas[key]
-				fmt.Println("COMMIT TO DISK KEY", key, "data", data, pk)
 				if len(data) == 0 {
 					continue
 				}

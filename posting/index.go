@@ -201,6 +201,7 @@ func (txn *Txn) addVectorIndexMutations(ctx context.Context, info *indexMutation
 
 func (txn *Txn) addIndexMutation(ctx context.Context, edge *pb.DirectedEdge, token string, ph *PredicateHolder) error {
 	plist, err := ph.GetIndexListFromDelta(token)
+	//fmt.Println("ADD INDEX MUTATION", edge.Attr, edge.Entity, edge.ValueId, edge.Value, plist.key, plist.mutationMap.currentEntries, plist.mutationMap.currentUids, token)
 	if err != nil {
 		return err
 	}
@@ -571,7 +572,8 @@ func (txn *Txn) addMutationHelper(ctx context.Context, l *List, doUpdateIndex bo
 	}
 
 	if hasCountIndex {
-		shouldCountOneUid := su.List && su.Directive == pb.SchemaUpdate_REVERSE
+		pk, _ := x.Parse(l.key)
+		shouldCountOneUid := !su.List && !pk.IsReverse()
 		countAfter = countAfterMutation(countBefore, found, t.Op, shouldCountOneUid)
 		return val, found, countParams{
 			attr:        t.Attr,
@@ -590,6 +592,7 @@ func (l *List) SetKey(key *[]byte) {
 // AddMutationWithIndex is addMutation with support for indexing. It also
 // supports reverse edges.
 func (l *List) AddMutationWithIndex(ctx context.Context, edge *pb.DirectedEdge, txn *Txn, su *pb.SchemaUpdate) error {
+	//fmt.Println("ADD MUTATION WITH INDEX", edge.Attr, edge.Entity, edge.ValueId, edge.Value, l.key, l.mutationMap.currentEntries, l.mutationMap.currentUids)
 	if edge.Attr == "" {
 		return errors.Errorf("Predicate cannot be empty for edge with subject: [%v], object: [%v]"+
 			" and value: [%v]", edge.Entity, edge.ValueId, edge.Value)
@@ -1407,6 +1410,8 @@ func rebuildTokIndex(ctx context.Context, rb *IndexRebuild) error {
 	builder.fn = func(uid uint64, pl *List, txn *Txn) ([]*pb.DirectedEdge, error) {
 		edge := pb.DirectedEdge{Attr: rb.Attr, Entity: uid}
 		edges := []*pb.DirectedEdge{}
+
+		txn.GetPredicateHolder(rb.Attr)
 
 		processAddIndexMutation := func(edge *pb.DirectedEdge, val types.Val) ([]*pb.DirectedEdge, error) {
 			for {

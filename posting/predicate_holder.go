@@ -8,7 +8,6 @@ package posting
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
@@ -171,6 +170,7 @@ func (ph *PredicateHolder) UpdateIndexDelta() {
 		dataKey := x.IndexKey(ph.attr, token)
 		ph.deltas[string(dataKey)] = list.getMutationAndRelease(ph.startTs)
 	}
+	ph.indexLists = make(map[string]*List)
 }
 
 func (ph *PredicateHolder) UpdateUidDelta() {
@@ -182,6 +182,7 @@ func (ph *PredicateHolder) UpdateUidDelta() {
 		data := list.getMutationAndRelease(ph.startTs)
 		ph.deltas[string(dataKey)] = data
 	}
+	ph.dataLists = make(map[uint64]*List)
 }
 
 func (ph *PredicateHolder) SetIfAbsent(key string, updated *List) *List {
@@ -279,12 +280,12 @@ func (ph *PredicateHolder) GetScalarList(key []byte) (*List, error) {
 		return l, err
 	}
 	l = ph.SetIfAbsent(string(key), l)
-	fmt.Println("GET SCALAR LIST", ph.plists)
+	//fmt.Println("GET SCALAR LIST", ph.plists)
 	return l, nil
 }
 
 func (ph *PredicateHolder) getScalarList(key []byte) (*List, error) {
-	fmt.Println("GETTING SCALAR LIST", key)
+	//fmt.Println("GETTING SCALAR LIST", key)
 	l, err := ph.getFromDelta(key)
 	if err != nil {
 		return nil, err
