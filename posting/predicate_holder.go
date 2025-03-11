@@ -52,8 +52,8 @@ func newPredicateHolder(attr string, startTs uint64) *PredicateHolder {
 		dataLists:    make(map[uint64]*List),
 		indexLists:   make(map[string]*List),
 		startTs:      startTs,
-		batch:        []*postingListBatch{postingListPool.New().(*postingListBatch)},
-		postingBatch: []*postingBatch{postingPool.New().(*postingBatch)},
+		batch:        []*postingListBatch{postingListPool.Get().(*postingListBatch)},
+		postingBatch: []*postingBatch{postingPool.Get().(*postingBatch)},
 	}
 }
 
