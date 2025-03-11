@@ -112,7 +112,7 @@ func (mp *MutationPipeline) newPredicatePipeline(ctx context.Context, predicate 
 		errCh:     make(chan error, 1),
 	}
 	mp.predicatePipelines[predicate] = p
-	su, ok := schema.State().Get(ctx, pp.predicate)
+	su, ok := schema.State().Get(ctx, predicate)
 	numGo := 1
 	if ok {
 		if len(su.Tokenizer) > 2 {
