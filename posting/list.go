@@ -893,17 +893,6 @@ func getPostingListFromPool(txn *Txn) *pb.PostingList {
 	return list
 }
 
-// putPostingListInPool puts a PostingList back into the pool after resetting it
-func putPostingListInPool(pl *pb.PostingList) {
-	if pl == nil {
-		return
-	}
-	pl.Postings = pl.Postings[:0]
-	// Note: We don't actually need to put the list back in the pool
-	// since we're using batches. The list will be reused when the batch
-	// is reused.
-}
-
 // Ensure that you either abort the uncommitted postings or commit them before calling me.
 func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountIndex bool, txn *Txn) error {
 	l.AssertLock()
@@ -921,9 +910,6 @@ func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountI
 	if hasDeleteAll(mpost) {
 		plist := getPostingListFromPool(txn)
 		plist.Postings = append(plist.Postings, mpost)
-		if oldPlist := l.mutationMap.currentEntries; oldPlist != nil {
-			putPostingListInPool(oldPlist)
-		}
 		l.mutationMap.setCurrentEntries(mpost.StartTs, plist)
 		return nil
 	}
@@ -944,9 +930,7 @@ func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountI
 		// Add the deletions in the existing plist because those postings are not picked
 		// up by iterating. Not doing so would result in delete operations that are not
 		// applied when the transaction is committed.
-		oldPlist := l.mutationMap.currentEntries
 		l.mutationMap.currentEntries = getPostingListFromPool(txn)
-		putPostingListInPool(oldPlist)
 
 		err := l.iterate(mpost.StartTs, 0, func(obj *pb.Posting) error {
 			// Ignore values which have the same uid as they will get replaced
@@ -1128,7 +1112,6 @@ func (l *List) getMutationAndRelease(startTs uint64) []byte {
 	if pl := l.mutationMap.get(startTs); pl != nil {
 		data, err := proto.Marshal(pl)
 		x.Check(err)
-		putPostingListInPool(pl)
 		return data
 	}
 	return nil
