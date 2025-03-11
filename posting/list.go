@@ -379,6 +379,7 @@ func (mm *MutableLayer) populateUidMap(pl *pb.PostingList) {
 	//fmt.Println("POPULATE UID MAP", pl.Postings, mm.currentUids)
 	if mm.currentUids != nil {
 		if len(mm.currentUids) != len(pl.Postings) {
+			fmt.Println("POPULATE UID MAP", pl.Postings, mm.currentUids)
 			panic("currentUids and currentEntries.Postings length mismatch 1")
 		}
 		return
