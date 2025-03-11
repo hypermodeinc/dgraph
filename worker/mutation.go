@@ -105,7 +105,7 @@ func (mp *MutationPipeline) getOrCreatePipeline(ctx context.Context, predicate s
 
 func (mp *MutationPipeline) newPredicatePipeline(ctx context.Context, predicate string) *PredicatePipeline {
 	su, ok := schema.State().Get(ctx, predicate)
-	numGo := 1
+	numGo := 5
 	if ok {
 		if len(su.Tokenizer) > 2 {
 			numGo = 10
