@@ -797,7 +797,7 @@ func NewPosting(t *pb.DirectedEdge, ph *PredicateHolder) *pb.Posting {
 		postingType = pb.Posting_REF
 	}
 
-	p := ph.getPostingFromPool()
+	p := ph.dataPublisher.NewPosting()
 	p.Uid = t.ValueId
 	p.Value = t.Value
 	p.ValType = t.ValueType
@@ -827,7 +827,7 @@ func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountI
 
 	// If we have a delete all, then we replace the map entry with just one.
 	if hasDeleteAll(mpost) {
-		plist := ph.getPostingListFromPool()
+		plist := ph.dataPublisher.NewPostingList()
 		plist.Postings = append(plist.Postings, mpost)
 		l.mutationMap.setCurrentEntries(mpost.StartTs, plist)
 		return nil
@@ -835,7 +835,7 @@ func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountI
 
 	if l.mutationMap.currentEntries == nil {
 		//fmt.Println("GET POSTING LIST FROM POOL", l.key)
-		l.mutationMap.currentEntries = ph.getPostingListFromPool()
+		l.mutationMap.currentEntries = ph.dataPublisher.NewPostingList()
 	}
 
 	if singleUidUpdate {
@@ -849,7 +849,7 @@ func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountI
 		// Add the deletions in the existing plist because those postings are not picked
 		// up by iterating. Not doing so would result in delete operations that are not
 		// applied when the transaction is committed.
-		l.mutationMap.currentEntries = ph.getPostingListFromPool()
+		l.mutationMap.currentEntries = ph.dataPublisher.NewPostingList()
 
 		err := l.iterate(mpost.StartTs, 0, func(obj *pb.Posting) error {
 			// Ignore values which have the same uid as they will get replaced

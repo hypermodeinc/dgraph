@@ -38,22 +38,19 @@ type PredicateHolder struct {
 	dataLists  map[uint64]*List
 	indexLists map[string]*List
 
-	// Batches for efficient allocation
-	batch        []*postingListBatch
-	postingBatch []*postingBatch
+	dataPublisher *PostingListPublisher
 }
 
 func newPredicateHolder(attr string, startTs uint64) *PredicateHolder {
 	fmt.Println("newPredicateHolder", numNewPostingListBatches, numNewPostingBatches, numGetPostingListBatches, numGetPostingBatches, numPutPostingListBatches, numPutPostingBatches)
 	return &PredicateHolder{
-		attr:         attr,
-		plists:       make(map[string]*List),
-		deltas:       make(map[string][]byte),
-		dataLists:    make(map[uint64]*List),
-		indexLists:   make(map[string]*List),
-		startTs:      startTs,
-		batch:        []*postingListBatch{postingListPool.New().(*postingListBatch)},
-		postingBatch: []*postingBatch{postingPool.New().(*postingBatch)},
+		attr:          attr,
+		plists:        make(map[string]*List),
+		deltas:        make(map[string][]byte),
+		dataLists:     make(map[uint64]*List),
+		indexLists:    make(map[string]*List),
+		startTs:       startTs,
+		dataPublisher: NewPostingListPublisher(),
 	}
 }
 
@@ -390,6 +387,78 @@ var numNewPostingBatches = int64(0)
 var numGetPostingBatches = int64(0)
 var numPutPostingBatches = int64(0)
 
+type PostingListPublisher struct {
+	sync.Mutex
+
+	batch        []*postingListBatch
+	postingBatch []*postingBatch
+}
+
+func NewPostingListPublisher() *PostingListPublisher {
+	return &PostingListPublisher{
+		batch:        []*postingListBatch{postingListPool.Get().(*postingListBatch)},
+		postingBatch: []*postingBatch{postingPool.Get().(*postingBatch)},
+	}
+}
+
+func (ph *PostingListPublisher) NewPosting() *pb.Posting {
+	if len(ph.postingBatch) == 0 {
+		ph.postingBatch = []*postingBatch{postingPool.Get().(*postingBatch)}
+		atomic.AddInt64(&numGetPostingBatches, 1)
+	}
+
+	lastBatch := ph.postingBatch[len(ph.postingBatch)-1]
+	idx := atomic.LoadInt64(&lastBatch.nextIdx)
+	if idx >= int64(len(lastBatch.postings)) {
+		ph.Lock()
+		idx = atomic.LoadInt64(&lastBatch.nextIdx)
+		if idx >= int64(len(lastBatch.postings)) {
+			ph.postingBatch = append(ph.postingBatch, postingPool.Get().(*postingBatch))
+			atomic.AddInt64(&numGetPostingBatches, 1)
+			atomic.StoreInt64(&lastBatch.nextIdx, 0)
+		}
+		ph.Unlock()
+		// Batch is full, get a new one
+		return ph.NewPosting()
+	}
+
+	posting := lastBatch.postings[idx]
+	atomic.AddInt64(&lastBatch.nextIdx, 1)
+
+	// Reset the posting before returning
+	posting.Reset()
+	return posting
+}
+
+func (ph *PostingListPublisher) NewPostingList() *pb.PostingList {
+	if len(ph.batch) == 0 {
+		atomic.AddInt64(&numGetPostingListBatches, 1)
+		ph.batch = []*postingListBatch{postingListPool.Get().(*postingListBatch)}
+	}
+
+	lastBatch := ph.batch[len(ph.batch)-1]
+	atomic.AddInt64(&lastBatch.nextIdx, 1)
+	idx := atomic.LoadInt64(&lastBatch.nextIdx)
+	if idx >= int64(len(lastBatch.lists)) {
+		// Batch is full, get a new one
+		ph.Lock()
+		idx = atomic.LoadInt64(&lastBatch.nextIdx)
+		if idx >= int64(len(lastBatch.lists)) {
+			atomic.AddInt64(&numGetPostingListBatches, 1)
+			ph.batch = append(ph.batch, postingListPool.Get().(*postingListBatch))
+			atomic.StoreInt64(&lastBatch.nextIdx, 0)
+		}
+		ph.Unlock()
+		return ph.NewPostingList()
+	}
+
+	list := lastBatch.lists[idx]
+
+	// Reset the list before returning
+	list.Postings = list.Postings[:0]
+	return list
+}
+
 var (
 	// Pool for efficiently allocating batches of pb.PostingList objects
 	postingListPool = sync.Pool{
@@ -424,64 +493,16 @@ var (
 	}
 )
 
-func (ph *PredicateHolder) getPostingFromPool() *pb.Posting {
-	if len(ph.postingBatch) == 0 {
-		ph.postingBatch = []*postingBatch{postingPool.Get().(*postingBatch)}
-		atomic.AddInt64(&numGetPostingBatches, 1)
-	}
-
-	lastBatch := ph.postingBatch[len(ph.postingBatch)-1]
-	idx := atomic.LoadInt64(&lastBatch.nextIdx)
-	if idx >= int64(len(lastBatch.postings)) {
-		// Batch is full, get a new one
-		ph.postingBatch = append(ph.postingBatch, postingPool.Get().(*postingBatch))
-		atomic.AddInt64(&numGetPostingBatches, 1)
-		atomic.StoreInt64(&lastBatch.nextIdx, 0)
-		return ph.getPostingFromPool()
-	}
-
-	posting := lastBatch.postings[idx]
-	atomic.AddInt64(&lastBatch.nextIdx, 1)
-
-	// Reset the posting before returning
-	posting.Reset()
-	return posting
-}
-
-func (ph *PredicateHolder) getPostingListFromPool() *pb.PostingList {
-	if len(ph.batch) == 0 {
-		atomic.AddInt64(&numGetPostingListBatches, 1)
-		ph.batch = []*postingListBatch{postingListPool.Get().(*postingListBatch)}
-	}
-
-	lastBatch := ph.batch[len(ph.batch)-1]
-	atomic.AddInt64(&lastBatch.nextIdx, 1)
-	idx := atomic.LoadInt64(&lastBatch.nextIdx)
-	if idx >= int64(len(lastBatch.lists)) {
-		// Batch is full, get a new one
-		atomic.AddInt64(&numGetPostingListBatches, 1)
-		ph.batch = append(ph.batch, postingListPool.Get().(*postingListBatch))
-		atomic.StoreInt64(&lastBatch.nextIdx, 0)
-		return ph.getPostingListFromPool()
-	}
-
-	list := lastBatch.lists[idx]
-
-	// Reset the list before returning
-	list.Postings = list.Postings[:0]
-	return list
-}
-
 func (ph *PredicateHolder) releaseAll() {
-	atomic.AddInt64(&numPutPostingListBatches, int64(len(ph.batch)))
-	atomic.AddInt64(&numPutPostingBatches, int64(len(ph.postingBatch)))
-	for _, batch := range ph.batch {
+	atomic.AddInt64(&numPutPostingListBatches, int64(len(ph.dataPublisher.batch)))
+	atomic.AddInt64(&numPutPostingBatches, int64(len(ph.dataPublisher.postingBatch)))
+	for _, batch := range ph.dataPublisher.batch {
 		postingListPool.Put(batch)
 	}
-	ph.batch = nil
+	ph.dataPublisher.batch = nil
 
-	for _, batch := range ph.postingBatch {
+	for _, batch := range ph.dataPublisher.postingBatch {
 		postingPool.Put(batch)
 	}
-	ph.postingBatch = nil
+	ph.dataPublisher.postingBatch = nil
 }
