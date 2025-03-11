@@ -909,7 +909,7 @@ func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountI
 	l.AssertLock()
 	//fmt.Println("INSERTING EDGE", mpost.Uid, mpost.Value, mpost.Op)
 	if !(mpost.Op == Set || mpost.Op == Del || mpost.Op == Ovr) {
-		fmt.Println(mpost, mpost.Op, mpost, mpost.Op == Set, mpost.Uid, string(mpost.Value))
+		fmt.Println(mpost, mpost.Op, mpost, mpost.Op == Set, mpost.Uid, string(mpost.Value), mpost.Op)
 		log.Fatalf("%+v %+v", errors.Errorf("Assert failed"), mpost)
 	}
 
