@@ -130,6 +130,7 @@ func (txn *Txn) addIndexMutations(ctx context.Context, info *indexMutationInfo, 
 
 func (txn *Txn) addVectorIndexMutations(ctx context.Context, info *indexMutationInfo, uid uint64) ([]*pb.DirectedEdge, error) {
 	inKey := x.DataKey(info.edge.Attr, uid)
+	ph := txn.cache.GetPredicateHolder(info.edge.Attr)
 	pl, err := txn.Get(inKey)
 	if err != nil {
 		return []*pb.DirectedEdge{}, err
@@ -169,7 +170,7 @@ func (txn *Txn) addVectorIndexMutations(ctx context.Context, info *indexMutation
 			Value:     deadNodesBytes,
 			ValueType: pb.Posting_ValType(0),
 		}
-		if err := pl.addMutation(ctx, txn, edge); err != nil {
+		if err := pl.addMutation(ctx, txn, ph, edge); err != nil {
 			return nil, err
 		}
 	}
@@ -210,7 +211,7 @@ func (txn *Txn) addIndexMutation(ctx context.Context, edge *pb.DirectedEdge, tok
 	plist.SetKey(&key)
 
 	x.AssertTrue(plist != nil)
-	if err = plist.addMutation(ctx, txn, edge); err != nil {
+	if err = plist.addMutation(ctx, txn, ph, edge); err != nil {
 		return err
 	}
 	ostats.Record(ctx, x.NumEdges.M(1))
@@ -244,6 +245,7 @@ func (txn *Txn) addReverseMutationHelper(ctx context.Context, plist *List,
 	hasCountIndex bool, edge *pb.DirectedEdge) (countParams, error) {
 	countBefore, countAfter := 0, 0
 	found := false
+	ph := txn.cache.GetPredicateHolder(edge.Attr)
 
 	plist.Lock()
 	defer plist.Unlock()
@@ -255,7 +257,7 @@ func (txn *Txn) addReverseMutationHelper(ctx context.Context, plist *List,
 	}
 
 	if !(hasCountIndex && !shouldAddCountEdge(found, edge)) {
-		if err := plist.addMutationInternal(ctx, txn, edge); err != nil {
+		if err := plist.addMutationInternal(ctx, txn, ph, edge); err != nil {
 			return emptyCountParams, err
 		}
 	}
@@ -291,7 +293,8 @@ func (txn *Txn) addReverseMutation(ctx context.Context, t *pb.DirectedEdge) erro
 		Op:      t.Op,
 		Facets:  t.Facets,
 	}
-	if err := plist.addMutation(ctx, txn, edge); err != nil {
+	ph := txn.cache.GetPredicateHolder(edge.Attr)
+	if err := plist.addMutation(ctx, txn, ph, edge); err != nil {
 		return err
 	}
 
@@ -427,7 +430,8 @@ func (l *List) handleDeleteAll(ctx context.Context, edge *pb.DirectedEdge, txn *
 		}
 	}
 
-	return l.addMutation(ctx, txn, edge)
+	ph := txn.cache.GetPredicateHolder(edge.Attr)
+	return l.addMutation(ctx, txn, ph, edge)
 }
 
 func (txn *Txn) addCountMutation(ctx context.Context, t *pb.DirectedEdge, count uint32,
@@ -440,7 +444,8 @@ func (txn *Txn) addCountMutation(ctx context.Context, t *pb.DirectedEdge, count 
 
 	x.AssertTruef(plist != nil, "plist is nil [%s] %d",
 		t.Attr, t.ValueId)
-	if err = plist.addMutation(ctx, txn, t); err != nil {
+	ph := txn.cache.GetPredicateHolder(t.Attr)
+	if err = plist.addMutation(ctx, txn, ph, t); err != nil {
 		return err
 	}
 	ostats.Record(ctx, x.NumEdges.M(1))
@@ -541,13 +546,14 @@ func (txn *Txn) addMutationHelper(ctx context.Context, l *List, doUpdateIndex bo
 			return val, found, emptyCountParams, err
 		}
 	}
+	ph := txn.cache.GetPredicateHolder(t.Attr)
 
 	// fmt.Println("HERE", delNonListPredicate, found, currPost, hasCountIndex, l.print())
 	// debug.PrintStack()
 	// If the predicate schema is not a list, ignore delete triples whose object is not a star or
 	// a value that does not match the existing value.
 	if delNonListPredicate {
-		newPost := NewPosting(t, txn)
+		newPost := NewPosting(t, ph)
 
 		// This is a scalar value of non-list type and a delete edge mutation, so if the value
 		// given by the user doesn't match the value we have, we return found to be false, to avoid
@@ -562,7 +568,7 @@ func (txn *Txn) addMutationHelper(ctx context.Context, l *List, doUpdateIndex bo
 	}
 
 	if !(hasCountIndex && !shouldAddCountEdge(found && currPost.Op != Del, t)) {
-		if err = l.addMutationInternal(ctx, txn, t); err != nil {
+		if err = l.addMutationInternal(ctx, txn, ph, t); err != nil {
 			return val, found, emptyCountParams, err
 		}
 	}
@@ -1462,7 +1468,8 @@ func rebuildTokIndex(ctx context.Context, rb *IndexRebuild) error {
 					return []*pb.DirectedEdge{}, err
 				}
 
-				if err := p.addMutation(ctx, txn, &edge); err != nil {
+				ph := txn.cache.GetPredicateHolder(rb.Attr)
+				if err := p.addMutation(ctx, txn, ph, &edge); err != nil {
 					return []*pb.DirectedEdge{}, err
 				}
 			}
@@ -1811,7 +1818,8 @@ func rebuildListType(ctx context.Context, rb *IndexRebuild) error {
 			return []*pb.DirectedEdge{}, err
 		}
 		pl = txn.cache.SetIfAbsent(string(pl.key), pk.Attr, pl)
-		if err := pl.addMutation(ctx, txn, t); err != nil {
+		ph := txn.cache.GetPredicateHolder(rb.Attr)
+		if err := pl.addMutation(ctx, txn, ph, t); err != nil {
 			return []*pb.DirectedEdge{}, err
 		}
 		// Add the new edge with the fingerprinted value id.
@@ -1822,7 +1830,7 @@ func rebuildListType(ctx context.Context, rb *IndexRebuild) error {
 			Op:        pb.DirectedEdge_SET,
 			Facets:    mpost.Facets,
 		}
-		return []*pb.DirectedEdge{}, pl.addMutation(ctx, txn, newEdge)
+		return []*pb.DirectedEdge{}, pl.addMutation(ctx, txn, ph, newEdge)
 	}
 	return builder.Run(ctx)
 }

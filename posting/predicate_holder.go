@@ -34,16 +34,22 @@ type PredicateHolder struct {
 
 	dataLists  map[uint64]*List
 	indexLists map[string]*List
+
+	// Batches for efficient allocation
+	batch        []*postingListBatch
+	postingBatch []*postingBatch
 }
 
 func newPredicateHolder(attr string, startTs uint64) *PredicateHolder {
 	return &PredicateHolder{
-		attr:       attr,
-		plists:     make(map[string]*List),
-		deltas:     make(map[string][]byte),
-		dataLists:  make(map[uint64]*List),
-		indexLists: make(map[string]*List),
-		startTs:    startTs,
+		attr:         attr,
+		plists:       make(map[string]*List),
+		deltas:       make(map[string][]byte),
+		dataLists:    make(map[uint64]*List),
+		indexLists:   make(map[string]*List),
+		startTs:      startTs,
+		batch:        nil, // Will be initialized when first needed
+		postingBatch: nil, // Will be initialized when first needed
 	}
 }
 
@@ -370,4 +376,56 @@ func (ph *PredicateHolder) GetFromDelta(key []byte) (*List, error) {
 
 func (ph *PredicateHolder) getFromDelta(key []byte) (*List, error) {
 	return ph.getInternal(key, false)
+}
+
+func (ph *PredicateHolder) getPostingFromPool() *pb.Posting {
+	if len(ph.postingBatch) == 0 {
+		ph.postingBatch = []*postingBatch{postingPool.New().(*postingBatch)}
+	}
+
+	lastBatch := ph.postingBatch[len(ph.postingBatch)-1]
+	if lastBatch.nextIdx >= len(lastBatch.postings) {
+		// Batch is full, get a new one
+		ph.postingBatch = append(ph.postingBatch, postingPool.New().(*postingBatch))
+		lastBatch = ph.postingBatch[len(ph.postingBatch)-1]
+	}
+
+	posting := lastBatch.postings[lastBatch.nextIdx]
+	lastBatch.nextIdx++
+
+	// Reset the posting before returning
+	posting.Reset()
+	return posting
+}
+
+func (ph *PredicateHolder) getPostingListFromPool() *pb.PostingList {
+	if len(ph.batch) == 0 {
+		ph.batch = []*postingListBatch{postingListPool.New().(*postingListBatch)}
+	}
+
+	lastBatch := ph.batch[len(ph.batch)-1]
+	if lastBatch.nextIdx >= len(lastBatch.lists) {
+		// Batch is full, get a new one
+		ph.batch = append(ph.batch, postingListPool.New().(*postingListBatch))
+		lastBatch = ph.batch[len(ph.batch)-1]
+	}
+
+	list := lastBatch.lists[lastBatch.nextIdx]
+	lastBatch.nextIdx++
+
+	// Reset the list before returning
+	list.Postings = list.Postings[:0]
+	return list
+}
+
+func (ph *PredicateHolder) releaseAll() {
+	for _, batch := range ph.batch {
+		postingListPool.Put(batch)
+	}
+	ph.batch = nil
+
+	for _, batch := range ph.postingBatch {
+		postingPool.Put(batch)
+	}
+	ph.postingBatch = nil
 }

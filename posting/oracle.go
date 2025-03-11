@@ -53,12 +53,6 @@ type Txn struct {
 	lastUpdate time.Time
 
 	cache *LocalCache // This pointer does not get modified.
-
-	// Batch of posting lists for efficient allocation
-	batch []*postingListBatch
-
-	// Batch of postings for efficient allocation
-	postingBatch []*postingBatch
 }
 
 // struct to implement Txn interface from vector-indexer
@@ -120,7 +114,8 @@ func (vt *viTxn) AddMutation(ctx context.Context, key []byte, t *index.KeyValue)
 	if err != nil {
 		return err
 	}
-	return pl.addMutation(ctx, vt.delegate, indexEdgeToPbEdge(t))
+	ph := vt.delegate.cache.GetOrCreatePredicateHolder(t.Attr)
+	return pl.addMutation(ctx, vt.delegate, ph, indexEdgeToPbEdge(t))
 }
 
 func (vt *viTxn) AddMutationWithLockHeld(ctx context.Context, key []byte, t *index.KeyValue) error {
@@ -128,7 +123,8 @@ func (vt *viTxn) AddMutationWithLockHeld(ctx context.Context, key []byte, t *ind
 	if err != nil {
 		return err
 	}
-	return pl.addMutationInternal(ctx, vt.delegate, indexEdgeToPbEdge(t))
+	ph := vt.delegate.cache.GetOrCreatePredicateHolder(t.Attr)
+	return pl.addMutationInternal(ctx, vt.delegate, ph, indexEdgeToPbEdge(t))
 }
 
 func (vt *viTxn) LockKey(key []byte) {
@@ -144,11 +140,9 @@ func (vt *viTxn) UnlockKey(key []byte) {
 // NewTxn returns a new Txn instance.
 func NewTxn(startTs uint64) *Txn {
 	return &Txn{
-		StartTs:      startTs,
-		cache:        NewLocalCache(startTs),
-		lastUpdate:   time.Now(),
-		batch:        nil, // Will be initialized when first needed
-		postingBatch: nil, // Will be initialized when first needed
+		StartTs:    startTs,
+		cache:      NewLocalCache(startTs),
+		lastUpdate: time.Now(),
 	}
 }
 
@@ -181,12 +175,7 @@ func (txn *Txn) Update() {
 	for _, ph := range txn.cache.plists {
 		ph.UpdateUidDelta()
 		ph.UpdateIndexDelta()
-	}
-	for _, batch := range txn.batch {
-		postingListPool.Put(batch)
-	}
-	for _, batch := range txn.postingBatch {
-		postingPool.Put(batch)
+		ph.releaseAll()
 	}
 }
 

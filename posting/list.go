@@ -767,34 +767,6 @@ type ListOptions struct {
 	First     int
 }
 
-// getPostingFromPool returns a posting from the pool
-func getPostingFromPool(txn *Txn) *pb.Posting {
-	txn.Lock()
-	defer txn.Unlock()
-	if txn == nil {
-		// If no transaction is provided, create a new posting directly
-		return &pb.Posting{}
-	}
-
-	if len(txn.postingBatch) == 0 {
-		txn.postingBatch = []*postingBatch{postingPool.New().(*postingBatch)}
-	}
-
-	lastBatch := txn.postingBatch[len(txn.postingBatch)-1]
-	if lastBatch.nextIdx >= len(lastBatch.postings) {
-		// Batch is full, get a new one
-		txn.postingBatch = append(txn.postingBatch, postingPool.New().(*postingBatch))
-		lastBatch = txn.postingBatch[len(txn.postingBatch)-1]
-	}
-
-	posting := lastBatch.postings[lastBatch.nextIdx]
-	lastBatch.nextIdx++
-
-	// Reset the posting before returning
-	posting.Reset()
-	return posting
-}
-
 // NewPosting takes the given edge and returns its equivalent representation as a posting.
 func NewPosting1(t *pb.DirectedEdge) *pb.Posting {
 	var op uint32
@@ -833,7 +805,7 @@ func NewPosting1(t *pb.DirectedEdge) *pb.Posting {
 }
 
 // NewPosting takes the given edge and returns its equivalent representation as a posting.
-func NewPosting(t *pb.DirectedEdge, txn *Txn) *pb.Posting {
+func NewPosting(t *pb.DirectedEdge, ph *PredicateHolder) *pb.Posting {
 	var op uint32
 	switch t.Op {
 	case pb.DirectedEdge_SET:
@@ -856,7 +828,7 @@ func NewPosting(t *pb.DirectedEdge, txn *Txn) *pb.Posting {
 		postingType = pb.Posting_REF
 	}
 
-	p := getPostingFromPool(txn)
+	p := ph.getPostingFromPool()
 	p.Uid = t.ValueId
 	p.Value = t.Value
 	p.ValType = t.ValueType
@@ -871,32 +843,8 @@ func hasDeleteAll(mpost *pb.Posting) bool {
 	return mpost.Op == Del && bytes.Equal(mpost.Value, []byte(x.Star)) && len(mpost.LangTag) == 0
 }
 
-// getPostingListFromPool returns a posting list from the pool
-func getPostingListFromPool(txn *Txn) *pb.PostingList {
-	txn.Lock()
-	defer txn.Unlock()
-	if txn.batch == nil {
-		txn.batch = []*postingListBatch{postingListPool.New().(*postingListBatch)}
-	}
-
-	lastBatch := txn.batch[len(txn.batch)-1]
-	if lastBatch.nextIdx >= len(lastBatch.lists) {
-		// Batch is full, grow it
-		txn.batch = append(txn.batch, postingListPool.New().(*postingListBatch))
-		lastBatch = txn.batch[len(txn.batch)-1]
-	}
-
-	list := lastBatch.lists[lastBatch.nextIdx]
-	lastBatch.nextIdx++
-
-	//fmt.Println("GET POSTING LIST FROM POOL", txn.batch, lastBatch.nextIdx, &list)
-	// Reset the list before returning
-	list.Postings = list.Postings[:0]
-	return list
-}
-
 // Ensure that you either abort the uncommitted postings or commit them before calling me.
-func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountIndex bool, txn *Txn) error {
+func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountIndex bool, ph *PredicateHolder) error {
 	l.AssertLock()
 	//fmt.Println("INSERTING EDGE", mpost.Uid, mpost.Value, mpost.Op)
 	if !(mpost.Op == Set || mpost.Op == Del || mpost.Op == Ovr) {
@@ -910,7 +858,7 @@ func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountI
 
 	// If we have a delete all, then we replace the map entry with just one.
 	if hasDeleteAll(mpost) {
-		plist := getPostingListFromPool(txn)
+		plist := ph.getPostingListFromPool()
 		plist.Postings = append(plist.Postings, mpost)
 		l.mutationMap.setCurrentEntries(mpost.StartTs, plist)
 		return nil
@@ -918,7 +866,7 @@ func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountI
 
 	if l.mutationMap.currentEntries == nil {
 		//fmt.Println("GET POSTING LIST FROM POOL", l.key)
-		l.mutationMap.currentEntries = getPostingListFromPool(txn)
+		l.mutationMap.currentEntries = ph.getPostingListFromPool()
 	}
 
 	if singleUidUpdate {
@@ -932,7 +880,7 @@ func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountI
 		// Add the deletions in the existing plist because those postings are not picked
 		// up by iterating. Not doing so would result in delete operations that are not
 		// applied when the transaction is committed.
-		l.mutationMap.currentEntries = getPostingListFromPool(txn)
+		l.mutationMap.currentEntries = ph.getPostingListFromPool()
 
 		err := l.iterate(mpost.StartTs, 0, func(obj *pb.Posting) error {
 			// Ignore values which have the same uid as they will get replaced
@@ -991,10 +939,10 @@ func fingerprintEdge(t *pb.DirectedEdge) uint64 {
 	return id
 }
 
-func (l *List) addMutation(ctx context.Context, txn *Txn, t *pb.DirectedEdge) error {
+func (l *List) addMutation(ctx context.Context, txn *Txn, ph *PredicateHolder, t *pb.DirectedEdge) error {
 	l.Lock()
 	defer l.Unlock()
-	return l.addMutationInternal(ctx, txn, t)
+	return l.addMutationInternal(ctx, txn, ph, t)
 }
 
 func GetConflictKey(pk x.ParsedKey, key []byte, t *pb.DirectedEdge) uint64 {
@@ -1057,7 +1005,7 @@ func (l *List) SetTs(readTs uint64) {
 	l.mutationMap.setTs(readTs)
 }
 
-func (l *List) addMutationInternal(ctx context.Context, txn *Txn, t *pb.DirectedEdge) error {
+func (l *List) addMutationInternal(ctx context.Context, txn *Txn, ph *PredicateHolder, t *pb.DirectedEdge) error {
 	l.cache = nil
 	l.AssertLock()
 
@@ -1065,7 +1013,7 @@ func (l *List) addMutationInternal(ctx context.Context, txn *Txn, t *pb.Directed
 		return x.ErrConflict
 	}
 
-	mpost := NewPosting(t, txn)
+	mpost := NewPosting(t, ph)
 	//fmt.Println("GET MPOST", mpost)
 	mpost.StartTs = txn.StartTs
 	if mpost.PostingType != pb.Posting_REF {
@@ -1083,7 +1031,7 @@ func (l *List) addMutationInternal(ctx context.Context, txn *Txn, t *pb.Directed
 	isSingleUidUpdate := ok && !pred.GetList() && pred.GetValueType() == pb.Posting_UID &&
 		pk.IsData() && mpost.Op != Del && mpost.PostingType == pb.Posting_REF
 
-	if err := l.updateMutationLayer(mpost, isSingleUidUpdate, pred.GetCount() && (pk.IsData() || pk.IsReverse()), txn); err != nil {
+	if err := l.updateMutationLayer(mpost, isSingleUidUpdate, pred.GetCount() && (pk.IsData() || pk.IsReverse()), ph); err != nil {
 		return errors.Wrapf(err, "cannot update mutation layer of key %s with value %+v",
 			hex.EncodeToString(l.key), mpost)
 	}
