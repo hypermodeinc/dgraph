@@ -906,7 +906,9 @@ func putPostingListInPool(pl *pb.PostingList) {
 func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountIndex bool, txn *Txn) error {
 	l.AssertLock()
 	//fmt.Println("INSERTING EDGE", mpost.Uid, mpost.Value, mpost.Op)
-	x.AssertTrue(mpost.Op == Set || mpost.Op == Del || mpost.Op == Ovr)
+	if mpost.Op == Set || mpost.Op == Del || mpost.Op == Ovr {
+		log.Fatalf("%+v %+v", errors.Errorf("Assert failed"), mpost)
+	}
 
 	if l.mutationMap == nil {
 		l.mutationMap = newMutableLayer()
@@ -1075,6 +1077,7 @@ func (l *List) addMutationInternal(ctx context.Context, txn *Txn, t *pb.Directed
 	}
 
 	mpost := NewPosting(t, txn)
+	fmt.Println("GET MPOST", mpost)
 	mpost.StartTs = txn.StartTs
 	if mpost.PostingType != pb.Posting_REF {
 		t.ValueId = fingerprintEdge(t)
