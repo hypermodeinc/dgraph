@@ -104,14 +104,6 @@ func (mp *MutationPipeline) getOrCreatePipeline(ctx context.Context, predicate s
 }
 
 func (mp *MutationPipeline) newPredicatePipeline(ctx context.Context, predicate string) *PredicatePipeline {
-	p := &PredicatePipeline{
-		predicate: predicate,
-		edges:     make(chan *pb.DirectedEdge, 1000),
-		txn:       mp.txn,
-		wg:        mp.wg,
-		errCh:     make(chan error, 1),
-	}
-	mp.predicatePipelines[predicate] = p
 	su, ok := schema.State().Get(ctx, predicate)
 	numGo := 1
 	if ok {
@@ -119,6 +111,14 @@ func (mp *MutationPipeline) newPredicatePipeline(ctx context.Context, predicate 
 			numGo = 10
 		}
 	}
+	p := &PredicatePipeline{
+		predicate: predicate,
+		edges:     make(chan *pb.DirectedEdge, 1000),
+		txn:       mp.txn,
+		wg:        mp.wg,
+		errCh:     make(chan error, numGo),
+	}
+	mp.predicatePipelines[predicate] = p
 	mp.wg.Add(numGo)
 	for i := 0; i < numGo; i++ {
 		go func() {
