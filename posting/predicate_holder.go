@@ -8,7 +8,6 @@ package posting
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -44,8 +43,6 @@ type PredicateHolder struct {
 }
 
 func newPredicateHolder(attr string, startTs uint64) *PredicateHolder {
-	fmt.Println("numPostingListBatches", numPostingListBatches)
-	fmt.Println("numPostingBatches", numPostingBatches)
 	return &PredicateHolder{
 		attr:         attr,
 		plists:       make(map[string]*List),
@@ -383,8 +380,13 @@ func (ph *PredicateHolder) getFromDelta(key []byte) (*List, error) {
 	return ph.getInternal(key, false)
 }
 
-var numPostingListBatches = int64(0)
-var numPostingBatches = int64(0)
+var numNewPostingListBatches = int64(0)
+var numGetPostingListBatches = int64(0)
+var numPutPostingListBatches = int64(0)
+
+var numNewPostingBatches = int64(0)
+var numGetPostingBatches = int64(0)
+var numPutPostingBatches = int64(0)
 
 var (
 	// Pool for efficiently allocating batches of pb.PostingList objects
@@ -399,7 +401,7 @@ var (
 					Postings: make([]*pb.Posting, 1000),
 				}
 			}
-			atomic.AddInt64(&numPostingListBatches, 1)
+			atomic.AddInt64(&numNewPostingListBatches, 1)
 			return batch
 		},
 	}
@@ -414,7 +416,7 @@ var (
 			for i := 0; i < initialBatchSize; i++ {
 				batch.postings[i] = &pb.Posting{}
 			}
-			atomic.AddInt64(&numPostingBatches, 1)
+			atomic.AddInt64(&numNewPostingBatches, 1)
 			return batch
 		},
 	}
@@ -436,6 +438,7 @@ func (ph *PredicateHolder) getPostingFromPool() *pb.Posting {
 	lastBatch.nextIdx++
 
 	// Reset the posting before returning
+	atomic.AddInt64(&numGetPostingBatches, 1)
 	posting.Reset()
 	return posting
 }
@@ -457,6 +460,7 @@ func (ph *PredicateHolder) getPostingListFromPool() *pb.PostingList {
 
 	// Reset the list before returning
 	list.Postings = list.Postings[:0]
+	atomic.AddInt64(&numGetPostingListBatches, 1)
 	return list
 }
 
@@ -470,6 +474,6 @@ func (ph *PredicateHolder) releaseAll() {
 		postingPool.Put(batch)
 	}
 	ph.postingBatch = nil
-	atomic.AddInt64(&numPostingListBatches, -1)
-	atomic.AddInt64(&numPostingBatches, -1)
+	atomic.AddInt64(&numPutPostingListBatches, 1)
+	atomic.AddInt64(&numPutPostingBatches, 1)
 }
