@@ -60,9 +60,6 @@ const (
 	BitCompletePosting byte = 0x08
 	// BitEmptyPosting signals that the value stores an empty posting list.
 	BitEmptyPosting byte = 0x10
-
-	// Initial batch size for posting list allocations
-	initialBatchSize = 10
 )
 
 var (

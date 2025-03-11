@@ -459,6 +459,10 @@ func (ph *PostingListPublisher) NewPostingList() *pb.PostingList {
 	return list
 }
 
+const (
+	initialBatchSize = 1000
+)
+
 var (
 	// Pool for efficiently allocating batches of pb.PostingList objects
 	postingListPool = sync.Pool{
