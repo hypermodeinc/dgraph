@@ -871,6 +871,8 @@ func hasDeleteAll(mpost *pb.Posting) bool {
 
 // getPostingListFromPool returns a posting list from the pool
 func getPostingListFromPool(txn *Txn) *pb.PostingList {
+	txn.Lock()
+	defer txn.Unlock()
 	if txn.batch == nil {
 		txn.batch = []*postingListBatch{postingListPool.New().(*postingListBatch)}
 	}
@@ -907,7 +909,7 @@ func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountI
 	l.AssertLock()
 	//fmt.Println("INSERTING EDGE", mpost.Uid, mpost.Value, mpost.Op)
 	if !(mpost.Op == Set || mpost.Op == Del || mpost.Op == Ovr) {
-		fmt.Println(mpost, mpost.Op, mpost, mpost.Op == Set, mpost.Uid, mpost.Value)
+		fmt.Println(mpost, mpost.Op, mpost, mpost.Op == Set, mpost.Uid, string(mpost.Value))
 		log.Fatalf("%+v %+v", errors.Errorf("Assert failed"), mpost)
 	}
 
