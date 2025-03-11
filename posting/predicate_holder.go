@@ -52,8 +52,8 @@ func newPredicateHolder(attr string, startTs uint64) *PredicateHolder {
 		dataLists:    make(map[uint64]*List),
 		indexLists:   make(map[string]*List),
 		startTs:      startTs,
-		batch:        []*postingListBatch{postingListPool.Get().(*postingListBatch)},
-		postingBatch: []*postingBatch{postingPool.Get().(*postingBatch)},
+		batch:        []*postingListBatch{postingListPool.New().(*postingListBatch)},
+		postingBatch: []*postingBatch{postingPool.New().(*postingBatch)},
 	}
 }
 
@@ -441,7 +441,7 @@ func (ph *PredicateHolder) getPostingFromPool() *pb.Posting {
 	}
 
 	posting := lastBatch.postings[idx]
-	lastBatch.nextIdx++
+	atomic.AddInt64(&lastBatch.nextIdx, 1)
 
 	// Reset the posting before returning
 	posting.Reset()
@@ -455,6 +455,7 @@ func (ph *PredicateHolder) getPostingListFromPool() *pb.PostingList {
 	}
 
 	lastBatch := ph.batch[len(ph.batch)-1]
+	atomic.AddInt64(&lastBatch.nextIdx, 1)
 	idx := atomic.LoadInt64(&lastBatch.nextIdx)
 	if idx >= int64(len(lastBatch.lists)) {
 		// Batch is full, get a new one
@@ -465,7 +466,6 @@ func (ph *PredicateHolder) getPostingListFromPool() *pb.PostingList {
 	}
 
 	list := lastBatch.lists[idx]
-	lastBatch.nextIdx++
 
 	// Reset the list before returning
 	list.Postings = list.Postings[:0]
