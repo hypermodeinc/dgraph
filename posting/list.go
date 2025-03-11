@@ -13,7 +13,6 @@ import (
 	"log"
 	"math"
 	"sort"
-	"sync"
 
 	"github.com/dgryski/go-farm"
 	"github.com/golang/glog"
@@ -76,36 +75,6 @@ var (
 	ErrStopIteration = errors.New("Stop iteration")
 	emptyPosting     = &pb.Posting{}
 	maxListSize      = mb / 2
-
-	// Pool for efficiently allocating batches of pb.PostingList objects
-	postingListPool = sync.Pool{
-		New: func() interface{} {
-			batch := &postingListBatch{
-				lists: make([]*pb.PostingList, initialBatchSize),
-			}
-			// Initialize all lists in the batch
-			for i := 0; i < initialBatchSize; i++ {
-				batch.lists[i] = &pb.PostingList{
-					Postings: make([]*pb.Posting, 1000),
-				}
-			}
-			return batch
-		},
-	}
-
-	// Pool for efficiently allocating batches of pb.Posting objects
-	postingPool = sync.Pool{
-		New: func() interface{} {
-			batch := &postingBatch{
-				postings: make([]*pb.Posting, initialBatchSize),
-			}
-			// Initialize all postings in the batch
-			for i := 0; i < initialBatchSize; i++ {
-				batch.postings[i] = &pb.Posting{}
-			}
-			return batch
-		},
-	}
 )
 
 // List stores the in-memory representation of a posting list.

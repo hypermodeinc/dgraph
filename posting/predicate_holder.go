@@ -8,6 +8,9 @@ package posting
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
@@ -41,6 +44,8 @@ type PredicateHolder struct {
 }
 
 func newPredicateHolder(attr string, startTs uint64) *PredicateHolder {
+	fmt.Println("numPostingListBatches", numPostingListBatches)
+	fmt.Println("numPostingBatches", numPostingBatches)
 	return &PredicateHolder{
 		attr:         attr,
 		plists:       make(map[string]*List),
@@ -48,8 +53,8 @@ func newPredicateHolder(attr string, startTs uint64) *PredicateHolder {
 		dataLists:    make(map[uint64]*List),
 		indexLists:   make(map[string]*List),
 		startTs:      startTs,
-		batch:        nil, // Will be initialized when first needed
-		postingBatch: nil, // Will be initialized when first needed
+		batch:        []*postingListBatch{postingListPool.New().(*postingListBatch)},
+		postingBatch: []*postingBatch{postingPool.New().(*postingBatch)},
 	}
 }
 
@@ -378,6 +383,43 @@ func (ph *PredicateHolder) getFromDelta(key []byte) (*List, error) {
 	return ph.getInternal(key, false)
 }
 
+var numPostingListBatches = int64(0)
+var numPostingBatches = int64(0)
+
+var (
+	// Pool for efficiently allocating batches of pb.PostingList objects
+	postingListPool = sync.Pool{
+		New: func() interface{} {
+			batch := &postingListBatch{
+				lists: make([]*pb.PostingList, initialBatchSize),
+			}
+			// Initialize all lists in the batch
+			for i := 0; i < initialBatchSize; i++ {
+				batch.lists[i] = &pb.PostingList{
+					Postings: make([]*pb.Posting, 1000),
+				}
+			}
+			atomic.AddInt64(&numPostingListBatches, 1)
+			return batch
+		},
+	}
+
+	// Pool for efficiently allocating batches of pb.Posting objects
+	postingPool = sync.Pool{
+		New: func() interface{} {
+			batch := &postingBatch{
+				postings: make([]*pb.Posting, initialBatchSize),
+			}
+			// Initialize all postings in the batch
+			for i := 0; i < initialBatchSize; i++ {
+				batch.postings[i] = &pb.Posting{}
+			}
+			atomic.AddInt64(&numPostingBatches, 1)
+			return batch
+		},
+	}
+)
+
 func (ph *PredicateHolder) getPostingFromPool() *pb.Posting {
 	if len(ph.postingBatch) == 0 {
 		ph.postingBatch = []*postingBatch{postingPool.New().(*postingBatch)}
@@ -428,4 +470,6 @@ func (ph *PredicateHolder) releaseAll() {
 		postingPool.Put(batch)
 	}
 	ph.postingBatch = nil
+	atomic.AddInt64(&numPostingListBatches, -1)
+	atomic.AddInt64(&numPostingBatches, -1)
 }
