@@ -1077,7 +1077,7 @@ func (l *List) addMutationInternal(ctx context.Context, txn *Txn, t *pb.Directed
 	}
 
 	mpost := NewPosting(t, txn)
-	fmt.Println("GET MPOST", mpost)
+	//fmt.Println("GET MPOST", mpost)
 	mpost.StartTs = txn.StartTs
 	if mpost.PostingType != pb.Posting_REF {
 		t.ValueId = fingerprintEdge(t)
