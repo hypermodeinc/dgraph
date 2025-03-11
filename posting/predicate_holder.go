@@ -8,6 +8,7 @@ package posting
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -43,6 +44,7 @@ type PredicateHolder struct {
 }
 
 func newPredicateHolder(attr string, startTs uint64) *PredicateHolder {
+	fmt.Println("newPredicateHolder", numNewPostingListBatches, numNewPostingBatches, numGetPostingListBatches, numGetPostingBatches, numPutPostingListBatches, numPutPostingBatches)
 	return &PredicateHolder{
 		attr:         attr,
 		plists:       make(map[string]*List),
