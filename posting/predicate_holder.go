@@ -403,7 +403,6 @@ func NewPostingListPublisher() *PostingListPublisher {
 
 func (ph *PostingListPublisher) NewPosting() *pb.Posting {
 	ph.Lock()
-	defer ph.Unlock()
 	if len(ph.postingBatch) == 0 {
 		ph.postingBatch = []*postingBatch{postingPool.Get().(*postingBatch)}
 		atomic.AddInt64(&numGetPostingBatches, 1)
@@ -419,6 +418,7 @@ func (ph *PostingListPublisher) NewPosting() *pb.Posting {
 			atomic.StoreInt64(&lastBatch.nextIdx, 0)
 		}
 		// Batch is full, get a new one
+		ph.Unlock()
 		return ph.NewPosting()
 	}
 
@@ -427,12 +427,12 @@ func (ph *PostingListPublisher) NewPosting() *pb.Posting {
 
 	// Reset the posting before returning
 	posting.Reset()
+	ph.Unlock()
 	return posting
 }
 
 func (ph *PostingListPublisher) NewPostingList() *pb.PostingList {
 	ph.Lock()
-	defer ph.Unlock()
 	if len(ph.batch) == 0 {
 		atomic.AddInt64(&numGetPostingListBatches, 1)
 		ph.batch = []*postingListBatch{postingListPool.Get().(*postingListBatch)}
@@ -449,6 +449,7 @@ func (ph *PostingListPublisher) NewPostingList() *pb.PostingList {
 			ph.batch = append(ph.batch, postingListPool.Get().(*postingListBatch))
 			atomic.StoreInt64(&lastBatch.nextIdx, 0)
 		}
+		ph.Unlock()
 		return ph.NewPostingList()
 	}
 
@@ -456,6 +457,7 @@ func (ph *PostingListPublisher) NewPostingList() *pb.PostingList {
 
 	// Reset the list before returning
 	list.Postings = list.Postings[:0]
+	ph.Unlock()
 	return list
 }
 
