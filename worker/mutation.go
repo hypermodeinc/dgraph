@@ -112,8 +112,8 @@ func (mp *MutationPipeline) newPredicatePipeline(ctx context.Context, predicate 
 		errCh:     make(chan error, 1),
 	}
 	mp.predicatePipelines[predicate] = p
+	mp.wg.Add(1)
 	go func() {
-		mp.wg.Add(1)
 		defer mp.wg.Done()
 		p.runPredicateMutation(ctx)
 	}()
