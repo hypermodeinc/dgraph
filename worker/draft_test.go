@@ -89,7 +89,7 @@ func BenchmarkProcessListIndex(b *testing.B) {
 	b.Run("runMutation", func(b *testing.B) {
 		b.ResetTimer()
 		for j := 0; j < b.N; j++ {
-			txn := posting.Oracle().RegisterStartTs(5)
+			txn := posting.Oracle().RegisterStartTs(uint64(j))
 			for i := 0; i < 1000; i++ {
 				edge := &pb.DirectedEdge{
 					Entity:    uint64(i + 1),
@@ -107,7 +107,7 @@ func BenchmarkProcessListIndex(b *testing.B) {
 	b.Run("runPMutation", func(b *testing.B) {
 		b.ResetTimer()
 		for j := 0; j < b.N; j++ {
-			txn := posting.Oracle().RegisterStartTs(5)
+			txn := posting.Oracle().RegisterStartTs(uint64(j))
 			mp := newMutationPipeline(txn)
 			for i := 0; i < 1000; i++ {
 				edge := &pb.DirectedEdge{

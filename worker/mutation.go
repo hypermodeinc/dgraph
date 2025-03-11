@@ -112,11 +112,20 @@ func (mp *MutationPipeline) newPredicatePipeline(ctx context.Context, predicate 
 		errCh:     make(chan error, 1),
 	}
 	mp.predicatePipelines[predicate] = p
-	mp.wg.Add(1)
-	go func() {
-		defer mp.wg.Done()
-		p.runPredicateMutation(ctx)
-	}()
+	su, ok := schema.State().Get(ctx, pp.predicate)
+	numGo := 1
+	if ok {
+		if len(su.Tokenizer) > 2 {
+			numGo = 10
+		}
+	}
+	mp.wg.Add(numGo)
+	for i := 0; i < numGo; i++ {
+		go func() {
+			defer mp.wg.Done()
+			p.runPredicateMutation(ctx)
+		}()
+	}
 	return p
 }
 
