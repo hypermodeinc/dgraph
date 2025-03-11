@@ -906,7 +906,7 @@ func putPostingListInPool(pl *pb.PostingList) {
 func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountIndex bool, txn *Txn) error {
 	l.AssertLock()
 	//fmt.Println("INSERTING EDGE", mpost.Uid, mpost.Value, mpost.Op)
-	if mpost.Op == Set || mpost.Op == Del || mpost.Op == Ovr {
+	if !(mpost.Op == Set || mpost.Op == Del || mpost.Op == Ovr) {
 		log.Fatalf("%+v %+v", errors.Errorf("Assert failed"), mpost)
 	}
 
