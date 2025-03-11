@@ -400,7 +400,7 @@ var (
 			// Initialize all lists in the batch
 			for i := 0; i < initialBatchSize; i++ {
 				batch.lists[i] = &pb.PostingList{
-					Postings: make([]*pb.Posting, 1000),
+					Postings: make([]*pb.Posting, 0),
 				}
 			}
 			atomic.AddInt64(&numNewPostingListBatches, 1)

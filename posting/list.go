@@ -62,7 +62,7 @@ const (
 	BitEmptyPosting byte = 0x10
 
 	// Initial batch size for posting list allocations
-	initialBatchSize = 100
+	initialBatchSize = 10
 )
 
 var (
