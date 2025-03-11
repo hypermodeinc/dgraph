@@ -426,19 +426,21 @@ var (
 
 func (ph *PredicateHolder) getPostingFromPool() *pb.Posting {
 	if len(ph.postingBatch) == 0 {
-		ph.postingBatch = []*postingBatch{postingPool.New().(*postingBatch)}
+		ph.postingBatch = []*postingBatch{postingPool.Get().(*postingBatch)}
 		atomic.AddInt64(&numGetPostingBatches, 1)
 	}
 
 	lastBatch := ph.postingBatch[len(ph.postingBatch)-1]
-	if lastBatch.nextIdx >= len(lastBatch.postings) {
+	idx := atomic.LoadInt64(&lastBatch.nextIdx)
+	if idx >= int64(len(lastBatch.postings)) {
 		// Batch is full, get a new one
-		ph.postingBatch = append(ph.postingBatch, postingPool.New().(*postingBatch))
-		lastBatch = ph.postingBatch[len(ph.postingBatch)-1]
+		ph.postingBatch = append(ph.postingBatch, postingPool.Get().(*postingBatch))
 		atomic.AddInt64(&numGetPostingBatches, 1)
+		atomic.StoreInt64(&lastBatch.nextIdx, 0)
+		return ph.getPostingFromPool()
 	}
 
-	posting := lastBatch.postings[lastBatch.nextIdx]
+	posting := lastBatch.postings[idx]
 	lastBatch.nextIdx++
 
 	// Reset the posting before returning
@@ -449,18 +451,20 @@ func (ph *PredicateHolder) getPostingFromPool() *pb.Posting {
 func (ph *PredicateHolder) getPostingListFromPool() *pb.PostingList {
 	if len(ph.batch) == 0 {
 		atomic.AddInt64(&numGetPostingListBatches, 1)
-		ph.batch = []*postingListBatch{postingListPool.New().(*postingListBatch)}
+		ph.batch = []*postingListBatch{postingListPool.Get().(*postingListBatch)}
 	}
 
 	lastBatch := ph.batch[len(ph.batch)-1]
-	if lastBatch.nextIdx >= len(lastBatch.lists) {
+	idx := atomic.LoadInt64(&lastBatch.nextIdx)
+	if idx >= int64(len(lastBatch.lists)) {
 		// Batch is full, get a new one
 		atomic.AddInt64(&numGetPostingListBatches, 1)
-		ph.batch = append(ph.batch, postingListPool.New().(*postingListBatch))
-		lastBatch = ph.batch[len(ph.batch)-1]
+		ph.batch = append(ph.batch, postingListPool.Get().(*postingListBatch))
+		atomic.StoreInt64(&lastBatch.nextIdx, 0)
+		return ph.getPostingListFromPool()
 	}
 
-	list := lastBatch.lists[lastBatch.nextIdx]
+	list := lastBatch.lists[idx]
 	lastBatch.nextIdx++
 
 	// Reset the list before returning

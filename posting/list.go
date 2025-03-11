@@ -35,13 +35,13 @@ import (
 // postingListBatch represents a batch of posting lists
 type postingListBatch struct {
 	lists   []*pb.PostingList
-	nextIdx int
+	nextIdx int64
 }
 
 // postingBatch represents a batch of postings
 type postingBatch struct {
 	postings []*pb.Posting
-	nextIdx  int
+	nextIdx  int64
 }
 
 const (
