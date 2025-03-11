@@ -462,7 +462,7 @@ func (ph *PostingListPublisher) NewPostingList() *pb.PostingList {
 }
 
 const (
-	initialBatchSize = 1000
+	initialBatchSize = 10
 )
 
 var (
