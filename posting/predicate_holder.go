@@ -469,6 +469,8 @@ func (ph *PredicateHolder) getPostingListFromPool() *pb.PostingList {
 }
 
 func (ph *PredicateHolder) releaseAll() {
+	atomic.AddInt64(&numPutPostingListBatches, int64(len(ph.batch)))
+	atomic.AddInt64(&numPutPostingBatches, int64(len(ph.postingBatch)))
 	for _, batch := range ph.batch {
 		postingListPool.Put(batch)
 	}
@@ -478,6 +480,4 @@ func (ph *PredicateHolder) releaseAll() {
 		postingPool.Put(batch)
 	}
 	ph.postingBatch = nil
-	atomic.AddInt64(&numPutPostingListBatches, 1)
-	atomic.AddInt64(&numPutPostingBatches, 1)
 }
