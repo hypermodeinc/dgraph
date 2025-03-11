@@ -769,6 +769,8 @@ type ListOptions struct {
 
 // getPostingFromPool returns a posting from the pool
 func getPostingFromPool(txn *Txn) *pb.Posting {
+	txn.Lock()
+	defer txn.Unlock()
 	if txn == nil {
 		// If no transaction is provided, create a new posting directly
 		return &pb.Posting{}
