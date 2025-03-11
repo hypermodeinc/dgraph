@@ -427,6 +427,7 @@ var (
 func (ph *PredicateHolder) getPostingFromPool() *pb.Posting {
 	if len(ph.postingBatch) == 0 {
 		ph.postingBatch = []*postingBatch{postingPool.New().(*postingBatch)}
+		atomic.AddInt64(&numGetPostingBatches, 1)
 	}
 
 	lastBatch := ph.postingBatch[len(ph.postingBatch)-1]
@@ -434,25 +435,27 @@ func (ph *PredicateHolder) getPostingFromPool() *pb.Posting {
 		// Batch is full, get a new one
 		ph.postingBatch = append(ph.postingBatch, postingPool.New().(*postingBatch))
 		lastBatch = ph.postingBatch[len(ph.postingBatch)-1]
+		atomic.AddInt64(&numGetPostingBatches, 1)
 	}
 
 	posting := lastBatch.postings[lastBatch.nextIdx]
 	lastBatch.nextIdx++
 
 	// Reset the posting before returning
-	atomic.AddInt64(&numGetPostingBatches, 1)
 	posting.Reset()
 	return posting
 }
 
 func (ph *PredicateHolder) getPostingListFromPool() *pb.PostingList {
 	if len(ph.batch) == 0 {
+		atomic.AddInt64(&numGetPostingListBatches, 1)
 		ph.batch = []*postingListBatch{postingListPool.New().(*postingListBatch)}
 	}
 
 	lastBatch := ph.batch[len(ph.batch)-1]
 	if lastBatch.nextIdx >= len(lastBatch.lists) {
 		// Batch is full, get a new one
+		atomic.AddInt64(&numGetPostingListBatches, 1)
 		ph.batch = append(ph.batch, postingListPool.New().(*postingListBatch))
 		lastBatch = ph.batch[len(ph.batch)-1]
 	}
@@ -462,7 +465,6 @@ func (ph *PredicateHolder) getPostingListFromPool() *pb.PostingList {
 
 	// Reset the list before returning
 	list.Postings = list.Postings[:0]
-	atomic.AddInt64(&numGetPostingListBatches, 1)
 	return list
 }
 
