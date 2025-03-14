@@ -510,9 +510,9 @@ var (
 )
 
 func (ph *PredicateHolder) releaseAll() {
-	ph.Lock()
-	defer ph.Unlock()
-	ph.done = true
+	ph.dataPublisher.Lock()
+	defer ph.dataPublisher.Unlock()
+	ph.dataPublisher.done = true
 	atomic.AddInt64(&numPutPostingListBatches, int64(len(ph.dataPublisher.batch)))
 	atomic.AddInt64(&numPutPostingBatches, int64(len(ph.dataPublisher.postingBatch)))
 	for _, batch := range ph.dataPublisher.batch {
