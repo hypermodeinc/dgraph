@@ -396,8 +396,8 @@ type PostingListPublisher struct {
 
 func NewPostingListPublisher() *PostingListPublisher {
 	return &PostingListPublisher{
-		batch:        []*postingListBatch{postingListPool.Get().(*postingListBatch)},
-		postingBatch: []*postingBatch{postingPool.Get().(*postingBatch)},
+		batch:        nil,
+		postingBatch: nil,
 	}
 }
 
