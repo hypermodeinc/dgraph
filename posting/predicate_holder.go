@@ -390,12 +390,16 @@ var numPutPostingBatches = int64(0)
 type PostingListPublisher struct {
 	sync.Mutex
 
+	done         bool
+	getBatches   int64
 	batch        []*postingListBatch
 	postingBatch []*postingBatch
 }
 
 func NewPostingListPublisher() *PostingListPublisher {
 	return &PostingListPublisher{
+		done:         false,
+		getBatches:   0,
 		batch:        nil,
 		postingBatch: nil,
 	}
@@ -403,8 +407,13 @@ func NewPostingListPublisher() *PostingListPublisher {
 
 func (ph *PostingListPublisher) NewPosting() *pb.Posting {
 	ph.Lock()
+	if ph.done {
+		ph.Unlock()
+		panic("Trying to get posting from a closed PostingListPublisher")
+	}
 	if len(ph.postingBatch) == 0 {
 		ph.postingBatch = []*postingBatch{postingPool.Get().(*postingBatch)}
+		atomic.AddInt64(&ph.getBatches, 1)
 		atomic.AddInt64(&numGetPostingBatches, 1)
 	}
 
@@ -415,6 +424,7 @@ func (ph *PostingListPublisher) NewPosting() *pb.Posting {
 		if idx >= int64(len(lastBatch.postings)) {
 			ph.postingBatch = append(ph.postingBatch, postingPool.Get().(*postingBatch))
 			atomic.AddInt64(&numGetPostingBatches, 1)
+			atomic.AddInt64(&ph.getBatches, 1)
 			atomic.StoreInt64(&lastBatch.nextIdx, 0)
 		}
 		// Batch is full, get a new one
@@ -500,6 +510,9 @@ var (
 )
 
 func (ph *PredicateHolder) releaseAll() {
+	ph.Lock()
+	defer ph.Unlock()
+	ph.done = true
 	atomic.AddInt64(&numPutPostingListBatches, int64(len(ph.dataPublisher.batch)))
 	atomic.AddInt64(&numPutPostingBatches, int64(len(ph.dataPublisher.postingBatch)))
 	for _, batch := range ph.dataPublisher.batch {

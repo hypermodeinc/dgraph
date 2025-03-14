@@ -169,6 +169,12 @@ func (txn *Txn) GetScalarList(key []byte) (*List, error) {
 	return ph.GetScalarList(key)
 }
 
+func (txn *Txn) ReleaseAll() {
+	for _, ph := range txn.cache.plists {
+		ph.releaseAll()
+	}
+}
+
 // Update calls UpdateDeltasAndDiscardLists on the local cache.
 func (txn *Txn) Update() {
 	txn.cache.UpdateDeltasAndDiscardLists()
