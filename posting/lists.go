@@ -233,6 +233,9 @@ func (lc *LocalCache) GetOrCreatePredicateHolder(attr string) *PredicateHolder {
 		ph = newPredicateHolder(attr, lc.startTs)
 		lc.Lock()
 		defer lc.Unlock()
+		if ph, ok := lc.plists[attr]; ok {
+			return ph
+		}
 		lc.plists[attr] = ph
 	}
 	return ph
