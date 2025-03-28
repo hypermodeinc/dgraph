@@ -93,7 +93,8 @@ func (m *dumpMeta) dumpTable(table string) error {
 
 	escapedColNames := escapeColumnNames(tableInfo.columnNames)
 
-	query := fmt.Sprintf(`select %s from %s`, strings.Join(escapedColNames, ","), table)
+	// Escape the table name with backticks to handle reserved keywords like "check"
+	query := fmt.Sprintf(`select %s from `+"`"+`%s`+"`", strings.Join(escapedColNames, ","), table)
 	rows, err := m.sqlPool.Query(query)
 	if err != nil {
 		return err
@@ -139,7 +140,8 @@ func (m *dumpMeta) dumpTableConstraints(table string) error {
 
 	escapedColNames := escapeColumnNames(tableInfo.columnNames)
 
-	query := fmt.Sprintf(`select %s from %s`, strings.Join(escapedColNames, ","), table)
+	// Escape the table name with backticks to handle reserved keywords like "check"
+	query := fmt.Sprintf(`select %s from `+"`"+`%s`+"`", strings.Join(escapedColNames, ","), table)
 	rows, err := m.sqlPool.Query(query)
 	if err != nil {
 		return err

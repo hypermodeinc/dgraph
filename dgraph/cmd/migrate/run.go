@@ -46,6 +46,8 @@ func init() {
 	flag.StringP("db", "", "", "The database to import")
 	flag.StringP("tables", "", "", "The comma separated list of "+
 		"tables to import, an empty string means importing all tables in the database")
+	flag.StringP("exclude-tables", "", "", "The comma separated list of "+
+		"tables to exclude from import")
 	flag.StringP("output_schema", "s", "schema.txt", "The schema output file")
 	flag.StringP("output_data", "o", "sql.rdf", "The data output file")
 	flag.StringP("separator", "p", ".", "The separator for constructing predicate names")
@@ -59,6 +61,7 @@ func run(conf *viper.Viper) error {
 	db := conf.GetString("db")
 	password := conf.GetString("password")
 	tables := conf.GetString("tables")
+	excludeTables := conf.GetString("exclude-tables")
 	schemaOutput := conf.GetString("output_schema")
 	dataOutput := conf.GetString("output_data")
 	host := conf.GetString("host")
@@ -95,7 +98,7 @@ func run(conf *viper.Viper) error {
 	}
 	defer pool.Close()
 
-	tablesToRead, err := showTables(pool, tables)
+	tablesToRead, err := showTables(pool, tables, excludeTables)
 	if err != nil {
 		return err
 	}
