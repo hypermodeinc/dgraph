@@ -31,6 +31,12 @@ import (
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
 	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/sdk/resource"
+	traceTel "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/ristretto/v2/z"
@@ -437,6 +443,43 @@ var (
 	}
 )
 
+func startTracing() (*traceTel.TracerProvider, error) {
+	headers := map[string]string{
+		"content-type": "application/json",
+	}
+
+	exporter, err := otlptrace.New(
+		context.Background(),
+		otlptracehttp.NewClient(
+			otlptracehttp.WithEndpoint("localhost:4318"),
+			otlptracehttp.WithHeaders(headers),
+			otlptracehttp.WithInsecure(),
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating new exporter: %w", err)
+	}
+
+	tracerprovider := traceTel.NewTracerProvider(
+		traceTel.WithBatcher(
+			exporter,
+			traceTel.WithMaxExportBatchSize(traceTel.DefaultMaxExportBatchSize),
+			traceTel.WithBatchTimeout(traceTel.DefaultScheduleDelay*time.Millisecond),
+			traceTel.WithMaxExportBatchSize(traceTel.DefaultMaxExportBatchSize),
+		),
+		traceTel.WithResource(
+			resource.NewWithAttributes(
+				semconv.SchemaURL,
+				semconv.ServiceNameKey.String("dgraph.alpha"),
+			),
+		),
+	)
+
+	otel.SetTracerProvider(tracerprovider)
+
+	return tracerprovider, nil
+}
+
 func init() {
 	Conf = expvar.NewMap("dgraph_config")
 
@@ -464,6 +507,8 @@ func init() {
 	promRegistry.MustRegister(collectors.NewGoCollector(collectors.WithGoCollectorRuntimeMetrics(
 		collectors.GoRuntimeMetricsRule{Matcher: regexp.MustCompile("/.*")})))
 	promRegistry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+
+	startTracing()
 
 	pe, err := oc_prom.NewExporter(oc_prom.Options{
 		// includes a process_* metrics, a GoCollector for go_* metrics, and the badger_* metrics.
