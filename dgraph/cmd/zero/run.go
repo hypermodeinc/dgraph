@@ -20,9 +20,9 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
-	"go.opencensus.io/plugin/ocgrpc"
 	otrace "go.opencensus.io/trace"
-	"go.opencensus.io/zpages"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/zpages"
 	"golang.org/x/net/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -145,7 +145,7 @@ func (st *state) serveGRPC(l net.Listener, store *raftwal.DiskStorage) {
 		grpc.MaxRecvMsgSize(x.GrpcMaxSize),
 		grpc.MaxSendMsgSize(x.GrpcMaxSize),
 		grpc.MaxConcurrentStreams(1000),
-		grpc.StatsHandler(&ocgrpc.ServerHandler{}),
+		grpc.StatsHandler(otelgrpc.NewClientHandler()),
 		grpc.UnaryInterceptor(audit.AuditRequestGRPC),
 	}
 
@@ -314,7 +314,7 @@ func run() {
 		baseMux.HandleFunc("/enterpriseLicense", st.applyEnterpriseLicense)
 	}
 	baseMux.HandleFunc("/debug/jemalloc", x.JemallocHandler)
-	zpages.Handle(baseMux, "/debug/z")
+	http.DefaultServeMux.Handle("/debug/z", zpages.NewTracezHandler(zpages.NewSpanProcessor()))
 
 	// This must be here. It does not work if placed before Grpc init.
 	x.Check(st.node.initAndStartNode())

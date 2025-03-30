@@ -12,7 +12,8 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
-	otrace "go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/dql"
@@ -39,8 +40,11 @@ func ApplyMutations(ctx context.Context, m *pb.Mutations) (*api.TxnContext, erro
 	}
 	tctx, err := worker.MutateOverNetwork(ctx, m)
 	if err != nil {
-		if span := otrace.FromContext(ctx); span != nil {
-			span.Annotatef(nil, "MutateOverNetwork Error: %v. Mutation: %v.", err, m)
+		span := trace.SpanFromContext(ctx)
+		if span.IsRecording() {
+			span.AddEvent("MutateOverNetwork Error", trace.WithAttributes(
+				attribute.String("error", err.Error()),
+				attribute.String("mutation", m.String())))
 		}
 	}
 	return tctx, err

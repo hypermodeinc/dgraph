@@ -28,8 +28,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"go.opencensus.io/plugin/ocgrpc"
-	otrace "go.opencensus.io/trace"
-	"go.opencensus.io/zpages"
+	"go.opentelemetry.io/contrib/zpages"
 	"golang.org/x/net/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -509,7 +508,7 @@ func setupServer(closer *z.Closer) {
 	baseMux.HandleFunc("/health", healthCheck)
 	baseMux.HandleFunc("/state", stateHandler)
 	baseMux.HandleFunc("/debug/jemalloc", x.JemallocHandler)
-	zpages.Handle(baseMux, "/debug/z")
+	http.DefaultServeMux.Handle("/debug/z", zpages.NewTracezHandler(zpages.NewSpanProcessor()))
 
 	// TODO: Figure out what this is for?
 	http.HandleFunc("/debug/store", storeStatsHandler)
@@ -770,10 +769,6 @@ func run() {
 			return true, true
 		}
 	}
-	otrace.ApplyConfig(otrace.Config{
-		DefaultSampler:             otrace.ProbabilitySampler(x.WorkerConfig.Trace.GetFloat64("ratio")),
-		MaxAnnotationEventsPerSpan: 256,
-	})
 
 	// Posting will initialize index which requires schema. Hence, initialize
 	// schema before calling posting.Init().

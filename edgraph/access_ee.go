@@ -18,7 +18,9 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
-	otrace "go.opencensus.io/trace"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -57,7 +59,7 @@ func (s *Server) Login(ctx context.Context,
 			"supplying the appropriate license file to Dgraph Zero using the HTTP endpoint.")
 	}
 
-	ctx, span := otrace.StartSpan(ctx, "server.Login")
+	ctx, span := otel.Tracer("").Start(ctx, "server.Login")
 	defer span.End()
 
 	// record the client ip for this login request
@@ -66,9 +68,7 @@ func (s *Server) Login(ctx context.Context,
 		return nil, err
 	} else {
 		addr = ipAddr.String()
-		span.Annotate([]otrace.Attribute{
-			otrace.StringAttribute("client_ip", addr),
-		}, "client ip for login")
+		span.AddEvent("client ip for login", trace.WithAttributes(attribute.String("client_ip", addr)))
 	}
 
 	user, err := s.authenticateLogin(ctx, request)
@@ -730,16 +730,14 @@ func authorizeAlter(ctx context.Context, op *api.Operation) error {
 	}
 
 	err := doAuthorizeAlter()
-	span := otrace.FromContext(ctx)
-	if span != nil {
-		span.Annotatef(nil, (&accessEntry{
-			userId:    userId,
-			groups:    groupIds,
-			preds:     preds,
-			operation: acl.Modify,
-			allowed:   err == nil,
-		}).String())
-	}
+	span := trace.SpanFromContext(ctx)
+	span.AddEvent((&accessEntry{
+		userId:    userId,
+		groups:    groupIds,
+		preds:     preds,
+		operation: acl.Modify,
+		allowed:   err == nil,
+	}).String())
 
 	return err
 }
@@ -851,9 +849,9 @@ func authorizeMutation(ctx context.Context, gmu *dql.Mutation) error {
 
 	err := doAuthorizeMutation()
 
-	span := otrace.FromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 	if span != nil {
-		span.Annotatef(nil, (&accessEntry{
+		span.AddEvent((&accessEntry{
 			userId:    userId,
 			groups:    groupIds,
 			preds:     preds,
@@ -1008,8 +1006,8 @@ func authorizeQuery(ctx context.Context, parsedReq *dql.Result, graphql bool) er
 		return err
 	}
 
-	if span := otrace.FromContext(ctx); span != nil {
-		span.Annotatef(nil, (&accessEntry{
+	if span := trace.SpanFromContext(ctx); span != nil {
+		span.AddEvent((&accessEntry{
 			userId:    userId,
 			groups:    groupIds,
 			preds:     preds,

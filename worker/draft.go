@@ -25,8 +25,9 @@ import (
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	ostats "go.opencensus.io/stats"
 	"go.opencensus.io/tag"
-	otrace "go.opencensus.io/trace"
-	"golang.org/x/net/trace"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/dgraph-io/badger/v4"
@@ -67,7 +68,6 @@ type node struct {
 	opsLock     sync.Mutex
 	cdcTracker  *CDC
 	canCampaign bool
-	elog        trace.EventLog
 }
 
 type op int
@@ -274,7 +274,6 @@ func newNode(store *raftwal.DiskStorage, gid uint32, id uint64, myAddr string) *
 		// 10ms. If we restrict the size here, then Raft goes into a loop trying
 		// to maintain quorum health.
 		applyCh:    make(chan []raftpb.Entry, 1000),
-		elog:       trace.NewEventLog("Dgraph", "ApplyCh"),
 		closer:     z.NewCloser(4), // Matches CLOSER:1
 		ops:        make(map[op]operation),
 		cdcTracker: newCDC(),
@@ -333,7 +332,7 @@ func detectPendingTxns(attr string) error {
 // Wait for all transactions to either abort or complete and all write transactions
 // involving the predicate are aborted until schema mutations are done.
 func (n *node) applyMutations(ctx context.Context, proposal *pb.Proposal) (rerr error) {
-	span := otrace.FromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 
 	if proposal.Mutations.DropOp == pb.Mutations_ALL_IN_NS {
 		ns, err := strconv.ParseUint(proposal.Mutations.DropValue, 0, 64)
@@ -435,7 +434,9 @@ func (n *node) applyMutations(ctx context.Context, proposal *pb.Proposal) (rerr 
 		// by detectPendingTxns below.
 		startTs := posting.Oracle().MaxAssigned()
 
-		span.Annotatef(nil, "Applying schema and types")
+		if span.IsRecording() {
+			span.AddEvent("Applying schema and types")
+		}
 		for _, supdate := range proposal.Mutations.Schema {
 			// We should not need to check for predicate move here.
 			if err := detectPendingTxns(supdate.Predicate); err != nil {
@@ -475,10 +476,14 @@ func (n *node) applyMutations(ctx context.Context, proposal *pb.Proposal) (rerr 
 			// We should only drop the predicate if there is no pending
 			// transaction.
 			if err := detectPendingTxns(edge.Attr); err != nil {
-				span.Annotatef(nil, "Found pending transactions. Retry later.")
+				if span.IsRecording() {
+					span.AddEvent("Found pending transactions. Retry later.")
+				}
 				return err
 			}
-			span.Annotatef(nil, "Deleting predicate: %s", edge.Attr)
+			if span.IsRecording() {
+				span.AddEvent("Deleting predicate")
+			}
 			return posting.DeletePredicate(ctx, edge.Attr, proposal.StartTs)
 		}
 		// Don't derive schema when doing deletion.
@@ -531,7 +536,11 @@ func (n *node) applyMutations(ctx context.Context, proposal *pb.Proposal) (rerr 
 
 	txn := posting.Oracle().RegisterStartTs(m.StartTs)
 	if txn.ShouldAbort() {
-		span.Annotatef(nil, "Txn %d should abort.", m.StartTs)
+		if span.IsRecording() {
+			span.AddEvent("Txn should abort.", trace.WithAttributes(
+				attribute.Int64("start_ts", int64(m.StartTs)),
+			))
+		}
 		return x.ErrConflict
 	}
 	// Discard the posting lists from cache to release memory at the end.
@@ -552,12 +561,16 @@ func (n *node) applyMutations(ctx context.Context, proposal *pb.Proposal) (rerr 
 			}
 		}
 		if retries > 0 {
-			span.Annotatef(nil, "retries=true num=%d", retries)
+			span.AddEvent("retries=true num=%d", trace.WithAttributes(
+				attribute.Int("retries", retries)))
 		}
 		return nil
 	}
 	numGo, width := x.DivideAndRule(len(m.Edges))
-	span.Annotatef(nil, "To apply: %d edges. NumGo: %d. Width: %d", len(m.Edges), numGo, width)
+	span.AddEvent("To apply: %d edges. NumGo: %d. Width: %d", trace.WithAttributes(
+		attribute.Int("num_edges", len(m.Edges)),
+		attribute.Int("num_go", numGo),
+		attribute.Int("width", width)))
 
 	if numGo == 1 {
 		return process(m.Edges)
@@ -619,19 +632,24 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 	}()
 
 	ctx := n.Ctx(key)
-	span := otrace.FromContext(ctx)
-	span.Annotatef(nil, "node.applyCommitted Node id: %d. Group id: %d. Got proposal key: %d",
-		n.Id, n.gid, key)
+	span := trace.SpanFromContext(ctx)
+	if span.IsRecording() {
+		span.AddEvent("Node.applyCommited", trace.WithAttributes(
+			attribute.Int64("node id", int64(n.Id)),
+			attribute.Int64("Group Id", int64(n.gid)),
+			attribute.Int64("proposal key", int64(key))))
+	}
 
 	if proposal.Mutations != nil {
 		// syncmarks for this shouldn't be marked done until it's committed.
-		span.Annotate(nil, "Applying mutations")
+		span.AddEvent("Applying mutations")
 		if err := n.applyMutations(ctx, proposal); err != nil {
-			span.Annotatef(nil, "While applying mutations: %v", err)
+			span.AddEvent("While applying mutations", trace.WithAttributes(
+				attribute.String("error", err.Error())))
 			return err
 		}
 
-		span.Annotate(nil, "Done")
+		span.AddEvent("Done")
 		return nil
 	}
 
@@ -640,14 +658,16 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 		return populateKeyValues(ctx, proposal.Kv)
 
 	case proposal.State != nil:
-		n.elog.Printf("Applying state for key: %s", key)
+		span.AddEvent("Applying state for key: %s", trace.WithAttributes(
+			attribute.Int64("key", int64(key))))
 		// This state needn't be snapshotted in this group, on restart we would fetch
 		// a state which is latest or equal to this.
 		groups().applyState(groups().Node.Id, proposal.State)
 		return nil
 
 	case len(proposal.CleanPredicate) > 0:
-		n.elog.Printf("Cleaning predicate: %s", proposal.CleanPredicate)
+		span.AddEvent("Cleaning predicate: %s", trace.WithAttributes(
+			attribute.String("predicate", proposal.CleanPredicate)))
 		end := time.Now().Add(10 * time.Second)
 		for proposal.ExpectedChecksum > 0 && time.Now().Before(end) {
 			cur := atomic.LoadUint64(&groups().membershipChecksum)
@@ -675,7 +695,8 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 		return err
 
 	case proposal.Delta != nil:
-		n.elog.Printf("Applying Oracle Delta for key: %d", key)
+		span.AddEvent("Applying Oracle Delta for key: %d", trace.WithAttributes(
+			attribute.Int64("key", int64(key))))
 		return n.commitOrAbort(key, proposal.Delta)
 
 	case proposal.Snapshot != nil:
@@ -685,13 +706,18 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 		}
 		snap := proposal.Snapshot
 		if existing.Metadata.Index >= snap.Index {
+			span.AddEvent("Skipping snapshot at %d, because found one at %d",
+				trace.WithAttributes(
+					attribute.Int64("snapshot index", int64(snap.Index)),
+					attribute.Int64("existing index", int64(existing.Metadata.Index))))
 			log := fmt.Sprintf("Skipping snapshot at %d, because found one at %d",
 				snap.Index, existing.Metadata.Index)
-			n.elog.Printf(log)
 			glog.Info(log)
 			return nil
 		}
-		n.elog.Printf("Creating snapshot: %+v", snap)
+		span.AddEvent("Creating snapshot: %+v", trace.WithAttributes(
+			attribute.Int64("snapshot index", int64(snap.Index)),
+			attribute.Int64("read ts", int64(snap.ReadTs))))
 		glog.Infof("Creating snapshot at Index: %d, ReadTs: %d\n", snap.Index, snap.ReadTs)
 
 		data, err := proto.Marshal(snap)
@@ -738,7 +764,8 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 
 	case proposal.DeleteNs != nil:
 		x.AssertTrue(proposal.DeleteNs.Namespace != x.GalaxyNamespace)
-		n.elog.Printf("Deleting namespace: %d", proposal.DeleteNs.Namespace)
+		span.AddEvent("Deleting namespace: %d", trace.WithAttributes(
+			attribute.Int64("namespace", int64(proposal.DeleteNs.Namespace))))
 		return posting.DeleteNamespace(proposal.DeleteNs.Namespace)
 
 	case proposal.CdcState != nil:
@@ -818,7 +845,6 @@ func (n *node) processApplyCh() {
 				msg := fmt.Sprintf("Proposal with key: %d already applied. Skipping index: %d."+
 					" Delta: %+v Snapshot: %+v.\n",
 					key, proposal.Index, proposal.Delta, proposal.Snapshot)
-				n.elog.Printf(msg)
 				glog.Infof(msg)
 				previous[key].seen = time.Now() // Update the ts.
 				// Don't break here. We still need to call the Done below.
@@ -834,8 +860,14 @@ func (n *node) processApplyCh() {
 				if perr != nil {
 					glog.Errorf("Applying proposal. Error: %v. Proposal: %q.", perr, proposal)
 				}
-				n.elog.Printf("Applied proposal with key: %d, index: %d. Err: %v",
-					key, proposal.Index, perr)
+				span := trace.SpanFromContext(n.ctx)
+				if span.IsRecording() {
+					span.AddEvent("Applied proposal with key: %d, index: %d. Err: %v",
+						trace.WithAttributes(
+							attribute.Int64("key", int64(key)),
+							attribute.Int64("index", int64(proposal.Index)),
+							attribute.String("error", perr.Error())))
+				}
 
 				var tags []tag.Mutator
 				switch {
@@ -876,7 +908,7 @@ func (n *node) processApplyCh() {
 					delete(previous, key)
 				}
 			}
-			n.elog.Printf("Size of previous map: %d", len(previous))
+			glog.V(3).Infof("Size of previous map: %d", len(previous))
 		}
 	}
 }
@@ -1127,7 +1159,7 @@ func (n *node) checkpointAndClose(done chan struct{}) {
 			// Do these operations asynchronously away from the main Run loop to allow heartbeats to
 			// be sent on time. Otherwise, followers would just keep running elections.
 
-			n.elog.Printf("Size of applyCh: %d", len(n.applyCh))
+			glog.V(3).Infof("Size of applyCh: %d", len(n.applyCh))
 			if err := n.updateRaftProgress(); err != nil {
 				glog.Errorf("While updating Raft progress: %v", err)
 			}
@@ -1280,8 +1312,7 @@ func (n *node) Run() {
 			// n.SaveToStorage should be called first before doing anything else.
 
 			timer.Start()
-			_, span := otrace.StartSpan(n.ctx, "Alpha.RunLoop",
-				otrace.WithSampler(otrace.ProbabilitySampler(x.WorkerConfig.Trace.GetFloat64("ratio"))))
+			_, span := otel.Tracer("").Start(n.ctx, "Alpha.RunLoop")
 
 			if rd.SoftState != nil {
 				groups().triggerMembershipSync()
@@ -1321,7 +1352,7 @@ func (n *node) Run() {
 				timer.Record("leader sending message")
 			}
 			if span != nil {
-				span.Annotate(nil, "Handled ReadStates and SoftState.")
+				span.AddEvent("Handled ReadStates and SoftState.")
 			}
 
 			// We move the retrieval of snapshot before we store the rd.Snapshot, so that in case
@@ -1389,7 +1420,7 @@ func (n *node) Run() {
 						snap, n.gid, rc.Id)
 				}
 				if span != nil {
-					span.Annotate(nil, "Applied or retrieved snapshot.")
+					span.AddEvent("Applied or retrieved snapshot.")
 				}
 				timer.Record("got snapshot")
 			}
@@ -1398,10 +1429,11 @@ func (n *node) Run() {
 			n.SaveToStorage(&rd.HardState, rd.Entries, &rd.Snapshot)
 			timer.Record("disk")
 			if span != nil {
-				span.Annotatef(nil, "Saved %d entries. Snapshot, HardState empty? (%v, %v)",
-					len(rd.Entries),
-					raft.IsEmptySnap(rd.Snapshot),
-					raft.IsEmptyHardState(rd.HardState))
+				span.AddEvent("Saved %d entries. Snapshot, HardState empty? (%v, %v)",
+					trace.WithAttributes(
+						attribute.Int("entries", len(rd.Entries)),
+						attribute.Bool("snapshotEmpty", raft.IsEmptySnap(rd.Snapshot)),
+						attribute.Bool("hardStateEmpty", raft.IsEmptyHardState(rd.HardState))))
 			}
 
 			for x.WorkerConfig.HardSync && rd.MustSync {
@@ -1432,17 +1464,17 @@ func (n *node) Run() {
 					n.Applied.Done(entry.Index)
 					groups().triggerMembershipSync()
 				case len(entry.Data) == 0:
-					n.elog.Printf("Found empty data at index: %d", entry.Index)
+					glog.V(3).Infof("Found empty data at index: %d", entry.Index)
 					n.Applied.Done(entry.Index)
 				case entry.Index < applied:
-					n.elog.Printf("Skipping over already applied entry: %d", entry.Index)
+					glog.V(3).Infof("Skipping over already applied entry: %d", entry.Index)
 					n.Applied.Done(entry.Index)
 				default:
 					key := binary.BigEndian.Uint64(entry.Data[:8])
 					if pctx := n.Proposals.Get(key); pctx != nil {
 						atomic.AddUint32(&pctx.Found, 1)
-						if span := otrace.FromContext(pctx.Ctx); span != nil {
-							span.Annotate(nil, "Proposal found in CommittedEntries")
+						if span := trace.SpanFromContext(pctx.Ctx); span != nil {
+							span.AddEvent("Proposal found in CommittedEntries")
 						}
 					}
 					entries = append(entries, entry)
@@ -1465,7 +1497,8 @@ func (n *node) Run() {
 			}
 
 			if span != nil {
-				span.Annotatef(nil, "Handled %d committed entries.", len(rd.CommittedEntries))
+				span.AddEvent("Handled %d committed entries.",
+					trace.WithAttributes(attribute.Int("count", len(rd.CommittedEntries))))
 			}
 
 			if !leader {
@@ -1482,7 +1515,7 @@ func (n *node) Run() {
 				}
 			}
 			if span != nil {
-				span.Annotate(nil, "Followed queued messages.")
+				span.AddEvent("Followed queued messages.")
 			}
 			timer.Record("proposals")
 
@@ -1498,7 +1531,7 @@ func (n *node) Run() {
 				firstRun = false
 			}
 			if span != nil {
-				span.Annotate(nil, "Advanced Raft. Done.")
+				span.AddEvent("Advanced Raft. Done.")
 				span.End()
 				if err := ostats.RecordWithTags(context.Background(),
 					[]tag.Mutator{tag.Upsert(x.KeyMethod, "alpha.RunLoop")},
@@ -1677,8 +1710,7 @@ func (n *node) abortOldTransactions() {
 // This is useful when we already have a previous snapshot checkpoint (all txns have concluded up
 // until that last checkpoint) that we can use as a new start point for the snapshot calculation.
 func (n *node) calculateSnapshot(startIdx, lastIdx, minPendingStart uint64) (*pb.Snapshot, error) {
-	_, span := otrace.StartSpan(n.ctx, "Calculate.Snapshot",
-		otrace.WithSampler(otrace.AlwaysSample()))
+	_, span := otel.Tracer("").Start(n.ctx, "Calculate.Snapshot")
 	defer span.End()
 	discardN := 1
 
@@ -1691,14 +1723,17 @@ func (n *node) calculateSnapshot(startIdx, lastIdx, minPendingStart uint64) (*pb
 
 	first, err := n.Store.FirstIndex()
 	if err != nil {
-		span.Annotatef(nil, "Error: %v", err)
+		span.AddEvent("Error", trace.WithAttributes(
+			attribute.String("error", err.Error())))
 		return nil, err
 	}
-	span.Annotatef(nil, "First index: %d", first)
+	span.AddEvent("First index", trace.WithAttributes(
+		attribute.Int64("first", int64(first))))
 	if startIdx > first {
 		// If we're starting from a higher index, set first to that.
 		first = startIdx
-		span.Annotatef(nil, "Setting first to: %d", startIdx)
+		span.AddEvent("Setting first to", trace.WithAttributes(
+			attribute.Int64("first", int64(first))))
 	}
 
 	rsnap, err := n.Store.Snapshot()
@@ -1711,13 +1746,15 @@ func (n *node) calculateSnapshot(startIdx, lastIdx, minPendingStart uint64) (*pb
 			return nil, err
 		}
 	}
-	span.Annotatef(nil, "Last snapshot: %+v", snap)
+	span.AddEvent("Last snapshot", trace.WithAttributes(
+		attribute.String("snapshot", snap.String())))
 
 	if int(lastIdx-first) < discardN {
-		span.Annotate(nil, "Skipping due to insufficient entries")
+		span.AddEvent("Skipping due to insufficient entries")
 		return nil, nil
 	}
-	span.Annotatef(nil, "Found Raft entries: %d", lastIdx-first)
+	span.AddEvent("Found Raft entries", trace.WithAttributes(
+		attribute.Int64("count", int64(lastIdx-first))))
 
 	if num := posting.Oracle().NumPendingTxns(); num > 0 {
 		// TODO (Damon): this is associated with stuck alphas. Is there anything else we should log here
@@ -1735,7 +1772,8 @@ func (n *node) calculateSnapshot(startIdx, lastIdx, minPendingStart uint64) (*pb
 	for batchFirst := first; batchFirst <= lastIdx; {
 		entries, err := n.Store.Entries(batchFirst, lastIdx+1, 256<<20)
 		if err != nil {
-			span.Annotatef(nil, "Error: %v", err)
+			span.AddEvent("Error", trace.WithAttributes(
+				attribute.String("error", err.Error())))
 			return nil, err
 		}
 		// Exit early from the loop if no entries were found.
@@ -1755,7 +1793,8 @@ func (n *node) calculateSnapshot(startIdx, lastIdx, minPendingStart uint64) (*pb
 			}
 			var proposal pb.Proposal
 			if err := proto.Unmarshal(entry.Data[8:], &proposal); err != nil {
-				span.Annotatef(nil, "Error: %v", err)
+				span.AddEvent("Error", trace.WithAttributes(
+					attribute.String("error", err.Error())))
 				return nil, err
 			}
 
@@ -1775,23 +1814,26 @@ func (n *node) calculateSnapshot(startIdx, lastIdx, minPendingStart uint64) (*pb
 	}
 
 	if maxCommitTs == 0 {
-		span.Annotate(nil, "maxCommitTs is zero")
+		span.AddEvent("maxCommitTs is zero")
 		return nil, nil
 	}
 	if snapshotIdx == 0 {
 		// It is possible that there are no pending transactions. In that case,
 		// snapshotIdx would be zero.
 		snapshotIdx = lastEntry.Index
-		span.Annotatef(nil, "snapshotIdx is zero. Using last entry's index: %d", snapshotIdx)
+		span.AddEvent("snapshotIdx is zero. Using last entry's index", trace.WithAttributes(
+			attribute.Int64("index", int64(snapshotIdx))))
 	}
 
 	numDiscarding := snapshotIdx - first + 1
-	span.Annotatef(nil,
-		"Got snapshotIdx: %d. MaxCommitTs: %d. Discarding: %d. MinPendingStartTs: %d",
-		snapshotIdx, maxCommitTs, numDiscarding, minPendingStart)
+	span.AddEvent("Got snapshotIdx", trace.WithAttributes(
+		attribute.Int64("snapshotIdx", int64(snapshotIdx)),
+		attribute.Int64("maxCommitTs", int64(maxCommitTs)),
+		attribute.Int64("numDiscarding", int64(numDiscarding)),
+		attribute.Int64("minPendingStart", int64(minPendingStart))))
 
 	if int(numDiscarding) < discardN {
-		span.Annotate(nil, "Skipping snapshot because insufficient discard entries")
+		span.AddEvent("Skipping snapshot because insufficient discard entries")
 		glog.Infof("Skipping snapshot at index: %d. Insufficient discard entries: %d."+
 			" MinPendingStartTs: %d\n", snapshotIdx, numDiscarding, minPendingStart)
 		return nil, nil
@@ -1802,7 +1844,8 @@ func (n *node) calculateSnapshot(startIdx, lastIdx, minPendingStart uint64) (*pb
 		Index:   snapshotIdx,
 		ReadTs:  maxCommitTs,
 	}
-	span.Annotatef(nil, "Got snapshot: %+v", result)
+	span.AddEvent("Got snapshot", trace.WithAttributes(
+		attribute.Stringer("snapshot", result)))
 	return result, nil
 }
 

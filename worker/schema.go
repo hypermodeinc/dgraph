@@ -9,7 +9,7 @@ import (
 	"context"
 
 	"github.com/pkg/errors"
-	otrace "go.opencensus.io/trace"
+	"go.opentelemetry.io/otel"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hypermodeinc/dgraph/v24/conn"
@@ -31,7 +31,7 @@ type resultErr struct {
 // predicates is not specified, then all the predicates belonging to the group
 // are returned
 func getSchema(ctx context.Context, s *pb.SchemaRequest) (*pb.SchemaResult, error) {
-	_, span := otrace.StartSpan(ctx, "worker.getSchema")
+	_, span := otel.Tracer("").Start(ctx, "worker.getSchema")
 	defer span.End()
 
 	var result pb.SchemaResult
@@ -182,7 +182,7 @@ func getSchemaOverNetwork(ctx context.Context, gid uint32, s *pb.SchemaRequest, 
 func GetSchemaOverNetwork(ctx context.Context, schema *pb.SchemaRequest) (
 	[]*pb.SchemaNode, error) {
 
-	ctx, span := otrace.StartSpan(ctx, "worker.GetSchemaOverNetwork")
+	ctx, span := otel.Tracer("").Start(ctx, "worker.GetSchemaOverNetwork")
 	defer span.End()
 
 	// There was a health check here which is not needed. The health check should be done by the

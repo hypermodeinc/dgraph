@@ -17,7 +17,7 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
-	"go.opencensus.io/plugin/ocgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
@@ -55,7 +55,7 @@ func Init(ps *badger.DB) {
 		grpc.MaxRecvMsgSize(x.GrpcMaxSize),
 		grpc.MaxSendMsgSize(x.GrpcMaxSize),
 		grpc.MaxConcurrentStreams(math.MaxInt32),
-		grpc.StatsHandler(&ocgrpc.ServerHandler{}),
+		grpc.StatsHandler(otelgrpc.NewClientHandler()),
 	}
 
 	if x.WorkerConfig.TLSServerConfig != nil {

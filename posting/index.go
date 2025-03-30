@@ -22,7 +22,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
 	ostats "go.opencensus.io/stats"
-	otrace "go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/dgraph-io/badger/v4"
@@ -502,9 +502,8 @@ func (txn *Txn) addMutationHelper(ctx context.Context, l *List, doUpdateIndex bo
 	defer l.Unlock()
 
 	if dur := time.Since(t1); dur > time.Millisecond {
-		span := otrace.FromContext(ctx)
-		span.Annotatef([]otrace.Attribute{otrace.BoolAttribute("slow-lock", true)},
-			"Acquired lock %v %v %v", dur, t.Attr, t.Entity)
+		span := trace.SpanFromContext(ctx)
+		span.AddEvent(fmt.Sprintf("Acquired lock %v %v %v", dur, t.Attr, t.Entity))
 	}
 
 	getUID := func(t *pb.DirectedEdge) uint64 {

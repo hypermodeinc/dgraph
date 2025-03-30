@@ -21,7 +21,8 @@ import (
 	"github.com/pkg/errors"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
-	otrace "go.opencensus.io/trace"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/dgraph-io/badger/v4/y"
@@ -432,7 +433,7 @@ func (n *Node) doSendMessage(to uint64, msgCh chan []byte) error {
 	}
 
 	c := pb.NewRaftClient(pool.Get())
-	ctx, span := otrace.StartSpan(context.Background(),
+	ctx, span := otel.Tracer("").Start(context.Background(),
 		fmt.Sprintf("RaftMessage-%d-to-%d", n.Id, to))
 	defer span.End()
 
@@ -473,15 +474,15 @@ func (n *Node) doSendMessage(to uint64, msgCh chan []byte) error {
 				Payload: &api.Payload{Data: data},
 			}
 			slurp(batch) // Pick up more entries from msgCh, if present.
-			span.Annotatef(nil, "[to: %x] [Packets: %d] Sending data of length: %d.",
-				to, packets, len(batch.Payload.Data))
+			span.AddEvent(fmt.Sprintf("[to: %x] [Packets: %d] Sending data of length: %d.",
+				to, packets, len(batch.Payload.Data)))
 			if packets%10000 == 0 {
 				glog.V(2).Infof("[to: %x] [Packets: %d] Sending data of length: %d.",
 					to, packets, len(batch.Payload.Data))
 			}
 			packets++
 			if err := mc.Send(batch); err != nil {
-				span.Annotatef(nil, "Error while mc.Send: %v", err)
+				span.AddEvent(fmt.Sprintf("Error while mc.Send: %v", err))
 				glog.Errorf("[to: %x] Error while mc.Send: %v", to, err)
 				switch {
 				case strings.Contains(err.Error(), "TransientFailure"):
@@ -513,8 +514,7 @@ func (n *Node) doSendMessage(to uint64, msgCh chan []byte) error {
 			}
 		case <-ticker.C:
 			if lastPackets == packets {
-				span.Annotatef(nil,
-					"No activity for a while [Packets == %d]. Closing connection.", packets)
+				span.AddEvent(fmt.Sprintf("No activity for a while [Packets == %d]. Closing connection.", packets))
 				return mc.CloseSend()
 			}
 			lastPackets = packets
@@ -640,8 +640,8 @@ var readIndexOk, readIndexTotal uint64
 
 // WaitLinearizableRead waits until a linearizable read can be performed.
 func (n *Node) WaitLinearizableRead(ctx context.Context) error {
-	span := otrace.FromContext(ctx)
-	span.Annotate(nil, "WaitLinearizableRead")
+	span := trace.SpanFromContext(ctx)
+	span.AddEvent("WaitLinearizableRead")
 
 	if num := atomic.AddUint64(&readIndexTotal, 1); num%1000 == 0 {
 		glog.V(2).Infof("ReadIndex Total: %d\n", num)
@@ -649,25 +649,25 @@ func (n *Node) WaitLinearizableRead(ctx context.Context) error {
 	indexCh := make(chan uint64, 1)
 	select {
 	case n.requestCh <- linReadReq{indexCh: indexCh}:
-		span.Annotate(nil, "Pushed to requestCh")
+		span.AddEvent("Pushed to requestCh")
 	case <-ctx.Done():
-		span.Annotate(nil, "Context expired")
+		span.AddEvent("Context expired")
 		return ctx.Err()
 	}
 
 	select {
 	case index := <-indexCh:
-		span.Annotatef(nil, "Received index: %d", index)
+		span.AddEvent(fmt.Sprintf("Received index %d", index))
 		if index == 0 {
 			return errReadIndex
 		} else if num := atomic.AddUint64(&readIndexOk, 1); num%1000 == 0 {
 			glog.V(2).Infof("ReadIndex OK: %d\n", num)
 		}
 		err := n.Applied.WaitForMark(ctx, index)
-		span.Annotatef(nil, "Error from Applied.WaitForMark: %v", err)
+		span.AddEvent(fmt.Sprintf("Error from Applied.WaitForMark: %v", err))
 		return err
 	case <-ctx.Done():
-		span.Annotate(nil, "Context expired")
+		span.AddEvent("Context expired")
 		return ctx.Err()
 	}
 }

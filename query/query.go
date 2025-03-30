@@ -16,7 +16,8 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
-	otrace "go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/hypermodeinc/dgraph/v24/algo"
@@ -1935,7 +1936,7 @@ func recursiveCopy(dst *SubGraph, src *SubGraph) {
 }
 
 func expandSubgraph(ctx context.Context, sg *SubGraph) ([]*SubGraph, error) {
-	span := otrace.FromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 	stop := x.SpanTimer(span, "expandSubgraph: "+sg.Attr)
 	defer stop()
 
@@ -1961,7 +1962,9 @@ func expandSubgraph(ctx context.Context, sg *SubGraph) ([]*SubGraph, error) {
 		switch child.Params.Expand {
 		// It could be expand(_all_) or expand(val(x)).
 		case "_all_":
-			span.Annotate(nil, "expand(_all_)")
+			if span.IsRecording() {
+				span.AddEvent("expand(_all_)")
+			}
 			if len(typeNames) == 0 {
 				break
 			}
@@ -1986,7 +1989,9 @@ func expandSubgraph(ctx context.Context, sg *SubGraph) ([]*SubGraph, error) {
 
 		default:
 			if len(child.ExpandPreds) > 0 {
-				span.Annotate(nil, "expand default")
+				if span.IsRecording() {
+					span.AddEvent("expand default")
+				}
 				// We already have the predicates populated from the var.
 				temp := getPredsFromVals(child.ExpandPreds)
 				for _, pred := range temp {
@@ -2061,7 +2066,7 @@ func ProcessGraph(ctx context.Context, sg, parent *SubGraph, rch chan error) {
 	if len(sg.Attr) > 0 {
 		suffix += "." + sg.Attr
 	}
-	span := otrace.FromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 	stop := x.SpanTimer(span, "query.ProcessGraph"+suffix)
 	defer stop()
 
@@ -2373,7 +2378,10 @@ func ProcessGraph(ctx context.Context, sg, parent *SubGraph, rch chan error) {
 	if (sg.DestUIDs == nil || len(sg.DestUIDs.Uids) == 0) && childErr == nil {
 		// Looks like we're done here. Be careful with nil srcUIDs!
 		if span != nil {
-			span.Annotatef(nil, "Zero uids for %q", sg.Attr)
+			if span.IsRecording() {
+				span.AddEvent("Zero uids", trace.WithAttributes(
+					attribute.String("attr", sg.Attr)))
+			}
 		}
 		out := sg.Children[:0]
 		for _, child := range sg.Children {
@@ -2761,7 +2769,7 @@ type Request struct {
 // Fills Subgraphs and Vars.
 // It can process multiple query blocks that are part of the query..
 func (req *Request) ProcessQuery(ctx context.Context) (err error) {
-	span := otrace.FromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 	stop := x.SpanTimer(span, "query.ProcessQuery")
 	defer stop()
 
@@ -2786,7 +2794,9 @@ func (req *Request) ProcessQuery(ctx context.Context) (err error) {
 			sg.ReadTs = req.ReadTs
 			sg.Cache = req.Cache
 		})
-		span.Annotate(nil, "Query parsed")
+		if span.IsRecording() {
+			span.AddEvent("Query parsed")
+		}
 		req.Subgraphs = append(req.Subgraphs, sg)
 	}
 	req.Latency.Parsing += time.Since(loopStart)

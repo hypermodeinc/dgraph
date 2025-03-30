@@ -24,7 +24,9 @@ import (
 	"github.com/pkg/errors"
 	ostats "go.opencensus.io/stats"
 	"go.opencensus.io/tag"
-	otrace "go.opencensus.io/trace"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -365,11 +367,11 @@ func InsertDropRecord(ctx context.Context, dropOp string) error {
 
 // Alter handles requests to change the schema or remove parts or all of the data.
 func (s *Server) Alter(ctx context.Context, op *api.Operation) (*api.Payload, error) {
-	ctx, span := otrace.StartSpan(ctx, "Server.Alter")
+	ctx, span := otel.Tracer("").Start(ctx, "Server.Alter")
 	defer span.End()
 
 	ctx = x.AttachJWTNamespace(ctx)
-	span.Annotatef(nil, "Alter operation: %+v", op)
+	span.AddEvent("Alter operation", trace.WithAttributes(attribute.String("op", op.String())))
 
 	// Always print out Alter operations because they are important and rare.
 	glog.Infof("Received ALTER op: %+v", op)
@@ -539,12 +541,16 @@ func (s *Server) Alter(ctx context.Context, op *api.Operation) (*api.Payload, er
 	return empty, nil
 }
 
-func annotateNamespace(span *otrace.Span, ns uint64) {
-	span.AddAttributes(otrace.Int64Attribute("ns", int64(ns)))
+func annotateNamespace(span trace.Span, ns uint64) {
+	if span.IsRecording() {
+		span.AddEvent("annotateNamespace", trace.WithAttributes(attribute.Int64("ns", int64(ns))))
+	}
 }
 
-func annotateStartTs(span *otrace.Span, ts uint64) {
-	span.AddAttributes(otrace.Int64Attribute("startTs", int64(ts)))
+func annotateStartTs(span trace.Span, ts uint64) {
+	if span.IsRecording() {
+		span.AddEvent("annotateStartTs", trace.WithAttributes(attribute.Int64("startTs", int64(ts))))
+	}
 }
 
 func (s *Server) doMutate(ctx context.Context, qc *queryContext, resp *api.Response) error {
@@ -620,9 +626,15 @@ func (s *Server) doMutate(ctx context.Context, qc *queryContext, resp *api.Respo
 		return err
 	}
 
-	qc.span.Annotatef(nil, "Applying mutations: %+v", m)
+	qc.span.AddEvent("Applying mutations",
+		trace.WithAttributes(attribute.String("m", fmt.Sprintf("%+v", m))))
 	resp.Txn, err = query.ApplyMutations(ctx, m)
-	qc.span.Annotatef(nil, "Txn Context: %+v. Err=%v", resp.Txn, err)
+	qc.span.AddEvent("Txn Context",
+		trace.WithAttributes(attribute.String("txn", fmt.Sprintf("%+v", resp.Txn))))
+	if err != nil {
+		qc.span.AddEvent("Error",
+			trace.WithAttributes(attribute.String("err", err.Error())))
+	}
 
 	// calculateMutationMetrics calculate cost for the mutation.
 	calculateMutationMetrics := func() {
@@ -659,12 +671,13 @@ func (s *Server) doMutate(ctx context.Context, qc *queryContext, resp *api.Respo
 		return err
 	}
 
-	qc.span.Annotatef(nil, "Prewrites err: %v. Attempting to commit/abort immediately.", err)
 	ctxn := resp.Txn
 	// zero would assign the CommitTs
 	cts, err := worker.CommitOverNetwork(ctx, ctxn)
-	qc.span.Annotatef(nil, "Status of commit at ts: %d: %v", ctxn.StartTs, err)
 	if err != nil {
+		qc.span.AddEvent("Status of commit at ts",
+			trace.WithAttributes(attribute.String("err", err.Error())))
+
 		if err == dgo.ErrAborted {
 			err = status.Errorf(codes.Aborted, err.Error())
 			resp.Txn.Aborted = true
@@ -1052,7 +1065,7 @@ type queryContext struct {
 	// l stores latency numbers
 	latency *query.Latency
 	// span stores a opencensus span used throughout the query processing
-	span *otrace.Span
+	span trace.Span
 	// graphql indicates whether the given request is from graphql admin or not.
 	graphql bool
 	// gqlField stores the GraphQL field for which the query is being processed.
@@ -1282,7 +1295,7 @@ func (s *Server) doQuery(ctx context.Context, req *Request) (resp *api.Response,
 	}
 
 	var measurements []ostats.Measurement
-	ctx, span := otrace.StartSpan(ctx, methodRequest)
+	ctx, span := otel.Tracer("").Start(ctx, methodRequest)
 	if ns, err := x.ExtractNamespace(ctx); err == nil {
 		annotateNamespace(span, ns)
 	}
@@ -1307,12 +1320,12 @@ func (s *Server) doQuery(ctx context.Context, req *Request) (resp *api.Response,
 	req.req.Query = strings.TrimSpace(req.req.Query)
 	isQuery := len(req.req.Query) != 0
 	if !isQuery && !isMutation {
-		span.Annotate(nil, "empty request")
+		span.AddEvent("empty request")
 		return nil, errors.Errorf("empty request")
 	}
 
-	span.AddAttributes(otrace.StringAttribute("Query", req.req.Query))
-	span.Annotatef(nil, "Request received: %v", req.req)
+	span.AddEvent("Request received",
+		trace.WithAttributes(attribute.String("Query", req.req.Query)))
 	if isQuery {
 		ostats.Record(ctx, x.PendingQueries.M(1), x.NumQueries.M(1))
 		defer func() {
@@ -1427,13 +1440,15 @@ func processQuery(ctx context.Context, qc *queryContext) (*api.Response, error) 
 	// Here we try our best effort to not contact Zero for a timestamp. If we succeed,
 	// then we use the max known transaction ts value (from ProcessDelta) for a read-only query.
 	// If we haven't processed any updates yet then fall back to getting TS from Zero.
-	switch {
-	case qc.req.BestEffort:
-		qc.span.Annotate([]otrace.Attribute{otrace.BoolAttribute("be", true)}, "")
-	case qc.req.ReadOnly:
-		qc.span.Annotate([]otrace.Attribute{otrace.BoolAttribute("ro", true)}, "")
-	default:
-		qc.span.Annotate([]otrace.Attribute{otrace.BoolAttribute("no", true)}, "")
+	if qc.span.IsRecording() {
+		switch {
+		case qc.req.BestEffort:
+			qc.span.AddEvent("", trace.WithAttributes(attribute.Bool("be", true)))
+		case qc.req.ReadOnly:
+			qc.span.AddEvent("", trace.WithAttributes(attribute.Bool("ro", true)))
+		default:
+			qc.span.AddEvent("", trace.WithAttributes(attribute.Bool("no", true)))
+		}
 	}
 
 	if qc.req.BestEffort {
@@ -1500,7 +1515,10 @@ func processQuery(ctx context.Context, qc *queryContext) (*api.Response, error) 
 	if err != nil && (qc.gqlField == nil || !x.IsGqlErrorList(err)) {
 		return resp, err
 	}
-	qc.span.Annotatef(nil, "Response = %s", resp.Json)
+	if qc.span.IsRecording() {
+		qc.span.AddEvent("Response",
+			trace.WithAttributes(attribute.String("response", string(resp.Json))))
+	}
 
 	// varToUID contains a map of variable name to the uids corresponding to it.
 	// It is used later for constructing set and delete mutations by replacing
@@ -1833,7 +1851,7 @@ func validateNamespace(ctx context.Context, tc *api.TxnContext) error {
 
 // CommitOrAbort commits or aborts a transaction.
 func (s *Server) CommitOrAbort(ctx context.Context, tc *api.TxnContext) (*api.TxnContext, error) {
-	ctx, span := otrace.StartSpan(ctx, "Server.CommitOrAbort")
+	ctx, span := otel.Tracer("").Start(ctx, "Server.CommitOrAbort")
 	defer span.End()
 
 	if err := x.HealthCheck(); err != nil {
@@ -1854,7 +1872,7 @@ func (s *Server) CommitOrAbort(ctx context.Context, tc *api.TxnContext) (*api.Tx
 		return &api.TxnContext{}, err
 	}
 
-	span.Annotatef(nil, "Txn Context received: %+v", tc)
+	span.AddEvent("Txn Context received", trace.WithAttributes(attribute.Stringer("txn", tc)))
 	commitTs, err := worker.CommitOverNetwork(ctx, tc)
 	if err == dgo.ErrAborted {
 		// If err returned is dgo.ErrAborted and tc.Aborted was set, that means the client has

@@ -663,6 +663,7 @@ func RegisterExporters(conf *viper.Viper, service string) {
 		// Set up Jaeger exporter if configured
 		if collector := t.GetString("jaeger"); len(collector) > 0 {
 			// Create Jaeger exporter using OpenTelemetry OTLP
+			fmt.Println(collector)
 			jaegerExp, err := otlptrace.New(
 				context.Background(),
 				otlptracehttp.NewClient(
