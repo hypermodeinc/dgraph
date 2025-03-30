@@ -383,126 +383,6 @@ func indexTokens(ctx context.Context, info *indexMutationInfo) ([]string, error)
 	return tokens, nil
 }
 
-func (mp *MutationPipeline) ProcessListIndex(ctx context.Context, pipeline *PredicatePipeline) {
-	// Can only come here if the schema is a list and there is no count index.
-	_, ok := schema.State().Get(ctx, pipeline.attr)
-
-	tokenizers := schema.State().Tokenizer(ctx, pipeline.attr)
-	factorySpecs, err := schema.State().FactoryCreateSpec(ctx, pipeline.attr)
-	if err != nil {
-		pipeline.errCh <- err
-		return
-	}
-	indexEdge := &pb.DirectedEdge{
-		Attr: pipeline.attr,
-	}
-	postings := map[uint64]*pb.PostingList{}
-	indexes := map[string]*pb.PostingList{}
-	info := &indexMutationInfo{
-		tokenizers:   tokenizers,
-		factorySpecs: factorySpecs,
-		op:           pb.DirectedEdge_SET,
-	}
-	maxLenToken := 0
-	for edge := range pipeline.edges {
-		for {
-			if edge.Op != pb.DirectedEdge_DEL {
-				if !ok {
-					pipeline.errCh <- errors.Errorf("runMutation: Unable to find schema for %s", edge.Attr)
-					return
-				}
-			}
-			var err error
-			if edge.Op == pb.DirectedEdge_DEL {
-				err = runMutation(ctx, edge, mp.txn)
-			} else {
-				uid := edge.Entity
-				if _, ok := postings[uid]; !ok {
-					postings[uid] = &pb.PostingList{}
-				}
-				mpost := posting.NewPosting(edge)
-				mpost.StartTs = mp.txn.StartTs
-				if mpost.PostingType != pb.Posting_REF {
-					edge.ValueId = posting.FingerprintEdge(edge)
-					mpost.Uid = edge.ValueId
-				}
-				postings[uid].Postings = append(postings[uid].Postings, mpost)
-				if edge.Op != pb.DirectedEdge_DEL {
-					val := types.Val{
-						Tid:   types.TypeID(edge.ValueType),
-						Value: edge.Value,
-					}
-					info.val = val
-					info.edge = edge
-
-					tokens, erri := indexTokens(ctx, info)
-					if erri != nil {
-						pipeline.errCh <- erri
-						return
-					}
-
-					for _, token := range tokens {
-						if _, ok := indexes[token]; !ok {
-							indexes[token] = &pb.PostingList{}
-						}
-						indexEdge.Op = edge.Op
-						indexEdge.ValueId = uid
-						mpost := posting.NewPosting(indexEdge)
-						mpost.StartTs = mp.txn.StartTs
-						mpost.Uid = edge.ValueId
-						indexes[token].Postings = append(indexes[token].Postings, mpost)
-						if len(token) > maxLenToken {
-							maxLenToken = len(token)
-						}
-					}
-				}
-			}
-			if err == nil {
-				break
-			}
-			if err != posting.ErrRetry {
-				pipeline.errCh <- err
-				return
-			}
-		}
-	}
-
-	mp.txn.LockCache()
-	defer mp.txn.UnlockCache()
-
-	dataKey := x.DataKey(pipeline.attr, 0)
-
-	for uid, pl := range postings {
-		data, err := proto.Marshal(pl)
-		if err != nil {
-			pipeline.errCh <- err
-			continue
-		}
-
-		rest := dataKey[len(dataKey)-8:]
-		binary.BigEndian.PutUint64(rest, uid)
-		mp.txn.AddDelta(string(dataKey), data)
-	}
-
-	for token, pl := range indexes {
-		data, err := proto.Marshal(pl)
-		if err != nil {
-			pipeline.errCh <- err
-			continue
-		}
-		key := x.IndexKey(pipeline.attr, token)
-		mp.txn.AddDelta(string(key), data)
-	}
-
-	pipeline.errCh <- nil
-}
-
-// var postingsPool = sync.Pool{
-// 	New: func() interface{} {
-// 		return &pb.PostingList{}
-// 	},
-// }
-
 func (mp *MutationPipeline) DefaultPipeline(ctx context.Context, pipeline *PredicatePipeline) {
 	_, ok := schema.State().Get(ctx, pipeline.attr)
 
@@ -557,7 +437,82 @@ func (mp *MutationPipeline) DefaultPipeline(ctx context.Context, pipeline *Predi
 // 	},
 // }
 
-func (mp *MutationPipeline) ProcessListWithoutIndex(ctx context.Context, pipeline *PredicatePipeline) {
+func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline *PredicatePipeline, postings *map[uint64]*pb.PostingList) {
+	tokenizers := schema.State().Tokenizer(ctx, pipeline.attr)
+	factorySpecs, err := schema.State().FactoryCreateSpec(ctx, pipeline.attr)
+	if err != nil {
+		pipeline.errCh <- err
+		return
+	}
+	indexEdge := &pb.DirectedEdge{
+		Attr: pipeline.attr,
+	}
+	if len(tokenizers) == 0 {
+		return
+	}
+
+	values := make(map[string]*pb.PostingList, len(tokenizers)*len(*postings))
+	info := &indexMutationInfo{
+		tokenizers:   tokenizers,
+		factorySpecs: factorySpecs,
+		op:           pb.DirectedEdge_SET,
+	}
+
+	for uid, postingList := range *postings {
+		for _, posting := range postingList.Postings {
+			valPl, ok := values[string(posting.Value)]
+			if !ok {
+				valPl = &pb.PostingList{}
+				values[string(posting.Value)] = valPl
+			}
+
+			indexEdge.Op = pb.DirectedEdge_Op(posting.Op)
+			indexEdge.Value = posting.Value
+			indexEdge.ValueId = uid
+
+			mpost := makePostingFromEdge(mp.txn.StartTs, indexEdge)
+			valPl.Postings = append(valPl.Postings, mpost)
+		}
+	}
+
+	for _, valPl := range values {
+		if len(valPl.Postings) == 0 {
+			continue
+		}
+
+		posting := valPl.Postings[0]
+		val := types.Val{
+			Tid:   types.TypeID(posting.ValType),
+			Value: posting.Value,
+		}
+		indexEdge.Op = pb.DirectedEdge_Op(posting.Op)
+		indexEdge.Value = posting.Value
+		indexEdge.ValueId = posting.Uid
+		info.val = val
+		info.edge = indexEdge
+
+		tokens, erri := indexTokens(ctx, info)
+		if erri != nil {
+			pipeline.errCh <- erri
+			return
+		}
+
+		data, err := proto.Marshal(valPl)
+		if err != nil {
+			pipeline.errCh <- err
+			continue
+		}
+
+		for _, token := range tokens {
+			key := x.IndexKey(pipeline.attr, token)
+			mp.txn.LockCache()
+			mp.txn.AddDelta(string(key), data)
+			mp.txn.UnlockCache()
+		}
+	}
+}
+
+func (mp *MutationPipeline) ProcessList(ctx context.Context, pipeline *PredicatePipeline, index bool, reverse bool, count bool) {
 	_, schemaExists := schema.State().Get(ctx, pipeline.attr)
 
 	postings := make(map[uint64]*pb.PostingList, 1000)
@@ -598,10 +553,169 @@ func (mp *MutationPipeline) ProcessListWithoutIndex(ctx context.Context, pipelin
 		}
 	}
 
+	if reverse {
+		mp.ProcessReverse(ctx, pipeline, &postings, true, reverse, count)
+	}
+
+	if index {
+		mp.InsertTokenizerIndexes(ctx, pipeline, &postings)
+	}
+
 	mp.txn.LockCache()
 	defer mp.txn.UnlockCache()
 
 	dataKey := x.DataKey(pipeline.attr, 0)
+	baseKey := string(dataKey[:len(dataKey)-8]) // Avoid repeated conversion
+
+	for uid, pl := range postings {
+		data, err := proto.Marshal(pl)
+
+		if err != nil {
+			pipeline.errCh <- err
+			continue
+		}
+
+		binary.BigEndian.PutUint64(dataKey[len(dataKey)-8:], uid)
+		mp.txn.AddDelta(baseKey+string(dataKey[len(dataKey)-8:]), data)
+	}
+
+	pipeline.errCh <- nil
+}
+
+func findSingleValueInPostingList(pb *pb.PostingList) *pb.Posting {
+	for _, p := range pb.Postings {
+		if p.Op == posting.Set {
+			return p
+		}
+	}
+	return nil
+}
+
+func (mp *MutationPipeline) ProcessReverse(ctx context.Context, pipeline *PredicatePipeline, postings *map[uint64]*pb.PostingList, list bool, reverse bool, count bool) {
+	key := x.ReverseKey(pipeline.attr, 0)
+	edge := &pb.DirectedEdge{
+		Attr: pipeline.attr,
+	}
+	reverseredMap := make(map[uint64]*pb.PostingList, 1000)
+	for uid, postingList := range *postings {
+		for _, posting := range postingList.Postings {
+			postingList, ok := reverseredMap[posting.Uid]
+			if !ok {
+				postingList = &pb.PostingList{}
+				reverseredMap[posting.Uid] = postingList
+			}
+			edge.Entity = posting.Uid
+			edge.ValueId = uid
+			edge.Op = pb.DirectedEdge_Op(posting.Op)
+			edge.Facets = posting.Facets
+
+			postingList.Postings = append(postingList.Postings, makePostingFromEdge(mp.txn.StartTs, edge))
+		}
+	}
+
+	mp.txn.LockCache()
+	defer mp.txn.UnlockCache()
+	baseKey := string(key[:len(key)-8])
+	for uid, pl := range reverseredMap {
+		binary.BigEndian.PutUint64(key[len(key)-8:], uid)
+		data, err := proto.Marshal(pl)
+		if err != nil {
+			pipeline.errCh <- err
+			continue
+		}
+		mp.txn.AddDelta(baseKey+string(key[len(key)-8:]), data)
+	}
+}
+
+func makePostingFromEdge(startTs uint64, edge *pb.DirectedEdge) *pb.Posting {
+	mpost := posting.NewPosting(edge)
+	mpost.StartTs = startTs
+	if mpost.PostingType != pb.Posting_REF {
+		edge.ValueId = posting.FingerprintEdge(edge)
+		mpost.Uid = edge.ValueId
+	}
+	return mpost
+}
+
+func (mp *MutationPipeline) ProcessSingle(ctx context.Context, pipeline *PredicatePipeline, index bool, reverse bool, count bool) {
+	_, schemaExists := schema.State().Get(ctx, pipeline.attr)
+
+	postings := make(map[uint64]*pb.PostingList, 1000)
+
+	dataKey := x.DataKey(pipeline.attr, 0)
+
+	var oldVal *pb.Posting
+	for edge := range pipeline.edges {
+		if edge.Op != pb.DirectedEdge_DEL && !schemaExists {
+			pipeline.errCh <- errors.Errorf("runMutation: Unable to find schema for %s", edge.Attr)
+			return
+		}
+
+		uid := edge.Entity
+		pl, exists := postings[uid]
+
+		setPosting := func() {
+			mpost := makePostingFromEdge(mp.txn.StartTs, edge)
+			if len(pl.Postings) == 0 {
+				pl = &pb.PostingList{
+					Postings: []*pb.Posting{mpost},
+				}
+			} else {
+				pl.Postings[0] = mpost
+			}
+		}
+
+		if exists {
+			if edge.Op == pb.DirectedEdge_DEL {
+				oldVal = findSingleValueInPostingList(pl)
+				if string(edge.Value) == string(oldVal.Value) {
+					setPosting()
+				}
+			} else {
+				setPosting()
+			}
+			continue
+		}
+
+		pl = &pb.PostingList{}
+		postings[uid] = pl
+
+		if edge.Op == pb.DirectedEdge_DEL {
+			binary.BigEndian.PutUint64(dataKey[len(dataKey)-8:], uid)
+			list, err := mp.txn.GetScalarList(dataKey)
+			if err != nil {
+				pipeline.errCh <- err
+				return
+			}
+			if list != nil {
+				l, err := list.StaticValue(mp.txn.StartTs)
+				if err != nil {
+					pipeline.errCh <- err
+					return
+				}
+				oldVal = findSingleValueInPostingList(l)
+			}
+			if oldVal != nil {
+				if string(oldVal.Value) == string(edge.Value) {
+					setPosting()
+				}
+			}
+		} else {
+			setPosting()
+		}
+	}
+
+	if index {
+		mp.InsertTokenizerIndexes(ctx, pipeline, &postings)
+	}
+
+	if reverse {
+		mp.ProcessReverse(ctx, pipeline, &postings, false, reverse, count)
+	}
+
+	mp.txn.LockCache()
+	defer mp.txn.UnlockCache()
+
 	baseKey := string(dataKey[:len(dataKey)-8]) // Avoid repeated conversion
 
 	for uid, pl := range postings {
@@ -626,31 +740,27 @@ func (mp *MutationPipeline) ProcessPredicate(ctx context.Context, pipeline *Pred
 	// We shouldn't check whether this Alpha serves this predicate or not. Membership information
 	// isn't consistent across the entire cluster. We should just apply whatever is given to us.
 	su, ok := schema.State().Get(ctx, pipeline.attr)
-
-	processListWithoutIndex := false
-	processListWithIndexNoCount := false
+	hasCountIndex := false
+	hasReversedIndex := false
+	hasIndex := false
+	isList := false
 
 	if ok {
-		isList := su.GetList()
-		doUpdateIndex := schema.State().IsIndexed(ctx, pipeline.attr)
-		hasCountIndex := schema.State().HasCount(ctx, pipeline.attr)
-		if isList && !hasCountIndex && !doUpdateIndex {
-			processListWithoutIndex = true
-		}
-		if !hasCountIndex && doUpdateIndex {
-			processListWithIndexNoCount = true
-		}
+		isList = su.GetList()
+		hasIndex = schema.State().IsIndexed(ctx, pipeline.attr)
+		hasCountIndex = schema.State().HasCount(ctx, pipeline.attr)
+		hasReversedIndex = schema.State().IsReversed(ctx, pipeline.attr)
 	}
 
-	fmt.Println("PROCESS PREDICATE", pipeline.attr, processListWithIndexNoCount, processListWithoutIndex)
+	fmt.Println("PROCESS PREDICATE", pipeline.attr)
 
-	if processListWithoutIndex {
-		mp.ProcessListWithoutIndex(ctx, pipeline)
+	if ok && isList {
+		mp.ProcessList(ctx, pipeline, hasIndex, hasReversedIndex, hasCountIndex)
 		return
 	}
 
-	if processListWithIndexNoCount {
-		mp.ProcessListIndex(ctx, pipeline)
+	if ok && !isList {
+		mp.ProcessSingle(ctx, pipeline, hasIndex, hasReversedIndex, hasCountIndex)
 		return
 	}
 
