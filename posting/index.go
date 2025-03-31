@@ -153,6 +153,8 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 
 		tokens, erri := indexTokens(ctx, info)
 		if erri != nil {
+			fmt.Println("erri", erri, val.Tid, val.Value)
+			panic(erri)
 			pipeline.errCh <- erri
 			return
 		}
