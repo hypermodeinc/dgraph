@@ -12,6 +12,7 @@ const (
 	floatType
 	doubleType
 	datetimeType
+	timeType
 	uidType // foreign key reference, which would correspond to uid type in Dgraph
 )
 
@@ -29,15 +30,25 @@ func initDataTypes() {
 	typeToString[floatType] = "float"
 	typeToString[doubleType] = "double"
 	typeToString[datetimeType] = "datetime"
+	typeToString[timeType] = "string" // Store time as string to avoid parsing issues
 	typeToString[uidType] = "uid"
 
 	sqlTypeToInternal = make(map[string]dataType)
 	sqlTypeToInternal["int"] = intType
 	sqlTypeToInternal["tinyint"] = intType
+	sqlTypeToInternal["bigint"] = intType
+	sqlTypeToInternal["smallint"] = intType
 	sqlTypeToInternal["varchar"] = stringType
 	sqlTypeToInternal["text"] = stringType
+	sqlTypeToInternal["tinytext"] = stringType
+	sqlTypeToInternal["mediumtext"] = stringType
+	sqlTypeToInternal["longtext"] = stringType
+	sqlTypeToInternal["tinyblob"] = stringType
+	sqlTypeToInternal["blob"] = stringType
+	sqlTypeToInternal["mediumblob"] = stringType
+	sqlTypeToInternal["longblob"] = stringType
 	sqlTypeToInternal["date"] = datetimeType
-	sqlTypeToInternal["time"] = datetimeType
+	sqlTypeToInternal["time"] = timeType
 	sqlTypeToInternal["datetime"] = datetimeType
 	sqlTypeToInternal["float"] = floatType
 	sqlTypeToInternal["double"] = doubleType

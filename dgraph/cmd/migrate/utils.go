@@ -30,8 +30,9 @@ func getPool(host, port, user, password, db string) (*sql.DB,
 // by splitting the parameter with the separate comma
 // 2) if the parameter is empty, this function will read all the tables under the given
 // database and then return the result
-func showTables(pool *sql.DB, tableNames string) ([]string, error) {
-	if len(tableNames) > 0 {
+func showTables(pool *sql.DB, tableNames string, excludeTableNames string) ([]string, error) {
+	// If specific tables are provided, use them
+	if len(tableNames) > 0 && len(excludeTableNames) == 0 {
 		return strings.Split(tableNames, ","), nil
 	}
 	query := "show tables"
@@ -50,7 +51,43 @@ func showTables(pool *sql.DB, tableNames string) ([]string, error) {
 		tables = append(tables, table)
 	}
 
+	// If specific tables are provided, filter to only include those
+	if len(tableNames) > 0 {
+		includeTables := make(map[string]bool)
+		for _, t := range strings.Split(tableNames, ",") {
+			includeTables[strings.TrimSpace(t)] = true
+		}
+		
+		filteredTables := make([]string, 0)
+		for _, t := range tables {
+			if includeTables[t] {
+				filteredTables = append(filteredTables, t)
+			}
+		}
+		tables = filteredTables
+	}
+
+	// Filter out excluded tables
+	if len(excludeTableNames) > 0 {
+		excludeTables := make(map[string]bool)
+		for _, t := range strings.Split(excludeTableNames, ",") {
+			excludeTables[strings.TrimSpace(t)] = true
+		}
+		tables = filterOutExcludedTables(tables, excludeTables)
+	}
+
 	return tables, nil
+}
+
+// filterOutExcludedTables removes tables that are in the excludeTables map
+func filterOutExcludedTables(tables []string, excludeTables map[string]bool) []string {
+	filteredTables := make([]string, 0)
+	for _, table := range tables {
+		if !excludeTables[table] {
+			filteredTables = append(filteredTables, table)
+		}
+	}
+	return filteredTables
 }
 
 type criteriaFunc func(info *sqlTable, column string) bool
@@ -109,6 +146,10 @@ func getColumnValues(columns []string, dataTypes []dataType,
 			valuePtrs = append(valuePtrs, new(sql.NullFloat64))
 		case datetimeType:
 			valuePtrs = append(valuePtrs, new(mysql.NullTime))
+		case doubleType:
+			valuePtrs = append(valuePtrs, new(sql.NullFloat64))
+		case timeType:
+			valuePtrs = append(valuePtrs, new(sql.NullString)) // Store time as string to avoid parsing issues
 		default:
 			x.Panic(errors.Errorf("detected unsupported type %s on column %s",
 				dataTypes[i], columns[i]))
