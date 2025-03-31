@@ -726,7 +726,9 @@ func (mp *MutationPipeline) ProcessCount(ctx context.Context, pipeline *Predicat
 					pipeline.errCh <- err
 					return
 				}
+				list.RLock()
 				prevCount = list.GetLength(mp.txn.StartTs)
+				list.RUnlock()
 				newCount = prevCount + len(postingList.Postings)
 			}
 		}
