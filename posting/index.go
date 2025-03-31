@@ -505,8 +505,6 @@ func (mp *MutationPipeline) ProcessSingle(ctx context.Context, pipeline *Predica
 		mp.ProcessCount(ctx, pipeline, &postings, true, false)
 	}
 
-	fmt.Println("PROCESS SINGLE:", postings)
-
 	mp.txn.LockCache()
 	defer mp.txn.UnlockCache()
 
