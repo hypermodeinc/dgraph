@@ -154,9 +154,9 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 		tokens, erri := indexTokens(ctx, info)
 		if erri != nil {
 			fmt.Println("erri", erri, val.Tid, val.Value)
-			panic(erri)
-			pipeline.errCh <- erri
-			return
+			continue
+			//pipeline.errCh <- erri
+			//return
 		}
 
 		data, err := proto.Marshal(valPl)
