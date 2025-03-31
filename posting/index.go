@@ -173,7 +173,7 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 }
 
 func (mp *MutationPipeline) ProcessList(ctx context.Context, pipeline *PredicatePipeline, index bool, reverse bool, count bool) {
-	su, schemaExists := schema.State().Get(ctx, pipeline.attr)
+	_, schemaExists := schema.State().Get(ctx, pipeline.attr)
 
 	postings := make(map[uint64]*pb.PostingList, 1000)
 
@@ -409,7 +409,7 @@ func (mp *MutationPipeline) ProcessCount(ctx context.Context, pipeline *Predicat
 }
 
 func (mp *MutationPipeline) ProcessSingle(ctx context.Context, pipeline *PredicatePipeline, index bool, reverse bool, count bool) {
-	su, schemaExists := schema.State().Get(ctx, pipeline.attr)
+	_, schemaExists := schema.State().Get(ctx, pipeline.attr)
 
 	postings := make(map[uint64]*pb.PostingList, 1000)
 
