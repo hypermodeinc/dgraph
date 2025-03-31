@@ -562,7 +562,7 @@ func (mp *MutationPipeline) ProcessList(ctx context.Context, pipeline *Predicate
 	}
 
 	if count {
-		mp.ProcessCount(ctx, pipeline, &postings, true)
+		mp.ProcessCount(ctx, pipeline, &postings, true, false)
 	}
 
 	mp.txn.LockCache()
@@ -617,8 +617,6 @@ func (mp *MutationPipeline) ProcessReverse(ctx context.Context, pipeline *Predic
 		}
 	}
 
-	mp.txn.LockCache()
-	defer mp.txn.UnlockCache()
 	baseKey := string(key[:len(key)-8])
 	for uid, pl := range reverseredMap {
 		binary.BigEndian.PutUint64(key[len(key)-8:], uid)
@@ -627,7 +625,13 @@ func (mp *MutationPipeline) ProcessReverse(ctx context.Context, pipeline *Predic
 			pipeline.errCh <- err
 			continue
 		}
+		mp.txn.LockCache()
 		mp.txn.AddDelta(baseKey+string(key[len(key)-8:]), data)
+		mp.txn.UnlockCache()
+	}
+
+	if count {
+		mp.ProcessCount(ctx, pipeline, &reverseredMap, !list, true)
 	}
 }
 
@@ -680,8 +684,11 @@ func (mp *MutationPipeline) handleOldDeleteForSingle(ctx context.Context, pipeli
 	}
 }
 
-func (mp *MutationPipeline) ProcessCount(ctx context.Context, pipeline *PredicatePipeline, postings *map[uint64]*pb.PostingList, isSingle bool) {
+func (mp *MutationPipeline) ProcessCount(ctx context.Context, pipeline *PredicatePipeline, postings *map[uint64]*pb.PostingList, isSingle bool, reverse bool) {
 	dataKey := x.DataKey(pipeline.attr, 0)
+	if reverse {
+		dataKey = x.ReverseKey(pipeline.attr, 0)
+	}
 	edge := pb.DirectedEdge{
 		Attr: pipeline.attr,
 	}
@@ -744,7 +751,7 @@ func (mp *MutationPipeline) ProcessCount(ctx context.Context, pipeline *Predicat
 			pipeline.errCh <- nil
 			return
 		}
-		ck := x.CountKey(pipeline.attr, uint32(c), false)
+		ck := x.CountKey(pipeline.attr, uint32(c), reverse)
 		mp.txn.AddDelta(string(ck), data)
 	}
 }
@@ -830,7 +837,7 @@ func (mp *MutationPipeline) ProcessSingle(ctx context.Context, pipeline *Predica
 	}
 
 	if count {
-		mp.ProcessCount(ctx, pipeline, &postings, true)
+		mp.ProcessCount(ctx, pipeline, &postings, true, false)
 	}
 
 	mp.txn.LockCache()
@@ -871,8 +878,6 @@ func (mp *MutationPipeline) ProcessPredicate(ctx context.Context, pipeline *Pred
 		hasCountIndex = schema.State().HasCount(ctx, pipeline.attr)
 		hasReversedIndex = schema.State().IsReversed(ctx, pipeline.attr)
 	}
-
-	fmt.Println("PROCESS PREDICATE", pipeline.attr)
 
 	if ok && isList {
 		mp.ProcessList(ctx, pipeline, hasIndex, hasReversedIndex, hasCountIndex)
