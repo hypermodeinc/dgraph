@@ -15,7 +15,8 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
-	otrace "go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	dgoapi "github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/dql"
@@ -171,11 +172,14 @@ type dgraphResolver struct {
 }
 
 func (mr *dgraphResolver) Resolve(ctx context.Context, m schema.Mutation) (*Resolved, bool) {
-	span := otrace.FromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 	stop := x.SpanTimer(span, "resolveMutation")
 	defer stop()
 	if span != nil {
-		span.Annotatef(nil, "mutation alias: [%s] type: [%s]", m.Alias(), m.MutationType())
+		span.AddEvent("Mutation Started", trace.WithAttributes(
+			attribute.String("Mutation alias", m.Alias()),
+			attribute.String("Type", m.MutatedType().DgraphName()),
+		))
 	}
 
 	resolverTrace := &schema.ResolverTrace{

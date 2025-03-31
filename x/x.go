@@ -34,9 +34,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 	"go.opencensus.io/plugin/ocgrpc"
-	"go.opencensus.io/trace"
 	"go.opentelemetry.io/otel/attribute"
-	oteltrace "go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/term"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -976,32 +975,35 @@ func SpanTimer(spanInterface interface{}, name string) func() {
 	// OpenCensus span case
 	if span, ok := spanInterface.(*trace.Span); ok && span != nil {
 		uniq := int64(rand.Int31()) //nolint:gosec // unique id for tracing does not require cryptographic precision
-		attrs := []trace.Attribute{
-			trace.Int64Attribute("funcId", uniq),
-			trace.StringAttribute("funcName", name),
-		}
-		span.Annotate(attrs, "Start.")
+		attrs := trace.WithAttributes(
+			attribute.Int64("funcId", uniq),
+			attribute.String("funcName", name),
+		)
+		(*span).AddEvent("Start", attrs)
 		start := time.Now()
 
 		return func() {
-			span.Annotatef(attrs, "End. Took %s", time.Since(start))
+			(*span).AddEvent("End", trace.WithAttributes(
+				attribute.Int64("funcId", uniq),
+				attribute.String("funcName", name),
+				attribute.String("duration", time.Since(start).String()),
+			))
 			// TODO: We can look into doing a latency record here.
 		}
 	}
 
 	// OpenTelemetry span case
-	if span, ok := spanInterface.(oteltrace.Span); ok {
+	if span, ok := spanInterface.(trace.Span); ok {
 		uniq := int64(rand.Int31()) //nolint:gosec // unique id for tracing does not require cryptographic precision
-		attrs := []attribute.KeyValue{
+		attrs := trace.WithAttributes(
 			attribute.Int64("funcId", uniq),
 			attribute.String("funcName", name),
-		}
-		span.SetAttributes(attrs...)
-		span.AddEvent("Start")
+		)
+		span.AddEvent("Start", attrs)
 		start := time.Now()
 
 		return func() {
-			span.AddEvent("End", oteltrace.WithAttributes(
+			span.AddEvent("End", trace.WithAttributes(
 				attribute.Int64("funcId", uniq),
 				attribute.String("funcName", name),
 				attribute.String("duration", time.Since(start).String()),

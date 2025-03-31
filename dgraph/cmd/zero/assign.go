@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: © Hypermode Inc. <hello@hypermode.com>
+ * SPDX-FileCopyrightText:  Hypermode Inc. <hello@hypermode.com>
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -7,12 +7,14 @@ package zero
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"time"
 
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
-	otrace "go.opencensus.io/trace"
+	"go.opentelemetry.io/otel"
+	attribute "go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/hypermodeinc/dgraph/v24/protos/pb"
@@ -175,7 +177,7 @@ func (s *Server) AssignIds(ctx context.Context, num *pb.Num) (*pb.AssignedIds, e
 	if ctx.Err() != nil {
 		return &emptyAssignedIds, ctx.Err()
 	}
-	ctx, span := otrace.StartSpan(ctx, "Zero.AssignIds")
+	ctx, span := otel.Tracer("").Start(ctx, "Zero.AssignIds")
 	defer span.End()
 
 	rateLimit := func() error {
@@ -215,11 +217,13 @@ func (s *Server) AssignIds(ctx context.Context, num *pb.Num) (*pb.AssignedIds, e
 			if err := rateLimit(); err != nil {
 				return err
 			}
-			span.Annotatef(nil, "Zero leader leasing %d ids", num.GetVal())
+			span.SetAttributes(attribute.String("tablet", "predicate"))
+			span.AddEvent(fmt.Sprintf("Zero leader leasing %d ids", num.GetVal()))
 			reply, err = s.lease(ctx, num)
 			return err
 		}
-		span.Annotate(nil, "Not Zero leader")
+		span.SetAttributes(attribute.String("Not Zero leader", "true"))
+		span.AddEvent("Not Zero leader")
 		// I'm not the leader and this request was forwarded to me by a peer, who thought I'm the
 		// leader.
 		if num.Forwarded {
@@ -230,7 +234,7 @@ func (s *Server) AssignIds(ctx context.Context, num *pb.Num) (*pb.AssignedIds, e
 		if pl == nil {
 			return errors.Errorf("No healthy connection found to Leader of group zero")
 		}
-		span.Annotatef(nil, "Sending request to %v", pl.Addr)
+		span.AddEvent(fmt.Sprintf("Sending request to %v", pl.Addr))
 		zc := pb.NewZeroClient(pl.Get())
 		num.Forwarded = true
 		// pass on the incoming metadata to the zero leader.
@@ -269,7 +273,7 @@ func (s *Server) AssignIds(ctx context.Context, num *pb.Num) (*pb.AssignedIds, e
 	case <-ctx.Done():
 		return &emptyAssignedIds, ctx.Err()
 	case err := <-c:
-		span.Annotatef(nil, "Error while leasing %+v: %v", num, err)
+		span.AddEvent(fmt.Sprintf("Error while leasing %+v: %v", num, err))
 		return reply, err
 	}
 }

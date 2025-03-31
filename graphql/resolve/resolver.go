@@ -16,7 +16,7 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
-	otrace "go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/trace"
 
 	dgoapi "github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/edgraph"
@@ -447,7 +447,7 @@ func New(s schema.Schema, resolverFactory ResolverFactory) *RequestResolver {
 // and a schema and backend Dgraph should have been added.
 // Resolve records any errors in the response's error field.
 func (r *RequestResolver) Resolve(ctx context.Context, gqlReq *schema.Request) (resp *schema.Response) {
-	span := otrace.FromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 	stop := x.SpanTimer(span, methodResolve)
 	defer stop()
 
@@ -679,7 +679,7 @@ func NewHTTPMutationResolver(hc *http.Client) MutationResolver {
 }
 
 func (hr *httpResolver) Resolve(ctx context.Context, field schema.Field) *Resolved {
-	span := otrace.FromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 	stop := x.SpanTimer(span, "resolveHTTP")
 	defer stop()
 

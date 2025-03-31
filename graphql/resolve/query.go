@@ -12,7 +12,7 @@ import (
 	"strconv"
 
 	"github.com/golang/glog"
-	otrace "go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/trace"
 
 	dgoapi "github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/dql"
@@ -64,7 +64,7 @@ type queryResolver struct {
 }
 
 func (qr *queryResolver) Resolve(ctx context.Context, query schema.Query) *Resolved {
-	span := otrace.FromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 	stop := x.SpanTimer(span, "resolveQuery")
 	defer stop()
 
@@ -150,7 +150,7 @@ type customDQLQueryResolver struct {
 }
 
 func (qr *customDQLQueryResolver) Resolve(ctx context.Context, query schema.Query) *Resolved {
-	span := otrace.FromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 	stop := x.SpanTimer(span, "resolveCustomDQLQuery")
 	defer stop()
 

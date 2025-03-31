@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: © Hypermode Inc. <hello@hypermode.com>
+ * SPDX-FileCopyrightText:  Hypermode Inc. <hello@hypermode.com>
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -20,10 +20,8 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
-	otrace "go.opencensus.io/trace"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/zpages"
-	"golang.org/x/net/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
@@ -245,13 +243,6 @@ func run() {
 			opts.numReplicas)
 	}
 
-	if Zero.Conf.GetBool("expose_trace") {
-		// TODO: Remove this once we get rid of event logs.
-		trace.AuthRequest = func(req *http.Request) (any, sensitive bool) {
-			return true, true
-		}
-	}
-
 	if opts.audit != nil {
 		wd, err := filepath.Abs(opts.w)
 		x.Check(err)
@@ -265,10 +256,6 @@ func run() {
 		log.Fatalf("ERROR: Rebalance interval must be greater than zero. Found: %d",
 			opts.rebalanceInterval)
 	}
-
-	grpc.EnableTracing = false
-	otrace.ApplyConfig(otrace.Config{
-		DefaultSampler: otrace.ProbabilitySampler(Zero.Conf.GetFloat64("trace"))})
 
 	addr := "localhost"
 	if opts.bindall {
