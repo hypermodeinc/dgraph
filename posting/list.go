@@ -733,6 +733,21 @@ func NewPostingExisting(p *pb.Posting, t *pb.DirectedEdge) {
 	p.Facets = t.Facets
 }
 
+func GetPostingOp(top uint32) pb.DirectedEdge_Op {
+	var op pb.DirectedEdge_Op
+	switch top {
+	case Set:
+		op = pb.DirectedEdge_SET
+	case Del:
+		op = pb.DirectedEdge_DEL
+	case Ovr:
+		op = pb.DirectedEdge_OVR
+	default:
+		x.Fatalf("Unhandled operation: %+v", top)
+	}
+	return op
+}
+
 // NewPosting takes the given edge and returns its equivalent representation as a posting.
 func NewPosting(t *pb.DirectedEdge) *pb.Posting {
 	var op uint32

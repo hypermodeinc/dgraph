@@ -123,15 +123,15 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 			valPl, ok := values[string(posting.Value)]
 			if !ok {
 				valPl = &pb.PostingList{}
-				values[string(posting.Value)] = valPl
 			}
 
-			indexEdge.Op = pb.DirectedEdge_Op(posting.Op)
+			indexEdge.Op = GetPostingOp(posting.Op)
 			indexEdge.Value = posting.Value
 			indexEdge.ValueId = uid
 
 			mpost := makePostingFromEdge(mp.txn.StartTs, indexEdge)
 			valPl.Postings = append(valPl.Postings, mpost)
+			values[string(posting.Value)] = valPl
 		}
 	}
 
@@ -145,7 +145,7 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 			Tid:   types.TypeID(posting.ValType),
 			Value: posting.Value,
 		}
-		indexEdge.Op = pb.DirectedEdge_Op(posting.Op)
+		indexEdge.Op = GetPostingOp(posting.Op)
 		indexEdge.Value = posting.Value
 		indexEdge.ValueId = posting.Uid
 		info.val = val
@@ -192,7 +192,6 @@ func (mp *MutationPipeline) ProcessList(ctx context.Context, pipeline *Predicate
 		pl, exists := postings[uid]
 		if !exists {
 			pl = &pb.PostingList{Postings: []*pb.Posting{}}
-			postings[uid] = pl
 		}
 
 		mpost := NewPosting(edge)
@@ -203,6 +202,7 @@ func (mp *MutationPipeline) ProcessList(ctx context.Context, pipeline *Predicate
 		}
 
 		pl.Postings = append(pl.Postings, mpost)
+		postings[uid] = pl
 	}
 
 	if reverse {
@@ -258,14 +258,15 @@ func (mp *MutationPipeline) ProcessReverse(ctx context.Context, pipeline *Predic
 			postingList, ok := reverseredMap[posting.Uid]
 			if !ok {
 				postingList = &pb.PostingList{}
-				reverseredMap[posting.Uid] = postingList
 			}
 			edge.Entity = posting.Uid
 			edge.ValueId = uid
-			edge.Op = pb.DirectedEdge_Op(posting.Op)
+			edge.ValueType = posting.ValType
+			edge.Op = GetPostingOp(posting.Op)
 			edge.Facets = posting.Facets
 
 			postingList.Postings = append(postingList.Postings, makePostingFromEdge(mp.txn.StartTs, edge))
+			reverseredMap[posting.Uid] = postingList
 		}
 	}
 
@@ -333,6 +334,7 @@ func (mp *MutationPipeline) handleOldDeleteForSingle(pipeline *PredicatePipeline
 
 		mpost := makePostingFromEdge(mp.txn.StartTs, edge)
 		postingList.Postings = append(postingList.Postings, mpost)
+		postings[uid] = postingList
 	}
 }
 
@@ -354,6 +356,7 @@ func (mp *MutationPipeline) ProcessCount(ctx context.Context, pipeline *Predicat
 			countMap[count] = c
 		}
 		c.Postings = append(c.Postings, makePostingFromEdge(mp.txn.StartTs, &edge))
+		countMap[count] = c
 	}
 
 	prevCount := 0
@@ -441,6 +444,7 @@ func (mp *MutationPipeline) ProcessSingle(ctx context.Context, pipeline *Predica
 			} else {
 				pl.Postings[0] = mpost
 			}
+			postings[uid] = pl
 		}
 
 		if exists {
@@ -498,6 +502,8 @@ func (mp *MutationPipeline) ProcessSingle(ctx context.Context, pipeline *Predica
 	if count {
 		mp.ProcessCount(ctx, pipeline, &postings, true, false)
 	}
+
+	fmt.Println("PROCESS SINGLE:", postings)
 
 	mp.txn.LockCache()
 	defer mp.txn.UnlockCache()
