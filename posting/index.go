@@ -135,43 +135,64 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 		}
 	}
 
-	for _, valPl := range values {
-		if len(valPl.Postings) == 0 {
-			continue
-		}
+	numGo := 10
+	wg := &sync.WaitGroup{}
 
-		posting := valPl.Postings[0]
-		val := types.Val{
-			Tid:   types.TypeID(posting.ValType),
-			Value: posting.Value,
-		}
-		indexEdge.Op = GetPostingOp(posting.Op)
-		indexEdge.Value = posting.Value
-		indexEdge.ValueId = posting.Uid
-		info.val = val
-		info.edge = indexEdge
+	strings := make([]string, 0, len(values))
+	for i := range values {
+		strings = append(strings, i)
+	}
 
-		tokens, erri := indexTokens(ctx, info)
-		if erri != nil {
-			fmt.Println("erri", erri, val.Tid, val.Value)
-			continue
-			//pipeline.errCh <- erri
-			//return
-		}
+	process := func(start int) {
+		defer wg.Done()
+		for i := start; i < len(values); i += numGo {
+			token := strings[i]
+			valPl := values[token]
+			if len(valPl.Postings) == 0 {
+				continue
+			}
 
-		data, err := proto.Marshal(valPl)
-		if err != nil {
-			pipeline.errCh <- err
-			continue
-		}
+			posting := valPl.Postings[0]
+			val := types.Val{
+				Tid:   types.TypeID(posting.ValType),
+				Value: posting.Value,
+			}
+			indexEdge.Op = GetPostingOp(posting.Op)
+			indexEdge.Value = posting.Value
+			indexEdge.ValueId = posting.Uid
+			info.val = val
+			info.edge = indexEdge
 
-		for _, token := range tokens {
-			key := x.IndexKey(pipeline.attr, token)
-			mp.txn.LockCache()
-			mp.txn.AddDelta(string(key), data)
-			mp.txn.UnlockCache()
+			tokens, erri := indexTokens(ctx, info)
+			if erri != nil {
+				fmt.Println("erri", erri, val.Tid, val.Value)
+				continue
+				//pipeline.errCh <- erri
+				//return
+			}
+
+			data, err := proto.Marshal(valPl)
+			if err != nil {
+				pipeline.errCh <- err
+				continue
+			}
+
+			for _, token := range tokens {
+				key := x.IndexKey(pipeline.attr, token)
+				mp.txn.LockCache()
+				mp.txn.AddDelta(string(key), data)
+				mp.txn.UnlockCache()
+			}
+
 		}
 	}
+
+	for i := range numGo {
+		wg.Add(1)
+		go process(i)
+	}
+
+	wg.Wait()
 }
 
 func (mp *MutationPipeline) ProcessList(ctx context.Context, pipeline *PredicatePipeline, index bool, reverse bool, count bool) {
