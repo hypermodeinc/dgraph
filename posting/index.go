@@ -183,11 +183,6 @@ func (mp *MutationPipeline) ProcessList(ctx context.Context, pipeline *Predicate
 			return
 		}
 
-		if err := ValidateAndConvert(edge, &su); err != nil {
-			pipeline.errCh <- err
-			return
-		}
-
 		uid := edge.Entity
 		pl, exists := postings[uid]
 		if !exists {
@@ -424,11 +419,6 @@ func (mp *MutationPipeline) ProcessSingle(ctx context.Context, pipeline *Predica
 	for edge := range pipeline.edges {
 		if edge.Op != pb.DirectedEdge_DEL && !schemaExists {
 			pipeline.errCh <- errors.Errorf("runMutation: Unable to find schema for %s", edge.Attr)
-			return
-		}
-
-		if err := ValidateAndConvert(edge, &su); err != nil {
-			pipeline.errCh <- err
 			return
 		}
 
