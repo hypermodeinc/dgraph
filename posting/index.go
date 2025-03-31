@@ -175,13 +175,18 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 }
 
 func (mp *MutationPipeline) ProcessList(ctx context.Context, pipeline *PredicatePipeline, index bool, reverse bool, count bool) {
-	_, schemaExists := schema.State().Get(ctx, pipeline.attr)
+	su, schemaExists := schema.State().Get(ctx, pipeline.attr)
 
 	postings := make(map[uint64]*pb.PostingList, 1000)
 
 	for edge := range pipeline.edges {
 		if edge.Op != pb.DirectedEdge_DEL && !schemaExists {
 			pipeline.errCh <- errors.Errorf("runMutation: Unable to find schema for %s", edge.Attr)
+			return
+		}
+
+		if err := ValidateAndConvert(edge, &su); err != nil {
+			pipeline.errCh <- err
 			return
 		}
 
@@ -411,7 +416,7 @@ func (mp *MutationPipeline) ProcessCount(ctx context.Context, pipeline *Predicat
 }
 
 func (mp *MutationPipeline) ProcessSingle(ctx context.Context, pipeline *PredicatePipeline, index bool, reverse bool, count bool) {
-	_, schemaExists := schema.State().Get(ctx, pipeline.attr)
+	su, schemaExists := schema.State().Get(ctx, pipeline.attr)
 
 	postings := make(map[uint64]*pb.PostingList, 1000)
 
@@ -421,6 +426,11 @@ func (mp *MutationPipeline) ProcessSingle(ctx context.Context, pipeline *Predica
 	for edge := range pipeline.edges {
 		if edge.Op != pb.DirectedEdge_DEL && !schemaExists {
 			pipeline.errCh <- errors.Errorf("runMutation: Unable to find schema for %s", edge.Attr)
+			return
+		}
+
+		if err := ValidateAndConvert(edge, &su); err != nil {
+			pipeline.errCh <- err
 			return
 		}
 
