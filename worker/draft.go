@@ -561,6 +561,10 @@ func (mp *MutationPipeline) ProcessList(ctx context.Context, pipeline *Predicate
 		mp.InsertTokenizerIndexes(ctx, pipeline, &postings)
 	}
 
+	if count {
+		mp.ProcessCount(ctx, pipeline, &postings, true)
+	}
+
 	mp.txn.LockCache()
 	defer mp.txn.UnlockCache()
 
@@ -637,6 +641,114 @@ func makePostingFromEdge(startTs uint64, edge *pb.DirectedEdge) *pb.Posting {
 	return mpost
 }
 
+func (mp *MutationPipeline) handleOldDeleteForSingle(ctx context.Context, pipeline *PredicatePipeline, postings map[uint64]*pb.PostingList) {
+	edge := &pb.DirectedEdge{
+		Attr: pipeline.attr,
+	}
+
+	dataKey := x.DataKey(pipeline.attr, 0)
+
+	for uid, postingList := range postings {
+		currValue := findSingleValueInPostingList(postingList)
+		if currValue == nil {
+			continue
+		}
+
+		binary.BigEndian.PutUint64(dataKey[len(dataKey)-8:], uid)
+		list, err := mp.txn.GetScalarList(dataKey)
+		if err != nil {
+			pipeline.errCh <- err
+			return
+		}
+
+		oldValList, err := list.StaticValue(mp.txn.StartTs - 1)
+		if err != nil {
+			pipeline.errCh <- err
+			return
+		}
+
+		oldVal := findSingleValueInPostingList(oldValList)
+
+		if oldVal == nil {
+			continue
+		}
+		edge.Op = pb.DirectedEdge_DEL
+		edge.Value = oldVal.Value
+
+		mpost := makePostingFromEdge(mp.txn.StartTs, edge)
+		postingList.Postings = append(postingList.Postings, mpost)
+	}
+}
+
+func (mp *MutationPipeline) ProcessCount(ctx context.Context, pipeline *PredicatePipeline, postings *map[uint64]*pb.PostingList, isSingle bool) {
+	dataKey := x.DataKey(pipeline.attr, 0)
+	edge := pb.DirectedEdge{
+		Attr: pipeline.attr,
+	}
+
+	countMap := make(map[int]*pb.PostingList, 2*len(*postings))
+
+	insertEdgeCount := func(count int) {
+		c, ok := countMap[count]
+		if !ok {
+			c = &pb.PostingList{}
+			countMap[count] = c
+		}
+		c.Postings = append(c.Postings, makePostingFromEdge(mp.txn.StartTs, &edge))
+	}
+
+	prevCount := 0
+	newCount := 0
+	for uid, postingList := range *postings {
+		if isSingle {
+			val := findSingleValueInPostingList(postingList)
+			if val == nil {
+				prevCount = 1
+				newCount = 0
+			} else {
+				newCount = 1
+				if len(postingList.Postings) > 1 {
+					prevCount = 1
+				}
+			}
+		} else {
+			for uid, postingList := range *postings {
+				binary.BigEndian.PutUint64(dataKey[len(dataKey)-8:], uid)
+				list, err := mp.txn.Get(dataKey)
+				if err != nil {
+					pipeline.errCh <- err
+					return
+				}
+				prevCount = list.GetLength(mp.txn.StartTs)
+				newCount = prevCount + len(postingList.Postings)
+			}
+		}
+
+		edge.ValueId = uid
+		edge.Op = pb.DirectedEdge_DEL
+		if prevCount > 0 {
+			insertEdgeCount(prevCount)
+		}
+		edge.Op = pb.DirectedEdge_SET
+		if newCount > 0 {
+			insertEdgeCount(newCount)
+		}
+	}
+
+	mp.txn.LockCache()
+	defer mp.txn.UnlockCache()
+
+	for c, pl := range countMap {
+		data, err := proto.Marshal(pl)
+		if err != nil {
+			pipeline.errCh <- nil
+			return
+		}
+		ck := x.CountKey(pipeline.attr, uint32(c), false)
+		mp.txn.AddDelta(string(ck), data)
+	}
+}
+
 func (mp *MutationPipeline) ProcessSingle(ctx context.Context, pipeline *PredicatePipeline, index bool, reverse bool, count bool) {
 	_, schemaExists := schema.State().Get(ctx, pipeline.attr)
 
@@ -705,12 +817,20 @@ func (mp *MutationPipeline) ProcessSingle(ctx context.Context, pipeline *Predica
 		}
 	}
 
+	if index || reverse || count {
+		mp.handleOldDeleteForSingle(ctx, pipeline, postings)
+	}
+
 	if index {
 		mp.InsertTokenizerIndexes(ctx, pipeline, &postings)
 	}
 
 	if reverse {
 		mp.ProcessReverse(ctx, pipeline, &postings, false, reverse, count)
+	}
+
+	if count {
+		mp.ProcessCount(ctx, pipeline, &postings, true)
 	}
 
 	mp.txn.LockCache()
