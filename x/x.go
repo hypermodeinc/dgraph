@@ -34,7 +34,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
 	"go.opencensus.io/plugin/ocgrpc"
-	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/term"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -969,22 +970,50 @@ func Diff(dst map[string]struct{}, src map[string]struct{}) ([]string, []string)
 }
 
 // SpanTimer returns a function used to record the duration of the given span.
-func SpanTimer(span *trace.Span, name string) func() {
-	if span == nil {
-		return func() {}
-	}
-	uniq := int64(rand.Int31()) //nolint:gosec // unique id for tracing does not require cryptographic precision
-	attrs := []trace.Attribute{
-		trace.Int64Attribute("funcId", uniq),
-		trace.StringAttribute("funcName", name),
-	}
-	span.Annotate(attrs, "Start.")
-	start := time.Now()
+// It supports both OpenCensus and OpenTelemetry spans
+func SpanTimer(spanInterface interface{}, name string) func() {
+	// OpenCensus span case
+	if span, ok := spanInterface.(*trace.Span); ok && span != nil {
+		uniq := int64(rand.Int31()) //nolint:gosec // unique id for tracing does not require cryptographic precision
+		attrs := trace.WithAttributes(
+			attribute.Int64("funcId", uniq),
+			attribute.String("funcName", name),
+		)
+		(*span).AddEvent("Start", attrs)
+		start := time.Now()
 
-	return func() {
-		span.Annotatef(attrs, "End. Took %s", time.Since(start))
-		// TODO: We can look into doing a latency record here.
+		return func() {
+			(*span).AddEvent("End", trace.WithAttributes(
+				attribute.Int64("funcId", uniq),
+				attribute.String("funcName", name),
+				attribute.String("duration", time.Since(start).String()),
+			))
+			// TODO: We can look into doing a latency record here.
+		}
 	}
+
+	// OpenTelemetry span case
+	if span, ok := spanInterface.(trace.Span); ok {
+		uniq := int64(rand.Int31()) //nolint:gosec // unique id for tracing does not require cryptographic precision
+		attrs := trace.WithAttributes(
+			attribute.Int64("funcId", uniq),
+			attribute.String("funcName", name),
+		)
+		span.AddEvent("Start", attrs)
+		start := time.Now()
+
+		return func() {
+			span.AddEvent("End", trace.WithAttributes(
+				attribute.Int64("funcId", uniq),
+				attribute.String("funcName", name),
+				attribute.String("duration", time.Since(start).String()),
+			))
+			// TODO: We can look into doing a latency record here.
+		}
+	}
+
+	// Fall back for nil or unknown span type
+	return func() {}
 }
 
 // CloseFunc needs to be called to close all the client connections.

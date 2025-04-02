@@ -16,7 +16,8 @@ import (
 	"github.com/pkg/errors"
 	ostats "go.opencensus.io/stats"
 	tag "go.opencensus.io/tag"
-	otrace "go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/hypermodeinc/dgraph/v24/conn"
@@ -210,7 +211,7 @@ func (n *node) proposeAndWait(ctx context.Context, proposal *pb.Proposal) (perr 
 	// Trim data to the new size after Marshal.
 	data = data[:8+sz]
 
-	span := otrace.FromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 	stop := x.SpanTimer(span, "n.proposeAndWait")
 	defer stop()
 
@@ -228,7 +229,11 @@ func (n *node) proposeAndWait(ctx context.Context, proposal *pb.Proposal) (perr 
 		x.AssertTruef(n.Proposals.Store(key, pctx), "Found existing proposal with key: [%x]", key)
 		defer n.Proposals.Delete(key) // Ensure that it gets deleted on return.
 
-		span.Annotatef(nil, "Proposing with key: %d. Timeout: %v", key, timeout)
+		if span.IsRecording() {
+			span.AddEvent("Proposing", trace.WithAttributes(
+				attribute.Int64("key", int64(key)),
+				attribute.String("timeout", timeout.String())))
+		}
 
 		if err = n.Raft().Propose(cctx, data); err != nil {
 			return errors.Wrapf(err, "While proposing")
@@ -249,7 +254,10 @@ func (n *node) proposeAndWait(ctx context.Context, proposal *pb.Proposal) (perr 
 				if atomic.LoadUint32(&pctx.Found) > 0 {
 					// We found the proposal in CommittedEntries. No need to retry.
 				} else {
-					span.Annotatef(nil, "Timeout %s reached. Cancelling...", timeout)
+					if span.IsRecording() {
+						span.AddEvent("Timeout reached", trace.WithAttributes(
+							attribute.String("timeout", timeout.String())))
+					}
 					cancel()
 				}
 			case <-cctx.Done():
@@ -287,7 +295,10 @@ func (n *node) proposeAndWait(ctx context.Context, proposal *pb.Proposal) (perr 
 			// below. We should always propose it irrespective of how many pending proposals there
 			// might be.
 		default:
-			span.Annotatef(nil, "incr with %d", i)
+			if span.IsRecording() {
+				span.AddEvent("Incrementing limiter", trace.WithAttributes(
+					attribute.Int64("retry", int64(i))))
+			}
 			if err := limiter.incr(ctx, i); err != nil {
 				return err
 			}

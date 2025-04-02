@@ -19,9 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"contrib.go.opencensus.io/exporter/jaeger"
 	oc_prom "contrib.go.opencensus.io/exporter/prometheus"
-	datadog "github.com/DataDog/opencensus-go-exporter-datadog"
 	"github.com/dustin/go-humanize"
 	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus"
@@ -30,7 +28,12 @@ import (
 	ostats "go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
-	"go.opencensus.io/trace"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/sdk/resource"
+	traceTel "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/ristretto/v2/z"
@@ -437,6 +440,43 @@ var (
 	}
 )
 
+func startTracing() (*traceTel.TracerProvider, error) {
+	headers := map[string]string{
+		"content-type": "application/json",
+	}
+
+	exporter, err := otlptrace.New(
+		context.Background(),
+		otlptracehttp.NewClient(
+			otlptracehttp.WithEndpoint("localhost:4318"),
+			otlptracehttp.WithHeaders(headers),
+			otlptracehttp.WithInsecure(),
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating new exporter: %w", err)
+	}
+
+	tracerprovider := traceTel.NewTracerProvider(
+		traceTel.WithBatcher(
+			exporter,
+			traceTel.WithMaxExportBatchSize(traceTel.DefaultMaxExportBatchSize),
+			traceTel.WithBatchTimeout(traceTel.DefaultScheduleDelay*time.Millisecond),
+			traceTel.WithMaxExportBatchSize(traceTel.DefaultMaxExportBatchSize),
+		),
+		traceTel.WithResource(
+			resource.NewWithAttributes(
+				semconv.SchemaURL,
+				semconv.ServiceNameKey.String("dgraph.alpha"),
+			),
+		),
+	)
+
+	otel.SetTracerProvider(tracerprovider)
+
+	return tracerprovider, nil
+}
+
 func init() {
 	Conf = expvar.NewMap("dgraph_config")
 
@@ -464,6 +504,8 @@ func init() {
 	promRegistry.MustRegister(collectors.NewGoCollector(collectors.WithGoCollectorRuntimeMetrics(
 		collectors.GoRuntimeMetricsRule{Matcher: regexp.MustCompile("/.*")})))
 	promRegistry.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+
+	startTracing()
 
 	pe, err := oc_prom.NewExporter(oc_prom.Options{
 		// includes a process_* metrics, a GoCollector for go_* metrics, and the badger_* metrics.
@@ -606,34 +648,70 @@ func SinceMs(startTime time.Time) float64 {
 func RegisterExporters(conf *viper.Viper, service string) {
 	if traceFlag := conf.GetString("trace"); len(traceFlag) > 0 {
 		t := z.NewSuperFlag(traceFlag).MergeAndCheckDefault(TraceDefaults)
+		// Create resource with service information
+		res := resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceNameKey.String(service),
+		)
+
+		// Configure the batch span processor options
+		batchOpts := []traceTel.BatchSpanProcessorOption{
+			traceTel.WithMaxExportBatchSize(traceTel.DefaultMaxExportBatchSize),
+			traceTel.WithBatchTimeout(traceTel.DefaultScheduleDelay * time.Millisecond),
+		}
+
+		// Set up Jaeger exporter if configured
 		if collector := t.GetString("jaeger"); len(collector) > 0 {
-			// Port details: https://www.jaegertracing.io/docs/getting-started/
-			// Default collectorEndpointURI := "http://localhost:14268"
-			je, err := jaeger.NewExporter(jaeger.Options{
-				Endpoint:    collector,
-				ServiceName: service,
-			})
+			// Create Jaeger exporter using OpenTelemetry OTLP
+			fmt.Println(collector)
+			jaegerExp, err := otlptrace.New(
+				context.Background(),
+				otlptracehttp.NewClient(
+					otlptracehttp.WithEndpoint(collector),
+					otlptracehttp.WithInsecure(),
+				),
+			)
 			if err != nil {
 				log.Fatalf("Failed to create the Jaeger exporter: %v", err)
 			}
-			// And now finally register it as a Trace Exporter
-			trace.RegisterExporter(je)
+
+			// Create trace provider with Jaeger exporter
+			tp := traceTel.NewTracerProvider(
+				traceTel.WithBatcher(jaegerExp, batchOpts...),
+				traceTel.WithResource(res),
+				traceTel.WithSampler(traceTel.AlwaysSample()),
+			)
+
+			// Set the trace provider
+			otel.SetTracerProvider(tp)
+			glog.Infof("Registered Jaeger exporter for tracing")
 		}
+
+		// Set up OTLP exporter for Datadog if configured
+		// Note: In OpenTelemetry, typically Datadog integration uses the OTLP exporter
 		if collector := t.GetString("datadog"); len(collector) > 0 {
-			exporter, err := datadog.NewExporter(datadog.Options{
-				Service:   service,
-				TraceAddr: collector,
-			})
+			// Create OTLP exporter for Datadog
+			ddExporter, err := otlptrace.New(
+				context.Background(),
+				otlptracehttp.NewClient(
+					otlptracehttp.WithEndpoint(collector),
+					otlptracehttp.WithInsecure(),
+				),
+			)
 			if err != nil {
-				log.Fatal(err)
+				log.Fatalf("Failed to create OTLP exporter for Datadog: %v", err)
 			}
 
-			trace.RegisterExporter(exporter)
+			// Create trace provider with Datadog exporter
+			tp := traceTel.NewTracerProvider(
+				traceTel.WithBatcher(ddExporter, batchOpts...),
+				traceTel.WithResource(res),
+				traceTel.WithSampler(traceTel.AlwaysSample()),
+			)
 
-			// For demoing purposes, always sample.
-			trace.ApplyConfig(trace.Config{
-				DefaultSampler: trace.AlwaysSample(),
-			})
+			// Set the trace provider
+			otel.SetTracerProvider(tp)
+			glog.Infof("Registered Datadog exporter for tracing")
 		}
 	}
 

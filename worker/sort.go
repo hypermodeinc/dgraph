@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: © Hypermode Inc. <hello@hypermode.com>
+ * SPDX-FileCopyrightText:  Hypermode Inc. <hello@hypermode.com>
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -14,7 +14,8 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
-	otrace "go.opencensus.io/trace"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/hypermodeinc/dgraph/v24/algo"
@@ -24,6 +25,7 @@ import (
 	"github.com/hypermodeinc/dgraph/v24/tok"
 	"github.com/hypermodeinc/dgraph/v24/types"
 	"github.com/hypermodeinc/dgraph/v24/x"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var emptySortResult pb.SortResult
@@ -51,9 +53,11 @@ func SortOverNetwork(ctx context.Context, q *pb.SortMessage) (*pb.SortResult, er
 			errors.Errorf("Cannot sort by unknown attribute %s", x.ParseAttr(q.Order[0].Attr))
 	}
 
-	if span := otrace.FromContext(ctx); span != nil {
-		span.Annotatef(nil, "worker.SortOverNetwork. Attr: %s. Group: %d",
-			x.ParseAttr(q.Order[0].Attr), gid)
+	if span := trace.SpanFromContext(ctx); span != nil {
+		span.SetAttributes(
+			attribute.String("attribute", q.Order[0].Attr),
+			attribute.Int("groupId", int(gid)),
+		)
 	}
 
 	if groups().ServesGroup(gid) {
@@ -76,7 +80,7 @@ func (w *grpcWorker) Sort(ctx context.Context, s *pb.SortMessage) (*pb.SortResul
 	if ctx.Err() != nil {
 		return &emptySortResult, ctx.Err()
 	}
-	ctx, span := otrace.StartSpan(ctx, "worker.Sort")
+	ctx, span := otel.Tracer("").Start(ctx, "worker.Sort")
 	defer span.End()
 
 	gid, err := groups().BelongsToReadOnly(s.Order[0].Attr, s.ReadTs)
@@ -84,7 +88,10 @@ func (w *grpcWorker) Sort(ctx context.Context, s *pb.SortMessage) (*pb.SortResul
 		return &emptySortResult, err
 	}
 
-	span.Annotatef(nil, "Sorting: Attribute: %q groupId: %v Sort", s.Order[0].Attr, gid)
+	span.AddEvent("Sorting", trace.WithAttributes(
+		attribute.String("attribute", s.Order[0].Attr),
+		attribute.Int("groupId", int(gid))))
+
 	if gid != groups().groupId() {
 		return nil, errors.Errorf("attr: %q groupId: %v Request sent to wrong server.",
 			s.Order[0].Attr, gid)
@@ -116,8 +123,8 @@ func resultWithError(err error) *sortresult {
 }
 
 func sortWithoutIndex(ctx context.Context, ts *pb.SortMessage) *sortresult {
-	span := otrace.FromContext(ctx)
-	span.Annotate(nil, "sortWithoutIndex")
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.String("sortWithoutIndex", "true"))
 
 	n := len(ts.UidMatrix)
 	r := new(pb.SortResult)
@@ -170,8 +177,8 @@ func sortWithIndex(ctx context.Context, ts *pb.SortMessage) *sortresult {
 		return resultWithError(ctx.Err())
 	}
 
-	span := otrace.FromContext(ctx)
-	span.Annotate(nil, "sortWithIndex")
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.String("sortWithIndex", "true"))
 
 	n := len(ts.UidMatrix)
 	out := make([]intersectedList, n)
@@ -350,8 +357,8 @@ type orderResult struct {
 }
 
 func multiSort(ctx context.Context, r *sortresult, ts *pb.SortMessage) error {
-	span := otrace.FromContext(ctx)
-	span.Annotate(nil, "multiSort")
+	span := trace.SpanFromContext(ctx)
+	span.SetAttributes(attribute.String("multiSort", "true"))
 
 	// SrcUids for other queries are all the uids present in the response of the first sort.
 	dest := destUids(r.reply.UidMatrix)
@@ -471,19 +478,20 @@ func multiSort(ctx context.Context, r *sortresult, ts *pb.SortMessage) error {
 // enough for our pagination params. When all the UID lists are done, we stop
 // iterating over the index.
 func processSort(ctx context.Context, ts *pb.SortMessage) (*pb.SortResult, error) {
-	span := otrace.FromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 	stop := x.SpanTimer(span, "processSort")
 	defer stop()
 
-	span.Annotatef(nil, "Waiting for startTs: %d", ts.ReadTs)
+	span.SetAttributes(
+		attribute.Int("startTs", int(ts.ReadTs)),
+	)
+
 	if err := posting.Oracle().WaitForTs(ctx, ts.ReadTs); err != nil {
 		return nil, err
 	}
-	span.Annotatef(nil, "Waiting for checksum match")
-	if err := groups().ChecksumsMatch(ctx); err != nil {
-		return nil, err
-	}
-	span.Annotate(nil, "Done waiting")
+	span.SetAttributes(
+		attribute.String("checksumMatch", "true"),
+	)
 
 	if ts.Count < 0 {
 		return nil, errors.Errorf(
@@ -525,7 +533,9 @@ func processSort(ctx context.Context, ts *pb.SortMessage) (*pb.SortResult, error
 		// wait for other goroutine to get cancelled
 		<-resCh
 	} else {
-		span.Annotatef(nil, "processSort error: %v", r.err)
+		span.SetAttributes(
+			attribute.String("processSortError", r.err.Error()),
+		)
 		r = <-resCh
 	}
 

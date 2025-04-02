@@ -18,10 +18,12 @@ import (
 	"github.com/hypermodeinc/dgraph/v24/schema"
 	"github.com/hypermodeinc/dgraph/v24/worker"
 	"github.com/hypermodeinc/dgraph/v24/x"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
-	otrace "go.opencensus.io/trace"
 	"google.golang.org/grpc/status"
 )
 
@@ -249,9 +251,9 @@ func executeSetSchema(ctx context.Context, startTs uint64, req *apiv25.AlterRequ
 
 // Alter handles requests to change the schema or remove parts or all of the data.
 func (s *ServerV25) Alter(ctx context.Context, req *apiv25.AlterRequest) (*apiv25.AlterResponse, error) {
-	ctx, span := otrace.StartSpan(ctx, "ServerV25.Alter")
+	ctx, span := otel.Tracer("").Start(ctx, "ServerV25.Alter")
 	defer span.End()
-	span.Annotatef(nil, "Alter operation: %+v", req)
+	span.AddEvent("Alter operation", trace.WithAttributes(attribute.String("request", req.String())))
 
 	// Always print out Alter operations because they are important and rare.
 	glog.Infof("Received ALTER op: %+v", req)

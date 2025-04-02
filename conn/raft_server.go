@@ -8,6 +8,7 @@ package conn
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -17,7 +18,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
 	"go.etcd.io/etcd/raft/v3/raftpb"
-	otrace "go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/protos/pb"
@@ -183,13 +184,13 @@ func (w *RaftServer) RaftMessage(server pb.Raft_RaftMessageServer) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	span := otrace.FromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 
 	node := w.GetNode()
 	if node == nil || node.Raft() == nil {
 		return ErrNoNode
 	}
-	span.Annotatef(nil, "Stream server is node %#x", node.Id)
+	span.AddEvent(fmt.Sprintf("Stream server is node %d", node.Id))
 
 	var rc *pb.RaftContext
 	raft := node.Raft()
@@ -247,7 +248,7 @@ func (w *RaftServer) RaftMessage(server pb.Raft_RaftMessageServer) error {
 		}
 		if loop == 1 {
 			rc = batch.GetContext()
-			span.Annotatef(nil, "Stream from %#x", rc.GetId())
+			span.AddEvent(fmt.Sprintf("Stream from %#x", rc.GetId()))
 			if rc != nil {
 				node.Connect(rc.Id, rc.Addr)
 			}

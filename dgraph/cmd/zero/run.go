@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: © Hypermode Inc. <hello@hypermode.com>
+ * SPDX-FileCopyrightText:  Hypermode Inc. <hello@hypermode.com>
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -20,10 +20,8 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/spf13/cobra"
-	"go.opencensus.io/plugin/ocgrpc"
-	otrace "go.opencensus.io/trace"
-	"go.opencensus.io/zpages"
-	"golang.org/x/net/trace"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/zpages"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
@@ -145,7 +143,7 @@ func (st *state) serveGRPC(l net.Listener, store *raftwal.DiskStorage) {
 		grpc.MaxRecvMsgSize(x.GrpcMaxSize),
 		grpc.MaxSendMsgSize(x.GrpcMaxSize),
 		grpc.MaxConcurrentStreams(1000),
-		grpc.StatsHandler(&ocgrpc.ServerHandler{}),
+		grpc.StatsHandler(otelgrpc.NewClientHandler()),
 		grpc.UnaryInterceptor(audit.AuditRequestGRPC),
 	}
 
@@ -245,13 +243,6 @@ func run() {
 			opts.numReplicas)
 	}
 
-	if Zero.Conf.GetBool("expose_trace") {
-		// TODO: Remove this once we get rid of event logs.
-		trace.AuthRequest = func(req *http.Request) (any, sensitive bool) {
-			return true, true
-		}
-	}
-
 	if opts.audit != nil {
 		wd, err := filepath.Abs(opts.w)
 		x.Check(err)
@@ -265,10 +256,6 @@ func run() {
 		log.Fatalf("ERROR: Rebalance interval must be greater than zero. Found: %d",
 			opts.rebalanceInterval)
 	}
-
-	grpc.EnableTracing = false
-	otrace.ApplyConfig(otrace.Config{
-		DefaultSampler: otrace.ProbabilitySampler(Zero.Conf.GetFloat64("trace"))})
 
 	addr := "localhost"
 	if opts.bindall {
@@ -314,7 +301,7 @@ func run() {
 		baseMux.HandleFunc("/enterpriseLicense", st.applyEnterpriseLicense)
 	}
 	baseMux.HandleFunc("/debug/jemalloc", x.JemallocHandler)
-	zpages.Handle(baseMux, "/debug/z")
+	http.DefaultServeMux.Handle("/debug/z", zpages.NewTracezHandler(zpages.NewSpanProcessor()))
 
 	// This must be here. It does not work if placed before Grpc init.
 	x.Check(st.node.initAndStartNode())

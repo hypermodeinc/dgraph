@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: © Hypermode Inc. <hello@hypermode.com>
+ * SPDX-FileCopyrightText:  Hypermode Inc. <hello@hypermode.com>
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -16,7 +16,8 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
-	otrace "go.opencensus.io/trace"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/dgraph-io/badger/v4"
@@ -187,7 +188,7 @@ func (w *grpcWorker) ReceivePredicate(stream pb.Worker_ReceivePredicateServer) e
 
 func (w *grpcWorker) MovePredicate(ctx context.Context,
 	in *pb.MovePredicatePayload) (*api.Payload, error) {
-	ctx, span := otrace.StartSpan(ctx, "worker.MovePredicate")
+	ctx, span := trace.SpanFromContext(ctx).TracerProvider().Tracer("grpcWorker").Start(ctx, "MovePredicate")
 	defer span.End()
 
 	n := groups().Node
@@ -244,11 +245,11 @@ func (w *grpcWorker) MovePredicate(ctx context.Context,
 
 	msg := fmt.Sprintf("Move predicate request: %+v", in)
 	glog.Info(msg)
-	span.Annotate(nil, msg)
+	span.SetAttributes(attribute.String("predicate", in.Predicate))
 
 	err = movePredicateHelper(ctx, in)
 	if err != nil {
-		span.Annotatef(nil, "Error while movePredicateHelper: %v", err)
+		span.SetStatus(1, err.Error())
 	}
 	return &emptyPayload, err
 }
@@ -263,7 +264,7 @@ func movePredicateHelper(ctx context.Context, in *pb.MovePredicatePayload) error
 	}
 	defer closer.Done()
 
-	span := otrace.FromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 
 	pl := groups().Leader(in.DestGid)
 	if pl == nil {
@@ -341,7 +342,10 @@ func movePredicateHelper(ctx context.Context, in *pb.MovePredicatePayload) error
 		}
 		return out.Send(kvs)
 	}
-	span.Annotatef(nil, "Starting stream list orchestrate")
+	if span.IsRecording() {
+		span.AddEvent("Starting stream list orchestrate", trace.WithAttributes(
+			attribute.String("predicate", in.Predicate)))
+	}
 	if err := stream.Orchestrate(out.Context()); err != nil {
 		return err
 	}
@@ -356,7 +360,10 @@ func movePredicateHelper(ctx context.Context, in *pb.MovePredicatePayload) error
 	}
 
 	msg := fmt.Sprintf("Receiver %s says it got %d keys.\n", pl.Addr, recvCount)
-	span.Annotate(nil, msg)
+	if span.IsRecording() {
+		span.AddEvent("Moving predicate", trace.WithAttributes(
+			attribute.String("predicate", in.Predicate)))
+	}
 	glog.Infof(msg)
 	return nil
 }

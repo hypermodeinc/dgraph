@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: © Hypermode Inc. <hello@hypermode.com>
+ * SPDX-FileCopyrightText:  Hypermode Inc. <hello@hypermode.com>
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -25,7 +25,9 @@ import (
 	"go.etcd.io/etcd/raft/v3/raftpb"
 	ostats "go.opencensus.io/stats"
 	"go.opencensus.io/tag"
-	otrace "go.opencensus.io/trace"
+	"go.opentelemetry.io/otel"
+	attribute "go.opentelemetry.io/otel/attribute"
+	trace "go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/dgraph-io/ristretto/v2/z"
@@ -107,9 +109,9 @@ func (n *node) proposeAndWait(ctx context.Context, proposal *pb.ZeroProposal) er
 	// We could consider adding a wrapper around the user proposal, so we can access any key-values.
 	// Something like this:
 	// https://github.com/golang/go/commit/5d39260079b5170e6b4263adb4022cc4b54153c4
-	span := otrace.FromContext(ctx)
+	span := trace.SpanFromContext(ctx)
 	// Overwrite ctx, so we no longer enforce the timeouts or cancels from ctx.
-	ctx = otrace.NewContext(context.Background(), span)
+	ctx = trace.ContextWithSpan(context.Background(), span)
 
 	stop := x.SpanTimer(span, "n.proposeAndWait")
 	defer stop()
@@ -137,7 +139,9 @@ func (n *node) proposeAndWait(ctx context.Context, proposal *pb.ZeroProposal) er
 			key = n.uniqueKey()
 		}
 		defer n.Proposals.Delete(key)
-		span.Annotatef(nil, "Proposing with key: %d. Timeout: %v", key, timeout)
+		span.AddEvent("Proposing with key: %d. Timeout: %v", trace.WithAttributes(
+			attribute.Int64("key", int64(key)),
+			attribute.Int64("timeout", int64(timeout))))
 
 		sz := proto.Size(proposal)
 		data := make([]byte, 8+sz)
@@ -149,7 +153,8 @@ func (n *node) proposeAndWait(ctx context.Context, proposal *pb.ZeroProposal) er
 		data = data[:8+sz]
 		// Propose the change.
 		if err := n.Raft().Propose(cctx, data); err != nil {
-			span.Annotatef(nil, "Error while proposing via Raft: %v", err)
+			span.AddEvent("Error while proposing via Raft: %v", trace.WithAttributes(
+				attribute.String("error", err.Error())))
 			return errors.Wrapf(err, "While proposing")
 		}
 
@@ -159,7 +164,7 @@ func (n *node) proposeAndWait(ctx context.Context, proposal *pb.ZeroProposal) er
 			// We arrived here by a call to n.props.Done().
 			return err
 		case <-cctx.Done():
-			span.Annotatef(nil, "Internal context timeout %s. Will retry...", timeout)
+			span.AddEvent(fmt.Sprintf("Internal context timeout %s. Will retry...", timeout))
 			return errInternalRetry
 		}
 	}
@@ -400,7 +405,7 @@ func (n *node) applyProposal(e raftpb.Entry) (uint64, error) {
 	if err := proto.Unmarshal(e.Data[8:], &p); err != nil {
 		return key, err
 	}
-	span := otrace.FromContext(n.Proposals.Ctx(key))
+	span := trace.SpanFromContext(n.Proposals.Ctx(key))
 
 	n.server.Lock()
 	defer n.server.Unlock()
@@ -429,14 +434,14 @@ func (n *node) applyProposal(e raftpb.Entry) (uint64, error) {
 	}
 	if p.Member != nil {
 		if err := n.handleMemberProposal(p.Member); err != nil {
-			span.Annotatef(nil, "While applying membership proposal: %+v", err)
+			span.AddEvent(fmt.Sprintf("While applying membership proposal: %+v", err))
 			glog.Errorf("While applying membership proposal: %+v", err)
 			return key, err
 		}
 	}
 	if p.Tablet != nil {
 		if err := n.handleTabletProposal(p.Tablet); err != nil {
-			span.Annotatef(nil, "While applying tablet proposal: %v", err)
+			span.AddEvent(fmt.Sprintf("While applying tablet proposal: %v", err))
 			glog.Errorf("While applying tablet proposal: %v", err)
 			return key, err
 		}
@@ -444,7 +449,7 @@ func (n *node) applyProposal(e raftpb.Entry) (uint64, error) {
 
 	if len(p.Tablets) > 0 {
 		if err := n.handleBulkTabletProposal(p.Tablets); err != nil {
-			span.Annotatef(nil, "While applying bulk tablet proposal: %v", err)
+			span.AddEvent(fmt.Sprintf("While applying bulk tablet proposal: %v", err))
 			glog.Errorf("While applying bulk tablet proposal: %v", err)
 			return key, err
 		}
@@ -726,8 +731,6 @@ func (n *node) updateZeroMembershipPeriodically(closer *z.Closer) {
 	}
 }
 
-var startOption = otrace.WithSampler(otrace.ProbabilitySampler(0.01))
-
 func (n *node) checkQuorum(closer *z.Closer) {
 	defer closer.Done()
 	ticker := time.NewTicker(time.Second)
@@ -738,9 +741,9 @@ func (n *node) checkQuorum(closer *z.Closer) {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 
-		ctx, span := otrace.StartSpan(ctx, "Zero.checkQuorum", startOption)
+		ctx, span := otel.Tracer("").Start(ctx, "Zero.checkQuorum")
 		defer span.End()
-		span.Annotatef(nil, "Node id: %d", n.Id)
+		span.SetAttributes(attribute.String("Node id", fmt.Sprintf("%d", n.Id)))
 
 		if state, err := n.server.latestMembershipState(ctx); err == nil {
 			n.mu.Lock()
@@ -748,10 +751,10 @@ func (n *node) checkQuorum(closer *z.Closer) {
 			n.mu.Unlock()
 			// Also do some connection cleanup.
 			conn.GetPools().RemoveInvalid(state)
-			span.Annotate(nil, "Updated lastQuorum")
+			span.AddEvent("Updated lastQuorum")
 
 		} else if glog.V(1) {
-			span.Annotatef(nil, "Got error: %v", err)
+			span.AddEvent(fmt.Sprintf("Got error: %v", err))
 			glog.Warningf("Zero node: %#x unable to reach quorum. Error: %v", n.Id, err)
 		}
 	}
@@ -799,8 +802,7 @@ func (n *node) calculateAndProposeSnapshot() error {
 		return nil
 	}
 
-	_, span := otrace.StartSpan(n.ctx, "Calculate.Snapshot",
-		otrace.WithSampler(otrace.AlwaysSample()))
+	_, span := otel.Tracer("").Start(n.ctx, "Calculate.Snapshot")
 	defer span.End()
 
 	// We calculate the minimum timestamp from all the group's maxAssigned.
@@ -813,12 +815,12 @@ func (n *node) calculateAndProposeSnapshot() error {
 				" Num groups: %d, Num checkpoints: %d\n",
 				len(s.state.Groups), len(s.checkpointPerGroup))
 			s.RUnlock()
-			span.Annotatef(nil, log)
+			span.AddEvent(log)
 			glog.Infof(log)
 			return nil
 		}
 		for gid, ts := range s.checkpointPerGroup {
-			span.Annotatef(nil, "Group: %d Checkpoint Ts: %d", gid, ts)
+			span.AddEvent(fmt.Sprintf("Group: %d Checkpoint Ts: %d", gid, ts))
 			discardBelow = x.Min(discardBelow, ts)
 		}
 		s.RUnlock()
@@ -826,23 +828,23 @@ func (n *node) calculateAndProposeSnapshot() error {
 
 	first, err := n.Store.FirstIndex()
 	if err != nil {
-		span.Annotatef(nil, "FirstIndex error: %v", err)
+		span.AddEvent(fmt.Sprintf("FirstIndex error: %v", err))
 		return err
 	}
 	last, err := n.Store.LastIndex()
 	if err != nil {
-		span.Annotatef(nil, "LastIndex error: %v", err)
+		span.AddEvent(fmt.Sprintf("LastIndex error: %v", err))
 		return err
 	}
 
-	span.Annotatef(nil, "First index: %d. Last index: %d. Discard Below Ts: %d",
-		first, last, discardBelow)
+	span.AddEvent(fmt.Sprintf("First index: %d. Last index: %d. Discard Below Ts: %d",
+		first, last, discardBelow))
 
 	var snapshotIndex uint64
 	for batchFirst := first; batchFirst <= last; {
 		entries, err := n.Store.Entries(batchFirst, last+1, 256<<20)
 		if err != nil {
-			span.Annotatef(nil, "Error: %v", err)
+			span.AddEvent(fmt.Sprintf("Error: %v", err))
 			return err
 		}
 		// Exit early from the loop if no entries were found.
@@ -855,7 +857,7 @@ func (n *node) calculateAndProposeSnapshot() error {
 			}
 			var p pb.ZeroProposal
 			if err := proto.Unmarshal(entry.Data[8:], &p); err != nil {
-				span.Annotatef(nil, "Error: %v", err)
+				span.AddEvent(fmt.Sprintf("Error: %v", err))
 				return err
 			}
 			if txn := p.Txn; txn != nil {
@@ -869,7 +871,7 @@ func (n *node) calculateAndProposeSnapshot() error {
 	if snapshotIndex == 0 {
 		return nil
 	}
-	span.Annotatef(nil, "Taking snapshot at index: %d", snapshotIndex)
+	span.AddEvent(fmt.Sprintf("Taking snapshot at index: %d", snapshotIndex))
 	state := n.server.membershipState()
 
 	zs := &pb.ZeroSnapshot{
@@ -882,10 +884,10 @@ func (n *node) calculateAndProposeSnapshot() error {
 	zp := &pb.ZeroProposal{Snapshot: zs}
 	if err = n.proposeAndWait(n.ctx, zp); err != nil {
 		glog.Errorf("Error while proposing snapshot: %v\n", err)
-		span.Annotatef(nil, "Error while proposing snapshot: %v", err)
+		span.AddEvent(fmt.Sprintf("Error while proposing snapshot: %v", err))
 		return err
 	}
-	span.Annotatef(nil, "Snapshot proposed: Done")
+	span.AddEvent("Snapshot proposed: Done")
 	return nil
 }
 
@@ -935,14 +937,13 @@ func (n *node) Run() {
 			n.Raft().Tick()
 		case rd := <-n.Raft().Ready():
 			timer.Start()
-			_, span := otrace.StartSpan(n.ctx, "Zero.RunLoop",
-				otrace.WithSampler(otrace.ProbabilitySampler(0.001)))
+			_, span := otel.Tracer("").Start(n.ctx, "Zero.RunLoop")
 			for _, rs := range rd.ReadStates {
 				// No need to use select-case-default on pushing to readStateCh. It is typically
 				// empty.
 				readStateCh <- rs
 			}
-			span.Annotatef(nil, "Pushed %d readstates", len(rd.ReadStates))
+			span.AddEvent(fmt.Sprintf("Pushed %d readstates", len(rd.ReadStates)))
 
 			if rd.SoftState != nil {
 				if rd.RaftState == raft.StateLeader && !leader {
@@ -978,7 +979,7 @@ func (n *node) Run() {
 			}
 			n.SaveToStorage(&rd.HardState, rd.Entries, &rd.Snapshot)
 			timer.Record("disk")
-			span.Annotatef(nil, "Saved to storage")
+			span.AddEvent("Saved to storage")
 			for x.WorkerConfig.HardSync && rd.MustSync {
 				if err := n.Store.Sync(); err != nil {
 					glog.Errorf("Error while calling Store.Sync: %v", err)
@@ -1027,7 +1028,7 @@ func (n *node) Run() {
 				}
 				n.Applied.Done(entry.Index)
 			}
-			span.Annotatef(nil, "Applied %d CommittedEntries", len(rd.CommittedEntries))
+			span.AddEvent(fmt.Sprintf("Applied %d CommittedEntries", len(rd.CommittedEntries)))
 
 			if !leader {
 				// Followers should send messages later.
@@ -1035,13 +1036,15 @@ func (n *node) Run() {
 					n.Send(&rd.Messages[i])
 				}
 			}
-			span.Annotate(nil, "Sent messages")
+			span.AddEvent("Sent messages")
 			timer.Record("proposals")
 
 			n.Raft().Advance()
-			span.Annotate(nil, "Advanced Raft")
+			span.AddEvent("Advanced Raft")
 			timer.Record("advance")
 
+			span.SetAttributes(attribute.String("Zero.RunLoop", "Running"))
+			span.SetAttributes(attribute.String("Zero.RunLoop", "Done"))
 			span.End()
 			if timer.Total() > 5*tickDur {
 				glog.Warningf(
