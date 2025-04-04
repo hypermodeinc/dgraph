@@ -507,7 +507,7 @@ func substituteVariables(gq *GraphQuery, vmap varMap) error {
 			}
 			depth, err := strconv.ParseUint(val.Value, 0, 64)
 			if err != nil {
-				return errors.Wrapf(err, varName+" should be type of integer")
+				return errors.Wrapf(err, "%v should be type of integer", varName)
 			}
 			gq.RecurseArgs.Depth = depth
 		}
@@ -521,7 +521,7 @@ func substituteVariables(gq *GraphQuery, vmap varMap) error {
 			}
 			allowLoop, err := strconv.ParseBool(val.Value)
 			if err != nil {
-				return errors.Wrapf(err, varName+"should be type of boolean")
+				return errors.Wrapf(err, "%v should be type of boolean", varName)
 			}
 			gq.RecurseArgs.AllowLoop = allowLoop
 		}
