@@ -7,11 +7,11 @@ package chunker
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"unicode"
-
-	"github.com/pkg/errors"
 
 	"github.com/dgraph-io/dgo/v240/protos/api"
 	"github.com/hypermodeinc/dgraph/v24/lex"
@@ -50,7 +50,7 @@ func ParseRDFs(b []byte) ([]*api.NQuad, *pb.Metadata, error) {
 	var l lex.Lexer
 	for _, line := range bytes.Split(b, []byte{'\n'}) {
 		nq, err := ParseRDF(string(line), &l)
-		if err == ErrEmpty {
+		if errors.Is(err, ErrEmpty) {
 			continue
 		}
 		if err != nil {
@@ -126,7 +126,7 @@ L:
 			var err error
 			oval, err = strconv.Unquote(item.Val)
 			if err != nil {
-				return rnq, errors.Wrapf(err, "while unquoting")
+				return rnq, fmt.Errorf("while unquoting: %w", err)
 			}
 			seenOval = true
 
@@ -135,21 +135,21 @@ L:
 
 		case itemObjectType:
 			if rnq.Predicate == x.Star || rnq.Subject == x.Star {
-				return rnq, errors.Errorf("If predicate/subject is *, value should be * as well")
+				return rnq, errors.New("if predicate/subject is *, value should be * as well")
 			}
 
 			val := strings.TrimFunc(item.Val, isSpaceRune)
 			// TODO: Check if this condition is required.
 			if val == "*" {
-				return rnq, errors.Errorf("itemObject can't be *")
+				return rnq, errors.New("itemObject can't be *")
 			}
 			// Lets find out the storage type from the type map.
 			t, ok := typeMap[val]
 			if !ok {
-				return rnq, errors.Errorf("Unrecognized rdf type %s", val)
+				return rnq, fmt.Errorf("unrecognized rdf type %s", val)
 			}
 			if oval == "" && t != types.StringID {
-				return rnq, errors.Errorf("Invalid ObjectValue")
+				return rnq, errors.New("invalid ObjectValue")
 			}
 			src := types.ValueForType(types.StringID)
 			src.Value = []byte(oval)
@@ -172,13 +172,13 @@ L:
 		case itemValidEnd:
 			vend = true
 			if !it.Next() {
-				return rnq, errors.Errorf("Invalid end of input. Input: [%s]", line)
+				return rnq, fmt.Errorf("invalid end of input. Input: [%s]", line)
 			}
 			// RDF spec says N-Quads should be terminated with a newline. Since we break the input
 			// by newline already. We should get EOF or # after dot(.)
 			item = it.Item()
 			if !(item.Typ == lex.ItemEOF || item.Typ == itemComment) {
-				return rnq, errors.Errorf("Invalid end of input. Expected newline or # after ."+
+				return rnq, fmt.Errorf("invalid end of input. Expected newline or # after ."+
 					" Input: [%s]", line)
 			}
 			break L
@@ -187,20 +187,20 @@ L:
 			s := strings.TrimFunc(item.Val, isSpaceRune)
 			namespace, err := strconv.ParseUint(s, 0, 64)
 			if err != nil {
-				return rnq, errors.Errorf("Invalid namespace ID. Input: [%s]", line)
+				return rnq, fmt.Errorf("invalid namespace ID. Input: [%s]", line)
 			}
 			rnq.Namespace = namespace
 
 		case itemLeftRound:
 			it.Prev() // backup '('
 			if err := parseFacetsRDF(it, &rnq); err != nil {
-				return rnq, errors.Wrap(err, "could not parse facet")
+				return rnq, fmt.Errorf("could not parse facet: %w", err)
 			}
 		}
 	}
 
 	if !vend {
-		return rnq, errors.Errorf("Invalid end of input. Input: [%s]", line)
+		return rnq, fmt.Errorf("invalid end of input. Input: [%s]", line)
 	}
 	if isCommentLine {
 		return rnq, ErrEmpty
@@ -211,13 +211,13 @@ L:
 		rnq.ObjectValue = &api.Value{Val: &api.Value_DefaultVal{DefaultVal: oval}}
 	}
 	if len(rnq.Subject) == 0 || len(rnq.Predicate) == 0 {
-		return rnq, errors.Errorf("Empty required fields in NQuad. Input: [%s]", line)
+		return rnq, fmt.Errorf("empty required fields in NQuad. Input: [%s]", line)
 	}
 	if len(rnq.ObjectId) == 0 && rnq.ObjectValue == nil {
-		return rnq, errors.Errorf("No Object in NQuad. Input: [%s]", line)
+		return rnq, fmt.Errorf("no Object in NQuad. Input: [%s]", line)
 	}
 	if !sane(rnq.Subject) || !sane(rnq.Predicate) || !sane(rnq.ObjectId) {
-		return rnq, errors.Errorf("NQuad failed sanity check:%+v", rnq)
+		return rnq, fmt.Errorf("NQuad failed sanity check:%+v", rnq)
 	}
 
 	return rnq, nil
@@ -231,21 +231,21 @@ func parseFunction(it *lex.ItemIterator) (string, error) {
 
 	it.Next()
 	if item = it.Item(); item.Typ != itemLeftRound {
-		return "", errors.Errorf("Expected '(', found: %s", item.Val)
+		return "", fmt.Errorf("expected '(', found: %s", item.Val)
 	}
 
 	it.Next()
 	if item = it.Item(); item.Typ != itemVarName {
-		return "", errors.Errorf("Expected variable name, found: %s", item.Val)
+		return "", fmt.Errorf("expected variable name, found: %s", item.Val)
 	}
 	if strings.TrimSpace(item.Val) == "" {
-		return "", errors.Errorf("Empty variable name in function call")
+		return "", errors.New("empty variable name in function call")
 	}
 	s += "(" + item.Val + ")"
 
 	it.Next()
 	if item = it.Item(); item.Typ != itemRightRound {
-		return "", errors.Errorf("Expected ')', found: %s", item.Val)
+		return "", fmt.Errorf("expected ')', found: %s", item.Val)
 	}
 
 	return s, nil
@@ -253,34 +253,34 @@ func parseFunction(it *lex.ItemIterator) (string, error) {
 
 func parseFacetsRDF(it *lex.ItemIterator, rnq *api.NQuad) error {
 	if !it.Next() {
-		return errors.Errorf("Unexpected end of facets.")
+		return errors.New("unexpected end of facets")
 	}
 	item := it.Item()
 	if item.Typ != itemLeftRound {
-		return errors.Errorf("Expected '(' but found %v at Facet.", item.Val)
+		return fmt.Errorf("expected '(' but found %v at facet", item.Val)
 	}
 
 	for it.Next() { // parse one key value pair
 		// parse key
 		item = it.Item()
 		if item.Typ != itemText {
-			return errors.Errorf("Expected key but found %v.", item.Val)
+			return fmt.Errorf("expected key but found %v", item.Val)
 		}
 		facetKey := strings.TrimSpace(item.Val)
 		if len(facetKey) == 0 {
-			return errors.Errorf("Empty facetKeys not allowed.")
+			return errors.New("empty facetKeys not allowed")
 		}
 		// parse =
 		if !it.Next() {
-			return errors.Errorf("Unexpected end of facets.")
+			return errors.New("unexpected end of facets")
 		}
 		item = it.Item()
 		if item.Typ != itemEqual {
-			return errors.Errorf("Expected = after facetKey. Found %v", item.Val)
+			return fmt.Errorf("expected = after facetKey. Found %v", item.Val)
 		}
 		// parse value or empty value
 		if !it.Next() {
-			return errors.Errorf("Unexpected end of facets.")
+			return errors.New("unexpected end of facets")
 		}
 		item = it.Item()
 		facetVal := ""
@@ -301,11 +301,11 @@ func parseFacetsRDF(it *lex.ItemIterator, rnq *api.NQuad) error {
 			continue
 		}
 		if item.Typ != itemText {
-			return errors.Errorf("Expected , or ) or text but found %s", item.Val)
+			return fmt.Errorf("expected , or ) or text but found %s", item.Val)
 		}
-		// value was present..
+		// value was present...
 		if !it.Next() { // get either ')' or ','
-			return errors.Errorf("Unexpected end of facets.")
+			return errors.New("unexpected end of facets")
 		}
 		item = it.Item()
 		if item.Typ == itemRightRound {
@@ -314,7 +314,7 @@ func parseFacetsRDF(it *lex.ItemIterator, rnq *api.NQuad) error {
 		if item.Typ == itemComma {
 			continue
 		}
-		return errors.Errorf("Expected , or ) after facet. Received %s", item.Val)
+		return fmt.Errorf("expected , or ) after facet. Received %s", item.Val)
 	}
 
 	return nil

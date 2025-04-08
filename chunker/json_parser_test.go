@@ -971,11 +971,11 @@ func TestNquadsFromJsonError1(t *testing.T) {
 
 	_, err = Parse(b, DeleteNquads)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "UID must be present and non-zero while deleting edges.")
+	require.ErrorIs(t, err, errEmptyUID)
 
 	_, err = FastParse(b, DeleteNquads)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "UID must be present and non-zero while deleting edges.")
+	require.ErrorIs(t, err, errEmptyUID)
 }
 
 func TestNquadsFromJsonList(t *testing.T) {

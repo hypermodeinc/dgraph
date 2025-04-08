@@ -9,12 +9,12 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/golang/glog"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -102,7 +102,7 @@ func run() error {
 	}
 
 	if err := decrypt(file, outfile, block, stat.Size()); err != nil {
-		return errors.Wrap(err, "could not decrypt audit log")
+		return fmt.Errorf("could not decrypt audit log: %w", err)
 	}
 
 	glog.Infof("decryption of audit file %s is done: decrypted file is %s",
@@ -119,14 +119,14 @@ func decrypt(file io.ReaderAt, outfile io.Writer, block cipher.Block, sz int64) 
 		iv := make([]byte, aes.BlockSize)
 		n, err := file.ReadAt(iv, iterator) // get first iv
 		if err != nil {
-			return nil, 0, errors.Wrap(err, "unable to read IV")
+			return nil, 0, fmt.Errorf("unable to read IV: %w", err)
 		}
 		iterator = iterator + int64(n) + 4 // length of verification text encoded in uint32
 
 		ct := make([]byte, len(x.VerificationText))
 		n, err = file.ReadAt(ct, iterator)
 		if err != nil {
-			return nil, 0, errors.Wrap(err, "unable to read verification text")
+			return nil, 0, fmt.Errorf("unable to read verification text: %w", err)
 		}
 		iterator = iterator + int64(n)
 
@@ -145,14 +145,14 @@ func decrypt(file io.ReaderAt, outfile io.Writer, block cipher.Block, sz int64) 
 		iv := make([]byte, aes.BlockSize)
 		n, err := file.ReadAt(iv, iterator)
 		if err != nil {
-			return nil, 0, errors.Wrap(err, "unable to read IV")
+			return nil, 0, fmt.Errorf("unable to read IV: %w", err)
 		}
 		iterator = iterator + int64(n)
 
 		ct := make([]byte, len(x.VerificationTextDeprecated))
 		n, err = file.ReadAt(ct, iterator)
 		if err != nil {
-			return nil, 0, errors.Wrap(err, "unable to read verification text")
+			return nil, 0, fmt.Errorf("unable to read verification text: %w", err)
 		}
 		iterator = iterator + int64(n)
 

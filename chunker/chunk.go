@@ -10,14 +10,14 @@ import (
 	"bytes"
 	"compress/gzip"
 	encjson "encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"unicode"
-
-	"github.com/pkg/errors"
 
 	"github.com/hypermodeinc/dgraph/v24/enc"
 	"github.com/hypermodeinc/dgraph/v24/lex"
@@ -142,7 +142,7 @@ func (rc *rdfChunker) Parse(chunkBuf *bytes.Buffer) error {
 		case err == ErrEmpty:
 			continue // blank line or comment
 		case err != nil:
-			return errors.Wrapf(err, "while parsing line %q", str)
+			return fmt.Errorf("while parsing line %q: %w", str, err)
 		default:
 			rc.nqs.Push(&nq)
 		}
@@ -168,7 +168,7 @@ func (jc *jsonChunker) Chunk(r *bufio.Reader) (*bytes.Buffer, error) {
 			return nil, err
 		}
 	default:
-		return nil, errors.Errorf("file is not JSON")
+		return nil, errors.New("file is not JSON")
 	}
 
 	out := new(bytes.Buffer)
@@ -192,7 +192,7 @@ func (jc *jsonChunker) Chunk(r *bufio.Reader) (*bytes.Buffer, error) {
 		if err == io.EOF {
 			// handles the EOF case, return the buffer which represents the top level map
 			if jc.inList {
-				return nil, errors.Errorf("JSON file ends abruptly, expecting ]")
+				return nil, errors.New("JSON file ends abruptly, expecting ]")
 			}
 
 			if _, err := out.WriteRune(']'); err != nil {
@@ -205,12 +205,12 @@ func (jc *jsonChunker) Chunk(r *bufio.Reader) (*bytes.Buffer, error) {
 
 		if ch == ']' {
 			if !jc.inList {
-				return nil, errors.Errorf("JSON map is followed by an extraneous ]")
+				return nil, errors.New("JSON map is followed by an extraneous ]")
 			}
 
 			// validate that there are no more non-space chars after the ]
 			if slurpSpace(r) != io.EOF {
-				return nil, errors.New("Not all of JSON file consumed")
+				return nil, errors.New("not all of JSON file consumed")
 			}
 
 			if _, err := out.WriteRune(']'); err != nil {
@@ -219,13 +219,13 @@ func (jc *jsonChunker) Chunk(r *bufio.Reader) (*bytes.Buffer, error) {
 			return out, io.EOF
 		}
 
-		// In the non termination cases, ensure at least one map has been consumed, and
+		// In the non-termination cases, ensure at least one map has been consumed, and
 		// the only allowed char after the map is ",".
 		if out.Len() == 1 { // 1 represents the [ inserted before the for loop
-			return nil, errors.Errorf("Illegal rune found \"%c\", expecting {", ch)
+			return nil, fmt.Errorf("illegal rune found \"%c\", expecting {", ch)
 		}
 		if ch != ',' {
-			return nil, errors.Errorf("JSON map is followed by illegal rune \"%c\"", ch)
+			return nil, fmt.Errorf("JSON map is followed by illegal rune \"%c\"", ch)
 		}
 	}
 	if _, err := out.WriteRune(']'); err != nil {

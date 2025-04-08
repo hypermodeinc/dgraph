@@ -8,6 +8,7 @@ package chunker
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -15,7 +16,6 @@ import (
 	"sync/atomic"
 	"unicode"
 
-	"github.com/pkg/errors"
 	"github.com/twpayne/go-geom"
 	"github.com/twpayne/go-geom/encoding/geojson"
 
@@ -26,6 +26,8 @@ import (
 	"github.com/hypermodeinc/dgraph/v24/types/facets"
 	"github.com/hypermodeinc/dgraph/v24/x"
 )
+
+var errEmptyUID = errors.New("UID must be present and non-zero while deleting edges")
 
 func stripSpaces(str string) string {
 	return strings.Map(func(r rune) rune {
@@ -85,7 +87,7 @@ func handleBasicFacetsType(key string, facetVal interface{}) (*api.Facet, error)
 		jsonValue = v
 		valueType = api.Facet_BOOL
 	default:
-		return nil, errors.Errorf("facet value can only be string/number/bool.")
+		return nil, errors.New("facet value can only be string/number/bool")
 	}
 
 	// Convert facet val interface{} to binary.
@@ -128,7 +130,7 @@ func parseMapFacets(m map[string]interface{}, prefix string) ([]map[int]*api.Fac
 
 		fm, ok := facetVal.(map[string]interface{})
 		if !ok {
-			return nil, errors.Errorf("facets format should be of type map for "+
+			return nil, fmt.Errorf("facets format should be of type map for "+
 				"scalarlist predicates, found: %v for facet: %v", facetVal, fname)
 		}
 
@@ -137,11 +139,11 @@ func parseMapFacets(m map[string]interface{}, prefix string) ([]map[int]*api.Fac
 			key := fname[len(prefix):]
 			facet, err := handleBasicFacetsType(key, val)
 			if err != nil {
-				return nil, errors.Wrapf(err, "facet: %s, index: %s", fname, sidx)
+				return nil, fmt.Errorf("facet: %s, index: %s: %w", fname, sidx, err)
 			}
 			idx, err := strconv.Atoi(sidx)
 			if err != nil {
-				return nil, errors.Wrapf(err, "facet: %s, index: %s", fname, sidx)
+				return nil, fmt.Errorf("facet: %s, index: %s: %w", fname, sidx, err)
 			}
 			idxMap[idx] = facet
 		}
@@ -171,7 +173,7 @@ func parseScalarFacets(m map[string]interface{}, prefix string) ([]*api.Facet, e
 		key := fname[len(prefix):]
 		facet, err := handleBasicFacetsType(key, facetVal)
 		if err != nil {
-			return nil, errors.Wrapf(err, "facet: %s", fname)
+			return nil, fmt.Errorf("facet: %s: %w", fname, err)
 		}
 		facetsForPred = append(facetsForPred, facet)
 	}
@@ -228,7 +230,7 @@ func handleBasicType(k string, v interface{}, op int, nq *api.NQuad) error {
 		s := stripSpaces(v)
 		if strings.HasPrefix(s, "uid(") || strings.HasPrefix(s, "val(") {
 			if !strings.HasSuffix(s, ")") {
-				return errors.Errorf("While processing '%s', brackets are not closed properly", s)
+				return fmt.Errorf("while processing '%s', brackets are not closed properly", s)
 			}
 			nq.ObjectId = s
 			return nil
@@ -254,7 +256,7 @@ func handleBasicType(k string, v interface{}, op int, nq *api.NQuad) error {
 		nq.ObjectValue = &api.Value{Val: &api.Value_BoolVal{BoolVal: v}}
 
 	default:
-		return errors.Errorf("Unexpected type for val for attr: %s while converting to nquad", k)
+		return fmt.Errorf("unexpected type for val for attr: %s while converting to nquad", k)
 	}
 	return nil
 
@@ -278,7 +280,7 @@ func handleGeoType(val map[string]interface{}, nq *api.NQuad) (bool, error) {
 	if len(val) == 2 && hasType && hasCoordinates {
 		b, err := json.Marshal(val)
 		if err != nil {
-			return false, errors.Errorf("Error while trying to parse value: %+v as geo val", val)
+			return false, fmt.Errorf("error while trying to parse value: %+v as geo val", val)
 		}
 		ok, err := tryParseAsGeo(b, nq)
 		if err != nil && ok {
@@ -300,7 +302,7 @@ func tryParseAsGeo(b []byte, nq *api.NQuad) (bool, error) {
 
 	geo, err := types.ObjectValue(types.GeoID, g)
 	if err != nil {
-		return false, errors.Errorf("Couldn't convert value: %s to geo type", string(b))
+		return false, fmt.Errorf("couldn't convert value: %s to geo type", string(b))
 	}
 
 	nq.ObjectValue = geo
@@ -441,8 +443,8 @@ func (buf *NQuadBuffer) mapToNquads(m map[string]interface{}, op int, parentPred
 
 	if mr.uid == "" {
 		if op == DeleteNquads {
-			// Delete operations with a non-nil value must have a uid specified.
-			return mr, errors.Errorf("UID must be present and non-zero while deleting edges.")
+			// Delete operations with a non-nil value must have an uid specified.
+			return mr, errEmptyUID
 		}
 		mr.uid = getNextBlank()
 	}
@@ -640,11 +642,11 @@ func (buf *NQuadBuffer) mapToNquads(m map[string]interface{}, op int, parentPred
 					buf.Push(&nq)
 				default:
 					return mr,
-						errors.Errorf("Got unsupported type for list: %s", pred)
+						fmt.Errorf("got unsupported type for list: %s", pred)
 				}
 			}
 		default:
-			return mr, errors.Errorf("Unexpected type for val for attr: %s while converting to nquad", pred)
+			return mr, fmt.Errorf("unexpected type for val for attr: %s while converting to nquad", pred)
 		}
 	}
 
@@ -726,7 +728,7 @@ func (buf *NQuadBuffer) FastParseJSON(b []byte, op int) error {
 				var o interface{}
 				for _, o = range a {
 					if _, ok := o.(map[string]interface{}); !ok {
-						return errors.Errorf("only array of map allowed at root")
+						return errors.New("only array of map allowed at root")
 					}
 					// pass to next parsing stage
 					mr, err := buf.mapToNquads(o.(map[string]interface{}), op, "")
@@ -738,7 +740,7 @@ func (buf *NQuadBuffer) FastParseJSON(b []byte, op int) error {
 			}
 		}
 	default:
-		return errors.Errorf("initial element not found in json")
+		return errors.New("initial element not found in json")
 	}
 	return nil
 }
@@ -767,7 +769,7 @@ func (buf *NQuadBuffer) ParseJSON(b []byte, op int) error {
 	if len(list) > 0 {
 		for _, obj := range list {
 			if _, ok := obj.(map[string]interface{}); !ok {
-				return errors.Errorf("Only array of map allowed at root.")
+				return errors.New("only array of map allowed at root")
 			}
 			mr, err := buf.mapToNquads(obj.(map[string]interface{}), op, "")
 			if err != nil {

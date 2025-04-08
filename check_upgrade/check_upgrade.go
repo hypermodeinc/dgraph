@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
 	"github.com/hypermodeinc/dgraph/v24/dgraphapi"
@@ -75,26 +74,26 @@ func parseJWTKey(alg jwt.SigningMethod, key x.Sensitive) (interface{}, interface
 	case strings.HasPrefix(alg.Alg(), "ES"):
 		pk, err := jwt.ParseECPrivateKeyFromPEM(key)
 		if err != nil {
-			return nil, nil, errors.Wrapf(err, "error parsing ACL key as ECDSA private key")
+			return nil, nil, fmt.Errorf("error parsing ACL key as ECDSA private key: %w", err)
 		}
 		return pk, &pk.PublicKey, nil
 
 	case strings.HasPrefix(alg.Alg(), "RS") || strings.HasPrefix(alg.Alg(), "PS"):
 		pk, err := jwt.ParseRSAPrivateKeyFromPEM(key)
 		if err != nil {
-			return nil, nil, errors.Wrapf(err, "error parsing ACL key as RSA private key")
+			return nil, nil, fmt.Errorf("error parsing ACL key as RSA private key: %w", err)
 		}
 		return pk, &pk.PublicKey, nil
 
 	case alg.Alg() == "EdDSA":
 		pk, err := jwt.ParseEdPrivateKeyFromPEM(key)
 		if err != nil {
-			return nil, nil, errors.Wrapf(err, "error parsing ACL key as EdDSA private key")
+			return nil, nil, fmt.Errorf("error parsing ACL key as EdDSA private key: %w", err)
 		}
 		return pk.(crypto.Signer), pk.(ed25519.PrivateKey).Public(), nil
 
 	default:
-		return nil, nil, errors.Errorf("unsupported signing algorithm: %v", alg.Alg())
+		return nil, nil, fmt.Errorf("unsupported signing algorithm: %v", alg.Alg())
 	}
 }
 
@@ -127,7 +126,7 @@ func getAccessJwt(userId string, group string, namespace uint64, aclSecretFile s
 
 	jwtString, err := token.SignedString(x.MaybeKeyToBytes(privKey))
 	if err != nil {
-		return "", errors.Errorf("unable to encode jwt to string: %v", err)
+		return "", fmt.Errorf("unable to encode jwt to string: %w", err)
 	}
 	return jwtString, nil
 }
@@ -135,7 +134,7 @@ func getAccessJwt(userId string, group string, namespace uint64, aclSecretFile s
 func setupClient(alphaHttp string) (*dgraphapi.HTTPClient, error) {
 	httpClient, err := dgraphapi.GetHttpClient(alphaHttp, "")
 	if err != nil {
-		return nil, errors.Wrapf(err, "while getting HTTP client")
+		return nil, fmt.Errorf("while getting HTTP client: %w", err)
 	}
 	return httpClient, nil
 }
@@ -197,12 +196,12 @@ func queryDuplicateNodes(hc *dgraphapi.HTTPClient) ([3]map[string][]string, erro
 
 	resp, err := hc.PostDqlQuery(query)
 	if err != nil {
-		return [3]map[string][]string{}, errors.Wrapf(err, "while querying dgraph for duplicate nodes")
+		return [3]map[string][]string{}, fmt.Errorf("while querying dgraph for duplicate nodes: %w", err)
 	}
 
 	var result Response
 	if err := json.Unmarshal(resp, &result); err != nil {
-		return [3]map[string][]string{}, errors.Wrapf(err, "while unmarshalling response: %v", string(resp))
+		return [3]map[string][]string{}, fmt.Errorf("while unmarshalling response: %v: %w", string(resp), err)
 
 	}
 	return findDuplicateNodes(result.Data.Nodes), nil
@@ -292,7 +291,7 @@ func queryUserGroup(hc *dgraphapi.HTTPClient, uid string) (aclNode, error) {
 	}
 	var result Response
 	if err := json.Unmarshal(resp, &result); err != nil {
-		return aclNode{}, errors.Wrapf(err, "while unmarshalling response: %v", string(resp))
+		return aclNode{}, fmt.Errorf("while unmarshalling response: %v: %w", string(resp), err)
 	}
 
 	if len(result.Data.Nodes) > 1 {
@@ -506,12 +505,12 @@ func checkUpgrade() error {
 		accessJwt, err = getAccessJwt(dgraphapi.DefaultUser, guardianGroup, 0, cmdInput.aclSecretKeyFilePath,
 			cmdInput.jwtAlg)
 		if err != nil {
-			return errors.Wrapf(err, "while getting access jwt token")
+			return fmt.Errorf("while getting access jwt token: %w", err)
 		}
 	}
 	hc, err := setupClient(cmdInput.alphaHttp)
 	if err != nil {
-		return errors.Wrapf(err, "while setting up clients")
+		return fmt.Errorf("while setting up clients: %w", err)
 	}
 
 	hc.AccessJwt = accessJwt
@@ -520,7 +519,7 @@ func checkUpgrade() error {
 	if cmdInput.namespace == 0 {
 		namespaces, err = hc.ListNamespaces()
 		if err != nil {
-			return errors.Wrapf(err, "while lisiting namespaces")
+			return fmt.Errorf("while lisiting namespaces: %w", err)
 		}
 	} else {
 		namespaces = append(namespaces, cmdInput.namespace)
@@ -531,11 +530,11 @@ func checkUpgrade() error {
 			hc.AccessJwt, err = getAccessJwt(dgraphapi.DefaultUser, guardianGroup, ns, cmdInput.aclSecretKeyFilePath,
 				cmdInput.jwtAlg)
 			if err != nil {
-				return errors.Wrapf(err, "while getting access jwt token for namespace %v", ns)
+				return fmt.Errorf("while getting access jwt token for namespace %v: %w", ns, err)
 			}
 		} else {
 			if err := hc.LoginIntoNamespace(cmdInput.dgUser, cmdInput.password, ns); err != nil {
-				return errors.Wrapf(err, "while logging into namespace %v", ns)
+				return fmt.Errorf("while logging into namespace %v: %w", ns, err)
 			}
 		}
 

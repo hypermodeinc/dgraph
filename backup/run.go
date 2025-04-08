@@ -8,6 +8,7 @@ package backup
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -15,7 +16,6 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -172,7 +172,7 @@ func runRestoreCmd() error {
 	fmt.Println("Writing postings to:", opt.pdir)
 
 	if opt.zero == "" && opt.forceZero {
-		return errors.Errorf("No Dgraph Zero address passed. Use the --force_zero option if you " +
+		return errors.New("No Dgraph Zero address passed. Use the --force_zero option if you " +
 			"meant to do this")
 	}
 
@@ -191,7 +191,7 @@ func runRestoreCmd() error {
 
 		zero, err := grpc.NewClient(opt.zero, callOpts...)
 		if err != nil {
-			return errors.Wrapf(err, "Unable to connect to %s", opt.zero)
+			return fmt.Errorf("unable to connect to %s: %w", opt.zero, err)
 		}
 		zc = pb.NewZeroClient(zero)
 	}
@@ -206,7 +206,7 @@ func runRestoreCmd() error {
 		return result.Err
 	}
 	if result.Version == 0 {
-		return errors.Errorf("failed to obtain a restore version")
+		return errors.New("failed to obtain a restore version")
 	}
 	fmt.Printf("Restore version: %d\n", result.Version)
 	fmt.Printf("Restore max uid: %d\n", result.MaxLeaseUid)
@@ -236,10 +236,10 @@ func runRestoreCmd() error {
 		}
 
 		if err := leaseID(result.MaxLeaseUid, pb.Num_UID); err != nil {
-			return errors.Wrapf(err, "cannot update max uid lease after restore.")
+			return fmt.Errorf("cannot update max uid lease after restore: %w", err)
 		}
 		if err := leaseID(result.MaxLeaseNsId, pb.Num_NS_ID); err != nil {
-			return errors.Wrapf(err, "cannot update max namespace lease after restore.")
+			return fmt.Errorf("cannot update max namespace lease after restore: %w", err)
 		}
 	}
 
@@ -250,7 +250,7 @@ func runRestoreCmd() error {
 func runLsbackupCmd() error {
 	manifests, err := worker.ListBackupManifests(opt.location, nil)
 	if err != nil {
-		return errors.Wrapf(err, "while listing manifests")
+		return fmt.Errorf("while listing manifests: %w", err)
 	}
 
 	type backupEntry struct {
@@ -353,11 +353,11 @@ func (bw *bufWriter) Write(buf *z.Buffer) error {
 	err := buf.SliceIterate(func(s []byte) error {
 		kv.Reset()
 		if err := proto.Unmarshal(s, kv); err != nil {
-			return errors.Wrap(err, "processKvBuf failed to unmarshal kv")
+			return fmt.Errorf("processKvBuf failed to unmarshal kv: %w", err)
 		}
 		pk, err := x.Parse(kv.Key)
 		if err != nil {
-			return errors.Wrap(err, "processKvBuf failed to parse key")
+			return fmt.Errorf("processKvBuf failed to parse key: %w", err)
 		}
 		if pk.Attr == "_predicate_" {
 			return nil
@@ -368,12 +368,12 @@ func (bw *bufWriter) Write(buf *z.Buffer) error {
 		if pk.IsData() {
 			pl := &pb.PostingList{}
 			if err := proto.Unmarshal(kv.Value, pl); err != nil {
-				return errors.Wrap(err, "processKvBuf failed to Unmarshal pl")
+				return fmt.Errorf("processKvBuf failed to Unmarshal pl: %w", err)
 			}
 			l := posting.NewList(kv.Key, pl, kv.Version)
 			kvList, err := worker.ToExportKvList(pk, l, bw.req)
 			if err != nil {
-				return errors.Wrap(err, "processKvBuf failed to Export")
+				return fmt.Errorf("processKvBuf failed to export: %w", err)
 			}
 			if len(kvList.Kv) == 0 {
 				return nil
@@ -383,7 +383,7 @@ func (bw *bufWriter) Write(buf *z.Buffer) error {
 		}
 		return nil
 	})
-	return errors.Wrap(err, "bufWriter failed to write")
+	return fmt.Errorf("bufWriter failed to write: %w", err)
 }
 
 func runExportBackup() error {
@@ -393,28 +393,28 @@ func runExportBackup() error {
 	}
 	opt.key = keys.EncKey
 	if opt.format != "json" && opt.format != "rdf" {
-		return errors.Errorf("invalid format %s", opt.format)
+		return fmt.Errorf("invalid format %s", opt.format)
 	}
 	// Create exportDir and temporary folder to store the restored backup.
 	exportDir, err := filepath.Abs(opt.destination)
 	if err != nil {
-		return errors.Wrapf(err, "cannot convert path %s to absolute path", exportDir)
+		return fmt.Errorf("cannot convert path %s to absolute path: %w", exportDir, err)
 	}
 	if err := os.MkdirAll(exportDir, 0755); err != nil {
-		return errors.Wrapf(err, "cannot create dir %s", exportDir)
+		return fmt.Errorf("cannot create dir %s: %w", exportDir, err)
 	}
 
 	uri, err := url.Parse(opt.location)
 	if err != nil {
-		return errors.Wrapf(err, "runExportBackup")
+		return fmt.Errorf("runExportBackup: %w", err)
 	}
 	handler, err := worker.NewUriHandler(uri, nil)
 	if err != nil {
-		return errors.Wrapf(err, "runExportBackup")
+		return fmt.Errorf("runExportBackup: %w", err)
 	}
 	latestManifest, err := worker.GetLatestManifest(handler, uri)
 	if err != nil {
-		return errors.Wrapf(err, "runExportBackup")
+		return fmt.Errorf("runExportBackup: %w", err)
 	}
 
 	mapDir, err := os.MkdirTemp(x.WorkerConfig.TmpDir, "restore-export")
@@ -436,7 +436,7 @@ func runExportBackup() error {
 			RestoreTs:         1,
 		}
 		if _, err := worker.RunMapper(req, mapDir); err != nil {
-			return errors.Wrap(err, "Failed to map the backups")
+			return fmt.Errorf("failed to map the backups: %w", err)
 		}
 		in := &pb.ExportRequest{
 			GroupId:     gid,
@@ -459,10 +459,10 @@ func runExportBackup() error {
 
 		w := &bufWriter{req: in, writers: writers}
 		if err := worker.RunReducer(w, mapDir); err != nil {
-			return errors.Wrap(err, "Failed to reduce the map")
+			return fmt.Errorf("failed to reduce the map: %w", err)
 		}
 		if files, err := exportStorage.FinishWriting(writers); err != nil {
-			return errors.Wrap(err, "Failed to finish write")
+			return fmt.Errorf("failed to finish write: %w", err)
 		} else {
 			glog.Infof("done exporting files: %v\n", files)
 		}
