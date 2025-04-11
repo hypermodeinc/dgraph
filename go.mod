@@ -7,21 +7,21 @@ require (
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2
 	github.com/IBM/sarama v1.45.1
 	github.com/Masterminds/semver/v3 v3.3.1
-	github.com/blevesearch/bleve/v2 v2.4.4
-	github.com/dgraph-io/badger/v4 v4.6.0
-	github.com/dgraph-io/dgo/v240 v240.1.1-0.20250403071431-f8296b028c14
+	github.com/blevesearch/bleve/v2 v2.5.0
+	github.com/dgraph-io/badger/v4 v4.7.0
+	github.com/dgraph-io/dgo/v240 v240.2.0
 	github.com/dgraph-io/gqlgen v0.13.2
 	github.com/dgraph-io/gqlparser/v2 v2.2.2
 	github.com/dgraph-io/graphql-transport-ws v0.0.0-20210511143556-2cef522f1f15
-	github.com/dgraph-io/ristretto/v2 v2.1.0
+	github.com/dgraph-io/ristretto/v2 v2.2.0
 	github.com/dgraph-io/simdjson-go v0.3.0
 	github.com/dgryski/go-farm v0.0.0-20240924180020-3414d57e47da
 	github.com/dgryski/go-groupvarint v0.0.0-20230630160417-2bfb7969fb3c
 	github.com/docker/docker v28.0.4+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/dustin/go-humanize v1.0.1
-	github.com/go-jose/go-jose/v4 v4.0.5
-	github.com/go-sql-driver/mysql v1.9.1
+	github.com/go-jose/go-jose/v4 v4.1.0
+	github.com/go-sql-driver/mysql v1.9.2
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/golang/geo v0.0.0-20230421003525-6adc56603217
 	github.com/golang/glog v1.2.4
@@ -37,7 +37,7 @@ require (
 	github.com/paulmach/go.geojson v1.5.0
 	github.com/pkg/errors v0.9.1
 	github.com/pkg/profile v1.7.0
-	github.com/prometheus/client_golang v1.21.1
+	github.com/prometheus/client_golang v1.22.0
 	github.com/soheilhy/cmux v0.1.5
 	github.com/spf13/cast v1.7.1
 	github.com/spf13/cobra v1.9.1
@@ -49,23 +49,23 @@ require (
 	github.com/xdg/scram v1.0.5
 	go.etcd.io/etcd/raft/v3 v3.5.21
 	go.opencensus.io v0.24.0
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.54.0
-	go.opentelemetry.io/contrib/zpages v0.59.0
-	go.opentelemetry.io/otel v1.34.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.34.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.34.0
-	go.opentelemetry.io/otel/sdk v1.34.0
-	go.opentelemetry.io/otel/trace v1.34.0
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.60.0
+	go.opentelemetry.io/contrib/zpages v0.60.0
+	go.opentelemetry.io/otel v1.35.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.35.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.35.0
+	go.opentelemetry.io/otel/sdk v1.35.0
+	go.opentelemetry.io/otel/trace v1.35.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/crypto v0.36.0
-	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394
+	golang.org/x/crypto v0.37.0
+	golang.org/x/exp 7e4ce0ab07d0
 	golang.org/x/mod v0.24.0
-	golang.org/x/net v0.38.0
-	golang.org/x/sync v0.12.0
-	golang.org/x/sys v0.31.0
-	golang.org/x/term v0.30.0
-	golang.org/x/text v0.23.0
-	golang.org/x/tools v0.31.0
+	golang.org/x/net v0.39.0
+	golang.org/x/sync v0.13.0
+	golang.org/x/sys v0.32.0
+	golang.org/x/term v0.31.0
+	golang.org/x/text v0.24.0
+	golang.org/x/tools v0.32.0
 	google.golang.org/grpc v1.71.1
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/yaml.v3 v3.0.1
