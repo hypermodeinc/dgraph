@@ -38,7 +38,7 @@ import (
 var (
 	// ErrNonExistentTabletMessage is the error message sent when no tablet is serving a predicate.
 	ErrNonExistentTabletMessage = "Requested predicate is not being served by any tablet"
-	errNonExistentTablet        = errors.Errorf(ErrNonExistentTabletMessage)
+	errNonExistentTablet        = errors.New(ErrNonExistentTabletMessage)
 	errUnservedTablet           = errors.Errorf("Tablet isn't being served by this instance")
 )
 

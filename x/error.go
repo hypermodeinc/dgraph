@@ -44,7 +44,7 @@ func Checkf(err error, format string, args ...interface{}) {
 // CheckfNoTrace is Checkf without a stack trace.
 func CheckfNoTrace(err error) {
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatal(err.Error())
 	}
 }
 
