@@ -325,7 +325,7 @@ func runKShortestPaths(ctx context.Context, sg *SubGraph) ([]*SubGraph, error) {
 	var stopExpansion bool
 	for pq.Len() > 0 {
 		item := heap.Pop(&pq).(*queueItem)
-		fmt.Println("POPPED", item.uid, sg.Params.To, sg.Params.MinWeight, sg.Params.MaxWeight, maxHops)
+		fmt.Println("POPPED", item.uid, sg.Params.To, item.path.route)
 		if item.uid == sg.Params.To {
 			// Ignore paths that do not meet the minimum weight requirement.
 			if item.cost < minWeight {
