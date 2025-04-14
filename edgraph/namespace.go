@@ -285,13 +285,16 @@ func isValidNamespaceToDelete(name string) error {
 	if name == "" {
 		return errors.Errorf("namespace name cannot be empty")
 	}
-	if name == "root" || name == "galaxy" || name == "dgraph-0" {
+	if isSystemNamespace(name) {
 		return fmt.Errorf("namespace [%v] cannot be renamed/dropped", name)
 	}
 	return nil
 }
 
 func getNamespaceIDFromName(ctx context.Context, nsName string) (uint64, error) {
+	if isSystemNamespace(nsName) {
+		return 0, nil
+	}
 	if isLgacyNamespace(nsName) {
 		return extractNsIDFromLegacyNamespace(nsName)
 	}

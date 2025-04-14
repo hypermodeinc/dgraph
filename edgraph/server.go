@@ -43,7 +43,6 @@ import (
 	"github.com/hypermodeinc/dgraph/v24/protos/pb"
 	"github.com/hypermodeinc/dgraph/v24/query"
 	"github.com/hypermodeinc/dgraph/v24/schema"
-	"github.com/hypermodeinc/dgraph/v24/telemetry"
 	"github.com/hypermodeinc/dgraph/v24/tok"
 	"github.com/hypermodeinc/dgraph/v24/types"
 	"github.com/hypermodeinc/dgraph/v24/types/facets"
@@ -106,37 +105,6 @@ type graphQLSchemaNode struct {
 
 type existingGQLSchemaQryResp struct {
 	ExistingGQLSchema []graphQLSchemaNode `json:"ExistingGQLSchema"`
-}
-
-// PeriodicallyPostTelemetry periodically reports telemetry data for alpha.
-func PeriodicallyPostTelemetry() {
-	glog.V(2).Infof("Starting telemetry data collection for alpha...")
-
-	start := time.Now()
-	ticker := time.NewTicker(time.Minute * 10)
-	defer ticker.Stop()
-
-	var lastPostedAt time.Time
-	for range ticker.C {
-		if time.Since(lastPostedAt) < time.Hour {
-			continue
-		}
-		ms := worker.GetMembershipState()
-		t := telemetry.NewAlpha(ms)
-		t.NumDQL = atomic.SwapUint64(&numDQL, 0)
-		t.NumGraphQL = atomic.SwapUint64(&numGraphQL, 0)
-		t.SinceHours = int(time.Since(start).Hours())
-		glog.V(2).Infof("Posting Telemetry data: %+v", t)
-
-		err := t.Post()
-		if err == nil {
-			lastPostedAt = time.Now()
-		} else {
-			atomic.AddUint64(&numDQL, t.NumDQL)
-			atomic.AddUint64(&numGraphQL, t.NumGraphQL)
-			glog.V(2).Infof("Telemetry couldn't be posted. Error: %v", err)
-		}
-	}
 }
 
 // GetGQLSchema queries for the GraphQL schema node, and returns the uid and the GraphQL schema.

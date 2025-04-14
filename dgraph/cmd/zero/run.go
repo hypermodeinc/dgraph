@@ -36,7 +36,6 @@ import (
 
 type options struct {
 	raft              *z.SuperFlag
-	telemetry         *z.SuperFlag
 	limit             *z.SuperFlag
 	bindall           bool
 	portOffset        int
@@ -200,7 +199,7 @@ func (st *state) serveGRPC(l net.Listener, store *raftwal.DiskStorage) {
 
 func run() {
 	// keeping this flag for backward compatibility
-	telemetry := z.NewSuperFlag(Zero.Conf.GetString("telemetry")).
+	_ = z.NewSuperFlag(Zero.Conf.GetString("telemetry")).
 		MergeAndCheckDefault(x.TelemetryDefaults)
 
 	x.PrintVersion()
@@ -217,7 +216,6 @@ func run() {
 		RefillAfter:   limit.GetDuration("refill-interval"),
 	}
 	opts = options{
-		telemetry:         telemetry,
 		raft:              raft,
 		limit:             limit,
 		bindall:           Zero.Conf.GetBool("bindall"),
@@ -306,10 +304,6 @@ func run() {
 
 	// This must be here. It does not work if placed before Grpc init.
 	x.Check(st.node.initAndStartNode())
-
-	if opts.telemetry.GetBool("reports") {
-		go st.zero.periodicallyPostTelemetry()
-	}
 
 	sdCh := make(chan os.Signal, 1)
 	signal.Notify(sdCh, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)

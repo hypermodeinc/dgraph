@@ -23,7 +23,6 @@ import (
 	"github.com/dgraph-io/ristretto/v2/z"
 	"github.com/hypermodeinc/dgraph/v24/conn"
 	"github.com/hypermodeinc/dgraph/v24/protos/pb"
-	"github.com/hypermodeinc/dgraph/v24/telemetry"
 	"github.com/hypermodeinc/dgraph/v24/x"
 )
 
@@ -95,38 +94,6 @@ func (s *Server) Init() {
 	}
 
 	go s.rebalanceTablets()
-}
-
-func (s *Server) periodicallyPostTelemetry() {
-	glog.V(2).Infof("Starting telemetry data collection for zero...")
-	start := time.Now()
-
-	ticker := time.NewTicker(time.Minute * 10)
-	defer ticker.Stop()
-
-	var lastPostedAt time.Time
-	for range ticker.C {
-		if !s.Node.AmLeader() {
-			continue
-		}
-		if time.Since(lastPostedAt) < time.Hour {
-			continue
-		}
-		ms := s.membershipState()
-		t := telemetry.NewZero(ms)
-		if t == nil {
-			continue
-		}
-		t.SinceHours = int(time.Since(start).Hours())
-		glog.V(2).Infof("Posting Telemetry data: %+v", t)
-
-		err := t.Post()
-		if err == nil {
-			lastPostedAt = time.Now()
-		} else {
-			glog.V(2).Infof("Telemetry couldn't be posted. Error: %v", err)
-		}
-	}
 }
 
 func (s *Server) triggerLeaderChange() {
