@@ -8,6 +8,7 @@ package query
 import (
 	"container/heap"
 	"context"
+	"fmt"
 	"math"
 	"sync"
 
@@ -323,6 +324,7 @@ func runKShortestPaths(ctx context.Context, sg *SubGraph) ([]*SubGraph, error) {
 	// map to store the min cost and parent of nodes.
 	var stopExpansion bool
 	for pq.Len() > 0 {
+		fmt.Println("POPPED", item.uid, sg.Params.To, sg.Params.MinWeight, sg.Params.MaxWeight, maxHops)
 		item := heap.Pop(&pq).(*queueItem)
 		if item.uid == sg.Params.To {
 			// Ignore paths that do not meet the minimum weight requirement.
