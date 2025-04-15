@@ -165,6 +165,8 @@ type params struct {
 	MaxWeight float64
 	// MinWeight is the min weight allowed in a path returned by the shortest path algorithm.
 	MinWeight float64
+	// MaxHeapSize is the maximum size of the heap that can be made while querying shortest path
+	MaxHeapSize int
 
 	// ExploreDepth is used by recurse and shortest path queries to specify the maximum graph
 	// depth to explore.
@@ -712,6 +714,16 @@ func (args *params) fill(gq *dql.GraphQuery) error {
 			args.MinWeight = minWeight
 		} else if !ok {
 			args.MinWeight = -math.MaxFloat64
+		}
+
+		if v, ok := gq.Args["maxheapsize"]; ok {
+			maxHeapSize, err := strconv.ParseInt(v, 0, 64)
+			if err != nil {
+				return err
+			}
+			args.MaxHeapSize = int(maxHeapSize)
+		} else if !ok {
+			args.MaxHeapSize = math.MaxInt64
 		}
 
 		if gq.ShortestPathArgs.From == nil || gq.ShortestPathArgs.To == nil {

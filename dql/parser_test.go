@@ -1302,7 +1302,7 @@ func TestParseQueryWithMultipleVar(t *testing.T) {
 func TestParseShortestPath(t *testing.T) {
 	query := `
 	{
-		shortest(from:0x0a, to:0x0b, numpaths: 3, minweight: 3, maxweight: 6) {
+		shortest(from:0x0a, to:0x0b, numpaths: 3, minweight: 3, maxweight: 6, maxheapsize: 1) {
 			friends
 			name
 		}
@@ -1317,6 +1317,7 @@ func TestParseShortestPath(t *testing.T) {
 	require.Equal(t, "3", res.Query[0].Args["numpaths"])
 	require.Equal(t, "3", res.Query[0].Args["minweight"])
 	require.Equal(t, "6", res.Query[0].Args["maxweight"])
+	require.Equal(t, "1", res.Query[0].Args["maxheapsize"])
 }
 
 func TestParseShortestPathWithUidVars(t *testing.T) {

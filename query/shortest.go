@@ -8,7 +8,6 @@ package query
 import (
 	"container/heap"
 	"context"
-	"fmt"
 	"math"
 	"sync"
 
@@ -74,9 +73,6 @@ func (h priorityQueue) Swap(i, j int) {
 }
 
 func (h *priorityQueue) Push(val interface{}) {
-	if len(*h) > 100000 {
-		h.Pop()
-	}
 	n := len(*h)
 	item := val.(*queueItem)
 	item.index = n
@@ -328,7 +324,6 @@ func runKShortestPaths(ctx context.Context, sg *SubGraph) ([]*SubGraph, error) {
 	var stopExpansion bool
 	for pq.Len() > 0 {
 		item := heap.Pop(&pq).(*queueItem)
-		fmt.Println("POPPED", item.uid, sg.Params.To, item.path.route)
 		if item.uid == sg.Params.To {
 			// Ignore paths that do not meet the minimum weight requirement.
 			if item.cost < minWeight {
@@ -409,6 +404,9 @@ func runKShortestPaths(ctx context.Context, sg *SubGraph) ([]*SubGraph, error) {
 				cost: item.cost + cost,
 				hop:  item.hop + 1,
 				path: route{route: curPath},
+			}
+			if pq.Len() > sg.Params.MaxHeapSize {
+				pq.Pop()
 			}
 			heap.Push(&pq, node)
 		}
@@ -562,6 +560,9 @@ func shortestPath(ctx context.Context, sg *SubGraph) ([]*SubGraph, error) {
 					uid:  toUID,
 					cost: nodeCost,
 					hop:  item.hop + 1,
+				}
+				if pq.Len() > sg.Params.MaxHeapSize {
+					pq.Pop()
 				}
 				heap.Push(&pq, node)
 			} else {
