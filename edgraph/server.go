@@ -33,6 +33,7 @@ import (
 
 	"github.com/dgraph-io/dgo/v240"
 	"github.com/dgraph-io/dgo/v240/protos/api"
+	apiv25 "github.com/dgraph-io/dgo/v240/protos/api.v25"
 	"github.com/hypermodeinc/dgraph/v24/chunker"
 	"github.com/hypermodeinc/dgraph/v24/conn"
 	"github.com/hypermodeinc/dgraph/v24/dql"
@@ -1828,6 +1829,40 @@ func validateNamespace(ctx context.Context, tc *api.TxnContext) error {
 	if tc.Hash != getHash(ns, tc.StartTs) {
 		return x.ErrHashMismatch
 	}
+	return nil
+}
+
+func (s *ServerV25) InitiateSnapshotStream(ctx context.Context,
+	c *apiv25.InitiateSnapshotStreamRequest) (v *apiv25.InitiateSnapshotStreamResponse, err error) {
+	groups := []uint32{}
+	ms := worker.GetMembershipState()
+
+	for groupID := range ms.Groups {
+		groups = append(groups, groupID)
+	}
+
+	drainMode := &pb.Drainmode{State: true}
+	if err := worker.ProposeDrain(ctx, drainMode); err != nil {
+		return nil, err
+	}
+
+	resp := &apiv25.InitiateSnapshotStreamResponse{
+		Groups: groups,
+	}
+
+	return resp, nil
+}
+
+func (s *ServerV25) StreamSnapshot(stream apiv25.Dgraph_StreamSnapshotServer) error {
+	if err := worker.DoStreamPDir(stream); err != nil {
+		return err
+	}
+
+	drainMode := &pb.Drainmode{State: false}
+	if err := worker.ProposeDrain(stream.Context(), drainMode); err != nil {
+		return err
+	}
+
 	return nil
 }
 

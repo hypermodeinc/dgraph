@@ -903,3 +903,18 @@ func (s *Server) ApplyLicense(ctx context.Context, req *pb.ApplyLicenseRequest) 
 	glog.Infof("Enterprise license proposed to the cluster %+v", proposal)
 	return &pb.Status{}, nil
 }
+
+func (s *Server) ApplyDrainmode(ctx context.Context, req *pb.Drainmode) (*pb.Status, error) {
+	knownGroups := s.KnownGroups()
+
+	for _, grp := range knownGroups {
+		pl := s.Leader(grp)
+		wc := pb.NewWorkerClient(pl.Get())
+		in := &pb.Drainmode{State: req.State}
+
+		if status, err := wc.ApplyDrainmode(ctx, in); err != nil {
+			return status, errors.Wrapf(err, "while applying drainmode")
+		}
+	}
+	return nil, nil
+}

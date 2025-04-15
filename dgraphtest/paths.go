@@ -18,6 +18,7 @@ var (
 	baseRepoDir  string // baseRepoDir points to the dgraph repo from where tests are running
 	repoDir      string // repoDir to store cloned repository of dgraph
 	binariesPath string // binariesPath to store multiple binary versions
+	dataPath     string
 )
 
 const (
@@ -34,6 +35,7 @@ func init() {
 	basePath := strings.ReplaceAll(thisFilePath, "/paths.go", "")
 	baseRepoDir = strings.ReplaceAll(basePath, "/dgraphtest", "")
 	binariesPath = filepath.Join(basePath, "binaries")
+	dataPath = filepath.Join(basePath, "datafiles")
 
 	var err error
 	repoDir, err = os.MkdirTemp("", "dgraph-repo")
