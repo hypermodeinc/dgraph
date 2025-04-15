@@ -311,8 +311,8 @@ func (a *alpha) mounts(c *LocalCluster) ([]mount.Mount, error) {
 		})
 	}
 
-	if c.conf.bulkOutDir != "" {
-		pDir := filepath.Join(c.conf.bulkOutDir, strconv.Itoa(a.id/c.conf.replicas), "p")
+	if c.conf.bulkOutDirForMount != "" {
+		pDir := filepath.Join(c.conf.bulkOutDirForMount, strconv.Itoa(a.id/c.conf.replicas), "p")
 		if err := os.MkdirAll(pDir, os.ModePerm); err != nil {
 			return nil, errors.Wrap(err, "erorr creating bulk dir")
 		}

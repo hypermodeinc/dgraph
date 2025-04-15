@@ -689,6 +689,10 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 			attribute.Int64("key", int64(key))))
 		return n.commitOrAbort(key, proposal.Delta)
 
+	case proposal.Drainmode != nil:
+		x.UpdateDrainingMode(proposal.Drainmode.State)
+		return nil
+
 	case proposal.Snapshot != nil:
 		existing, err := n.Store.Snapshot()
 		if err != nil {

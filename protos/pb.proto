@@ -318,6 +318,7 @@ message Proposal {
   DeleteNsRequest delete_ns = 14;  // Used to delete namespace.
   // Skipping 15 as it is used for uint64 key in master and might be needed later here.
   uint64 start_ts = 16;
+  DrainModeRequest drainmode = 17;
 }
 
 message CDCState {
@@ -594,6 +595,16 @@ service Worker {
       returns (UpdateGraphQLSchemaResponse) {}
   rpc DeleteNamespace(DeleteNsRequest) returns (Status) {}
   rpc TaskStatus(TaskStatusRequest) returns (TaskStatusResponse) {}
+  rpc ApplyDrainmode(DrainModeRequest) returns (Status) {}
+  rpc InternalStreamSnapshot(stream KVS) returns (ReceiveSnapshotKVRequest) {}
+}
+
+message ReceiveSnapshotKVRequest {
+    bool done = 1;
+}
+
+message DrainModeRequest {
+  bool state = 1;
 }
 
 message TabletResponse {

@@ -28,9 +28,24 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/x"
 )
 
+var datafiles = map[string]string{
+	"1million.schema":  "https://github.com/hypermodeinc/dgraph-benchmarks/blob/main/data/1million.schema?raw=true",
+	"1million.rdf.gz":  "https://github.com/hypermodeinc/dgraph-benchmarks/blob/main/data/1million.rdf.gz?raw=true",
+	"21million.schema": "https://github.com/hypermodeinc/dgraph-benchmarks/blob/main/data/21million.schema?raw=true",
+	"21million.rdf.gz": "https://github.com/hypermodeinc/dgraph-benchmarks/blob/main/data/21million.rdf.gz?raw=true",
+}
+
+type DatasetType int
+type Dataset struct {
+	name string
+}
+
 const (
 	groupOneRdfFile   = "g01.rdf"
 	groupOneRdfGzFile = "g01.rdf.gz"
+
+	OneMillionDataset DatasetType = iota
+	TwentyOneMillionDataset
 )
 
 // LiveOpts are options that are used for running live loader.
@@ -451,6 +466,7 @@ type BulkOpts struct {
 	DataFiles      []string
 	SchemaFiles    []string
 	GQLSchemaFiles []string
+	OutDir         string
 }
 
 func (c *LocalCluster) BulkLoad(opts BulkOpts) error {
@@ -459,13 +475,20 @@ func (c *LocalCluster) BulkLoad(opts BulkOpts) error {
 		return errors.Wrap(err, "error finding URL of first zero")
 	}
 
+	var outDir string
+	if opts.OutDir != "" {
+		outDir = opts.OutDir
+	} else {
+		outDir = c.conf.bulkOutDirForMount
+	}
+
 	shards := c.conf.numAlphas / c.conf.replicas
 	args := []string{"bulk",
 		"--store_xids=true",
 		"--zero", zeroURL,
 		"--reduce_shards", strconv.Itoa(shards),
 		"--map_shards", strconv.Itoa(shards),
-		"--out", c.conf.bulkOutDir,
+		"--out", outDir,
 		// we had to create the dir for setting up docker, hence, replacing it here.
 		"--replace_out",
 	}
@@ -503,4 +526,51 @@ func AddData(gc *dgraphapi.GrpcClient, pred string, start, end int) error {
 	}
 	_, err := gc.Mutate(&api.Mutation{SetNquads: []byte(rdf), CommitNow: true})
 	return err
+}
+
+func GetDataset(d DatasetType) *Dataset {
+	switch d {
+	case OneMillionDataset:
+		return &Dataset{name: "1million"}
+	case TwentyOneMillionDataset:
+		return &Dataset{name: "21million"}
+	default:
+		panic("unknown dataset type")
+	}
+}
+
+func (d *Dataset) DataFilePath() string {
+	return d.ensureFile(fmt.Sprintf("%s.rdf.gz", d.name))
+}
+
+func (d *Dataset) SchemaPath() string {
+	return d.ensureFile(fmt.Sprintf("%s.schema", d.name))
+}
+
+func (d *Dataset) GqlSchemaPath() string {
+	return d.ensureFile(fmt.Sprintf("%s.gql_schema", d.name))
+}
+
+func (d *Dataset) ensureFile(filename string) string {
+	fullPath := filepath.Join(datasetFilesPath, filename)
+	if exists, _ := fileExists(fullPath); !exists {
+		url, ok := datafiles[filename]
+		if !ok {
+			panic(fmt.Sprintf("dataset file %s not found in datafiles map", filename))
+		}
+		if err := downloadFile(filename, url); err != nil {
+			panic(fmt.Sprintf("failed to download %s: %v", filename, err))
+		}
+	}
+	return fullPath
+}
+
+func downloadFile(fname, url string) error {
+	cmd := exec.Command("wget", "-O", fname, url)
+	cmd.Dir = datasetFilesPath
+
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("error downloading file %s: %s", fname, string(out))
+	}
+	return nil
 }

@@ -70,7 +70,7 @@ func TestCheckUpgrade(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { c1.Cleanup(t.Failed()) }()
 	require.NoError(t, c1.Start())
-	alphaHttp, err := c.GetAlphaHttpPublicPort()
+	alphaHttp, err := c.GetAlphaHttpPublicPort(0)
 	require.NoError(t, err)
 
 	args := []string{

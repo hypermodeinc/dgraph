@@ -9,7 +9,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/blevesearch/bleve/v2 v2.5.0
 	github.com/dgraph-io/badger/v4 v4.7.0
-	github.com/dgraph-io/dgo/v250 v250.0.0-preview1
+	github.com/dgraph-io/dgo/v250 v250.0.0-20250422095606-337c8b78908a
 	github.com/dgraph-io/gqlgen v0.13.2
 	github.com/dgraph-io/gqlparser/v2 v2.2.2
 	github.com/dgraph-io/graphql-transport-ws v0.0.0-20210511143556-2cef522f1f15
