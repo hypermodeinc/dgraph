@@ -74,6 +74,9 @@ func (h priorityQueue) Swap(i, j int) {
 }
 
 func (h *priorityQueue) Push(val interface{}) {
+	if len(*h) > 100000 {
+		h.Pop()
+	}
 	n := len(*h)
 	item := val.(*queueItem)
 	item.index = n
