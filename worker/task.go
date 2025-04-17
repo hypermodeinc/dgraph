@@ -1819,17 +1819,17 @@ func langForFunc(langs []string) string {
 	return langs[0]
 }
 
-func planForEqFilter(fc *functionContext, pred string, uidlist []uint64) {
-	checkUidEmpty := func(uids []uint64) bool {
-		for _, i := range uids {
-			if i == 0 {
-				return false
-			}
+func checkUidZero(uids []uint64) bool {
+	for _, uid := range uids {
+		if uid == 0 {
+			return true
 		}
-		return true
 	}
+	return false
+}
 
-	if !checkUidEmpty(uidlist) {
+func planForEqFilter(fc *functionContext, pred string, uidlist []uint64) {
+	if checkUidZero(uidlist) {
 		// We have a uid which has 0 in it. Mostly it would happen when there is only 0. But any one item
 		// being 0 could cause the query planner to fail. In case of 0 being present, we neeed to query the
 		// index itself.
@@ -1912,6 +1912,14 @@ func parseSrcFn(ctx context.Context, q *pb.Query) (*functionContext, error) {
 			}
 		}
 
+		generateIneqTokens := true
+		if fc.fname != eq && q.UidList != nil && uint64(len(q.UidList.Uids)) < Config.TypeFilterUidLimit {
+			if !checkUidZero(q.UidList.Uids) {
+				fc.n = len(q.UidList.Uids)
+				generateIneqTokens = false
+			}
+		}
+
 		var tokens []string
 		var ineqValues []types.Val
 		// eq can have multiple args.
@@ -1947,6 +1955,9 @@ func parseSrcFn(ctx context.Context, q *pb.Query) (*functionContext, error) {
 				lang = q.Langs[0]
 			}
 
+			if !generateIneqTokens {
+				continue
+			}
 			// Get tokens ge/le ineqValueToken.
 			if tokens, fc.ineqValueToken, err = getInequalityTokens(ctx, q.ReadTs, attr, f, lang,
 				ineqValues); err != nil {
