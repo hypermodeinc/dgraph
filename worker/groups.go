@@ -770,7 +770,7 @@ func (g *groupi) doSendMembership(tablets map[string]*pb.Tablet) error {
 	if string(reply.GetData()) == "OK" {
 		return nil
 	}
-	return errors.Errorf(string(reply.GetData()))
+	return errors.New(string(reply.GetData()))
 }
 
 // sendMembershipUpdates sends the membership update to Zero leader. If this Alpha is the leader, it

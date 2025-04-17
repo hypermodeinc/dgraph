@@ -608,7 +608,7 @@ func (n *node) applyMutations(ctx context.Context, proposal *pb.Proposal) (rerr 
 			if errs == nil {
 				errs = errors.New("Got error while running mutation")
 			}
-			errs = errors.Wrapf(err, errs.Error())
+			errs = errors.Wrap(err, errs.Error())
 		}
 	}
 	return errs
