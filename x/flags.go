@@ -13,7 +13,7 @@ import (
 
 const (
 	TraceDefaults     = `ratio=0.01; jaeger=; datadog=;`
-	TelemetryDefaults = `reports=true;sentry=false;`
+	TelemetryDefaults = `reports=false;sentry=false;`
 )
 
 // FillCommonFlags stores flags common to Alpha and Zero.
@@ -45,8 +45,8 @@ func FillCommonFlags(flag *pflag.FlagSet) {
 			`Most users should be OK with choosing "process".`)
 
 	flag.String("telemetry", TelemetryDefaults, z.NewSuperFlagHelp(TelemetryDefaults).
-		Head("Telemetry (diagnostic) options").
-		Flag("reports",
+		Head("Telemetry (diagnostic) options)").
+		Flag("reports (Deprecated)",
 			"Send anonymous telemetry data to Dgraph devs.").
 		Flag("sentry",
 			"(Deprecated) Send crash events to Sentry.").

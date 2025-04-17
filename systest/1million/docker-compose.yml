@@ -17,8 +17,6 @@ services:
         source: data
         target: /data
         read_only: false
-    command:
-      /gobin/dgraph zero --telemetry "reports=false;" --raft="idx=1" --my=zero1:5080 --logtostderr
-      -v=2 --bindall
+    command: /gobin/dgraph zero --raft="idx=1" --my=zero1:5080 --logtostderr -v=2 --bindall
 volumes:
   data: {}

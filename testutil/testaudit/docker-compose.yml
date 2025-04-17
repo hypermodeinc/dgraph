@@ -19,10 +19,9 @@ services:
         target: /dgraph-enc/enc-key
         read_only: true
     command:
-      /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --telemetry "reports=false;" --raft="idx=1;group=1"
-      --my=alpha1:7080 --zero=zero1:5080 --logtostderr --audit
-      "output=/audit_dir;encrypt-file=/dgraph-enc/enc-key" -v=2 --security
-      "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+      /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --raft="idx=1;group=1" --my=alpha1:7080
+      --zero=zero1:5080 --logtostderr --audit "output=/audit_dir;encrypt-file=/dgraph-enc/enc-key"
+      -v=2 --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
   zero1:
     image: dgraph/dgraph:local
     working_dir: /data/zero1
@@ -44,7 +43,6 @@ services:
         target: /dgraph-enc/enc-key
         read_only: true
     command:
-      /gobin/dgraph  ${COVERAGE_OUTPUT} zero --telemetry "reports=false;" --raft="idx=1;"
-      --my=zero1:5080 --logtostderr -v=2 --bindall --audit
-      "output=/audit_dir;encrypt-file=/dgraph-enc/enc-key"
+      /gobin/dgraph  ${COVERAGE_OUTPUT} zero --raft="idx=1;" --my=zero1:5080 --logtostderr -v=2
+      --bindall --audit "output=/audit_dir;encrypt-file=/dgraph-enc/enc-key"
 volumes: {}

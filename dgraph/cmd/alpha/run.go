@@ -612,9 +612,8 @@ func setupServer(closer *z.Closer) {
 }
 
 func run() {
-	var err error
-
-	telemetry := z.NewSuperFlag(Alpha.Conf.GetString("telemetry")).
+	// keeping this flag for backward compatibility
+	_ = z.NewSuperFlag(Alpha.Conf.GetString("telemetry")).
 		MergeAndCheckDefault(x.TelemetryDefaults)
 
 	bindall = Alpha.Conf.GetBool("bindall")
@@ -711,10 +710,6 @@ func run() {
 		Badger:              bopts,
 	}
 	x.WorkerConfig.Parse(Alpha.Conf)
-
-	if telemetry.GetBool("reports") {
-		go edgraph.PeriodicallyPostTelemetry()
-	}
 
 	// Set the directory for temporary buffers.
 	z.SetTmpDir(x.WorkerConfig.TmpDir)

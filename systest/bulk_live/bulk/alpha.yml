@@ -18,5 +18,5 @@ services:
         target: /posting
         read_only: false
     command:
-      /gobin/dgraph alpha --telemetry "reports=false;" --my=alpha1:7080 --zero=zero1:5080
-      --logtostderr -v=2 -p=/posting --security "whitelist=0.0.0.0/0;"
+      /gobin/dgraph alpha --my=alpha1:7080 --zero=zero1:5080 --logtostderr -v=2 -p=/posting
+      --security "whitelist=0.0.0.0/0;"

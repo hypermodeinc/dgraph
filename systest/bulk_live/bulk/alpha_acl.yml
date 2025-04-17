@@ -22,6 +22,5 @@ services:
         target: /dgraph-acl/hmac-secret
         read_only: true
     command:
-      /gobin/dgraph alpha --telemetry "reports=false;" --my=alpha1:7080 --zero=zero1:5080
-      --logtostderr -v=2 -p=/posting --security "whitelist=0.0.0.0/0;" --acl
-      "secret-file=/dgraph-acl/hmac-secret; "
+      /gobin/dgraph alpha --my=alpha1:7080 --zero=zero1:5080 --logtostderr -v=2 -p=/posting
+      --security "whitelist=0.0.0.0/0;" --acl "secret-file=/dgraph-acl/hmac-secret; "
