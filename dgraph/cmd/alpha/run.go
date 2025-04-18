@@ -25,6 +25,8 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"go.opencensus.io/plugin/ocgrpc"
@@ -472,9 +474,61 @@ func serveGRPC(l net.Listener, tlsCfg *tls.Config, closer *z.Closer) {
 	s.Stop()
 }
 
+func setupMcp(baseMux *http.ServeMux) {
+	s := server.NewMCPServer(
+		"Dgraph MCP Server",
+		"1.0.0",
+		server.WithResourceCapabilities(true, true),
+		server.WithLogging(),
+		server.WithRecovery(),
+	)
+
+	schemaTool := mcp.NewTool("Get-Schema",
+		mcp.WithDescription("Get schema from dgraph db"),
+	)
+
+	queryTool := mcp.NewTool("Run-DQL", 
+		mcp.WithDescription("Run DQL mutation / query on dgraph db"),
+		mcp.WithString("query",
+			mcp.Required(),
+			mcp.Description("The query to perform. For mutations the format should look like {set {}}"),
+		),
+	)
+
+	s.AddTool(queryTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		op := request.Params.Arguments["query"].(string)
+		req := &apiv25.RunDQLRequest{
+			NsName: "root",
+			DqlQuery: op,
+		}
+		resp, err := (&edgraph.ServerV25{}).RunDQL(ctx, req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(resp.QueryResult)), nil
+	})
+
+	s.AddTool(schemaTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		req := &apiv25.RunDQLRequest{
+			NsName: "root",
+			DqlQuery: "schema {}",
+		}
+		resp, err := (&edgraph.ServerV25{}).RunDQL(ctx, req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(string(resp.QueryResult)), nil
+	})
+
+	sse := server.NewSSEServer(s,
+		server.WithBasePath("/mcp"),
+	)
+	baseMux.HandleFunc("/mcp", sse.ServeHTTP)
+	baseMux.HandleFunc("/mcp/", sse.ServeHTTP)
+}
+
 func setupServer(closer *z.Closer) {
 	go worker.RunServer(bindall) // For pb.communication.
-
 	laddr := "localhost"
 	if bindall {
 		laddr = "0.0.0.0"
@@ -509,6 +563,7 @@ func setupServer(closer *z.Closer) {
 	baseMux.HandleFunc("/state", stateHandler)
 	baseMux.HandleFunc("/debug/jemalloc", x.JemallocHandler)
 	http.DefaultServeMux.Handle("/debug/z", zpages.NewTracezHandler(zpages.NewSpanProcessor()))
+	setupMcp(baseMux)
 
 	// TODO: Figure out what this is for?
 	http.HandleFunc("/debug/store", storeStatsHandler)
