@@ -771,7 +771,7 @@ func (n *Node) joinCluster(ctx context.Context, rc *pb.RaftContext) (*api.Payloa
 	}
 	n.Connect(rc.Id, rc.Addr)
 
-	err := n.addToCluster(context.Background(), rc)
+	err := n.addToCluster(ctx, rc)
 	glog.Infof("[%#x] Done joining cluster with err: %v", rc.Id, err)
 	return &api.Payload{}, err
 }
