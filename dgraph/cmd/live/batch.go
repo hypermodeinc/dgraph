@@ -19,7 +19,6 @@ import (
 	"github.com/dgryski/go-farm"
 	"github.com/dustin/go-humanize"
 	"github.com/dustin/go-humanize/english"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -78,7 +77,6 @@ type loader struct {
 	uidsLock  sync.RWMutex
 
 	reqs       chan *request
-	zeroconn   *grpc.ClientConn
 	schema     *Schema
 	namespaces map[uint64]struct{}
 

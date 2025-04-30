@@ -51,8 +51,8 @@ func TestStringIndex(t *testing.T) {
 		t.Fatalf("error in setting up schema :: %v\n", err)
 	}
 
-	if err := testutil.AssignUids(uint64(total * 10)); err != nil {
-		t.Fatalf("error in assignig UIDs :: %v", err)
+	if _, _, err := dg.AllocateUIDs(context.Background(), uint64(total*10)); err != nil {
+		t.Fatalf("error in assigning UIDs :: %v", err)
 	}
 
 	// first insert bank accounts

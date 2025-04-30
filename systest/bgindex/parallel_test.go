@@ -53,10 +53,6 @@ func addBankData(dg *dgo.Dgraph, pred string) error {
 }
 
 func TestParallelIndexing(t *testing.T) {
-	if err := testutil.AssignUids(uint64(total * 10)); err != nil {
-		t.Fatalf("error in assignig UIDs :: %v", err)
-	}
-
 	var dg *dgo.Dgraph
 	err := x.RetryUntilSuccess(10, time.Second, func() error {
 		var err error
@@ -64,6 +60,10 @@ func TestParallelIndexing(t *testing.T) {
 		return err
 	})
 	require.NoError(t, err)
+
+	if _, _, err := dg.AllocateUIDs(context.Background(), uint64(total*10)); err != nil {
+		t.Fatalf("error in assignig UIDs :: %v", err)
+	}
 
 	testutil.DropAll(t, dg)
 	if err := dg.Alter(context.Background(), &api.Operation{

@@ -8,6 +8,7 @@
 package query
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -27,7 +28,9 @@ func TestNormalizeDirectiveWithNoListResponse(t *testing.T) {
 	gc, cleanup, err := c.Client()
 	require.NoError(t, err)
 	defer cleanup()
-	require.NoError(t, c.AssignUids(gc.Dgraph, 100))
+
+	_, _, err = gc.AllocateUIDs(context.Background(), 100)
+	require.NoError(t, err)
 
 	const dataSchema = `
         friend : [uid] @reverse @count .

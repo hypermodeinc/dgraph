@@ -136,7 +136,10 @@ func New(opts XidMapOptions) *XidMap {
 		})
 		x.Check(err)
 	}
-	xm.zc = pb.NewZeroClient(opts.UidAssigner)
+
+	if opts.UidAssigner != nil {
+		xm.zc = pb.NewZeroClient(opts.UidAssigner)
+	}
 
 	go func() {
 		const initBackoff = 10 * time.Millisecond
@@ -145,7 +148,15 @@ func New(opts XidMapOptions) *XidMap {
 		for {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			ctx = xm.attachNamespace(ctx)
-			assigned, err := xm.zc.AssignIds(ctx, &pb.Num{Val: 1e5, Type: pb.Num_UID})
+
+			var assigned *pb.AssignedIds
+			var err error
+			if xm.zc == nil {
+				assigned = &pb.AssignedIds{}
+				assigned.StartId, assigned.EndId, err = xm.dg.AllocateUIDs(ctx, 1e5)
+			} else {
+				assigned, err = xm.zc.AssignIds(ctx, &pb.Num{Val: 1e5, Type: pb.Num_UID})
+			}
 			glog.V(2).Infof("Assigned Uids: %+v. Err: %v", assigned, err)
 			cancel()
 			if err == nil {
@@ -322,7 +333,15 @@ func (m *XidMap) BumpTo(uid uint64) {
 		num := x.Max(uid-curMax, 1e4)
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		ctx = m.attachNamespace(ctx)
-		assigned, err := m.zc.AssignIds(ctx, &pb.Num{Val: num, Type: pb.Num_UID})
+
+		var err error
+		var assigned *pb.AssignedIds
+		if m.zc == nil {
+			assigned = &pb.AssignedIds{}
+			assigned.StartId, assigned.EndId, err = m.dg.AllocateUIDs(ctx, num)
+		} else {
+			assigned, err = m.zc.AssignIds(ctx, &pb.Num{Val: num, Type: pb.Num_UID})
+		}
 		cancel()
 		if err == nil {
 			glog.V(1).Infof("Requested bump: %d. Got assigned: %v", uid, assigned)

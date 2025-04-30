@@ -145,7 +145,6 @@ func (s *bsuite) setup(t *testing.T, schemaFile, rdfFile, gqlSchemaFile string) 
 	}
 
 	err := testutil.LiveLoad(testutil.LiveOpts{
-		Zero:       testutil.ContainerAddr("zero1", 5080),
 		Alpha:      testutil.ContainerAddr("alpha1", 9080),
 		RdfFile:    rdfFile,
 		SchemaFile: schemaFile,

@@ -41,7 +41,6 @@ func (msuite *MultitenancyTestSuite) liveLoadData(opts *liveOpts) error {
 	require.NoError(t, os.WriteFile(gqlSchemaFile, []byte(opts.gqlSchema), 0644))
 	// Load the data.
 	return testutil.LiveLoad(testutil.LiveOpts{
-		Zero:       testutil.ContainerAddr("zero1", 5080),
 		Alpha:      testutil.ContainerAddr("alpha1", 9080),
 		RdfFile:    rdfFile,
 		SchemaFile: schemaFile,
@@ -194,7 +193,12 @@ func (msuite *MultitenancyTestSuite) TestLiveLoadMulti() {
 			_:b <name> "ns gary" <%#x> .
 			_:c <name> "ns hola" <%#x> .`, ns, 0x100),
 		schema: `name: string @index(term) .`,
-		creds:  &testutil.LoginParams{UserID: dgraphapi.DefaultUser, Passwd: dgraphapi.DefaultPassword, Namespace: ns},
+		creds: &testutil.LoginParams{
+			UserID:    dgraphapi.DefaultUser,
+			Passwd:    dgraphapi.DefaultPassword,
+			Namespace: x.RootNamespace,
+		},
+		forceNs: int64(ns),
 	}))
 
 	resp, err = gcli1.Query(query3)
