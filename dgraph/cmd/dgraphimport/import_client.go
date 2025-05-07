@@ -54,7 +54,7 @@ func startSnapshotStream(ctx context.Context, dc apiv25.DgraphClient) (*apiv25.I
 	resp, err := dc.InitiateSnapshotStream(ctx, req)
 	if err != nil {
 		glog.Errorf("failed to initiate snapshot stream: %v", err)
-		return nil, fmt.Errorf("Failed to initiate snapshot stream: %v", err)
+		return nil, fmt.Errorf("failed to initiate snapshot stream: %v", err)
 	}
 	glog.Info("Snapshot stream initiated successfully")
 	return resp, nil
