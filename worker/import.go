@@ -16,11 +16,11 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/posting"
 	"github.com/hypermodeinc/dgraph/v25/protos/pb"
 	"github.com/hypermodeinc/dgraph/v25/schema"
-	"google.golang.org/grpc"
 
 	"github.com/dustin/go-humanize"
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
+	"google.golang.org/grpc"
 )
 
 // streamProcessor defines the common interface for stream processing
@@ -44,19 +44,19 @@ func ProposeDrain(ctx context.Context, drainMode *pb.DrainModeRequest) ([]uint32
 			}
 			continue
 		}
-		glog.Infof("Connecting to the leader of the group [%v] from alpha addr [%v]", gid, groups().Node.MyAddr)
+		glog.Infof("[import] Connecting to the leader of the group [%v] from alpha addr [%v]", gid, groups().Node.MyAddr)
 
 		pl := groups().Leader(gid)
 		if pl == nil {
-			glog.Errorf("Unable to connect to the leader of group [%v]", gid)
+			glog.Errorf("[import] unable to connect to the leader of group [%v]", gid)
 			return nil, fmt.Errorf("unable to connect to the leader of group [%v] : %v", gid, conn.ErrNoConnection)
 		}
 		con := pl.Get()
 		c := pb.NewWorkerClient(con)
-		glog.Infof("Successfully connected to leader of group [%v]", gid)
+		glog.Infof("[import] Successfully connected to leader of group [%v]", gid)
 
 		if _, err := c.ApplyDrainmode(ctx, drainMode); err != nil {
-			glog.Errorf("Unable to apply drainmode : %v", err)
+			glog.Errorf("[import] unable to apply drainmode : %v", err)
 			return nil, err
 		}
 	}
@@ -73,7 +73,7 @@ func ProposeDrain(ctx context.Context, drainMode *pb.DrainModeRequest) ([]uint32
 func InStream(stream apiv25.Dgraph_StreamSnapshotServer) error {
 	req, err := stream.Recv()
 	if err != nil {
-		return fmt.Errorf("Failed to receive initial stream message: %v", err)
+		return fmt.Errorf("failed to receive initial stream message: %v", err)
 	}
 
 	groupId := req.GroupId
@@ -83,7 +83,7 @@ func InStream(stream apiv25.Dgraph_StreamSnapshotServer) error {
 
 	pl := groups().Leader(groupId)
 	if pl == nil {
-		glog.Errorf("Unable to connect to the leader of group [%v]", groupId)
+		glog.Errorf("[import]  Unable to connect to the leader of group [%v]", groupId)
 		return fmt.Errorf("unable to connect to the leader of group [%v] : %v", groupId, conn.ErrNoConnection)
 	}
 
@@ -91,7 +91,7 @@ func InStream(stream apiv25.Dgraph_StreamSnapshotServer) error {
 	c := pb.NewWorkerClient(con)
 	alphaStream, err := c.InternalStreamSnapshot(stream.Context())
 	if err != nil {
-		return fmt.Errorf("Failed to establish stream with leader: %v", err)
+		return fmt.Errorf("failed to establish stream with leader: %v", err)
 	}
 
 	return pipeTwoStream(stream, alphaStream)
@@ -107,14 +107,14 @@ func pipeTwoStream(in apiv25.Dgraph_StreamSnapshotServer, out pb.Worker_Internal
 		for {
 			select {
 			case <-ctx.Done():
-				glog.Info("Context cancelled, stopping receive goroutine.")
-				errCh <- fmt.Errorf("Context deadline exceeded")
+				glog.Info("[import]  Context cancelled, stopping receive goroutine.")
+				errCh <- fmt.Errorf("context deadline exceeded")
 				return
 			default:
 				msg, err := in.Recv()
 				if err != nil {
 					if !errors.Is(err, io.EOF) {
-						glog.Errorf("Error receiving from in stream: %v", err)
+						glog.Errorf("[import] Error receiving from in stream: %v", err)
 						errCh <- err
 					}
 					return
@@ -145,33 +145,33 @@ Loop:
 					glog.Errorf("Error sending 'done' to out stream: %v", err)
 					return err
 				}
-				glog.Infoln("All key-values have been transferred.")
+				glog.Infoln("[import] All key-values have been transferred.")
 				break Loop
 			}
 
 			if err := out.Send(data); err != nil {
-				glog.Errorf("Error sending to outstream: %v", err)
-				return err
+				glog.Errorf("[import] Error sending to outstream: %v", err)
+				return fmt.Errorf("error sending to outstream: %v", err)
 			}
 
 			size += len(msg.Pairs.Data)
-			glog.Infof("Sent batch of size: %s. Total so far: %s\n",
+			glog.Infof("[import] Sent batch of size: %s. Total so far: %s\n",
 				humanize.IBytes(uint64(len(msg.Pairs.Data))), humanize.IBytes(uint64(size)))
 		}
 	}
 
 	// Close the incoming stream properly
 	if err := in.SendAndClose(&apiv25.StreamSnapshotResponse{Done: true}); err != nil {
-		return fmt.Errorf("Failed to send close on in: %v", err)
+		return fmt.Errorf("failed to send close on in: %v", err)
 	}
 
 	// Wait for ACK from the out stream
 	_, err := out.CloseAndRecv()
 	if err != nil {
-		return fmt.Errorf("Failed to receive ACK from out stream: %w", err)
+		return fmt.Errorf("failed to receive ACK from out stream: %w", err)
 	}
 
-	glog.Info("Received ACK")
+	glog.Info("[import] Received ACK")
 	return nil
 }
 
@@ -225,13 +225,13 @@ func processStreamData(stream streamProcessor) error {
 		kvs := req.GetPairs()
 		// Check if all key-value pairs have been received.
 		if kvs != nil && kvs.Done {
-			glog.Info("All key-values have been received.")
+			glog.Info("[import] All key-values have been received.")
 			break
 		}
 
 		// Increment the total size and log the batch size received.
 		size += len(kvs.Data)
-		glog.Infof("Received batch of size: %s. Total so far: %s\n",
+		glog.Infof("[import] Received batch of size: %s. Total so far: %s\n",
 			humanize.IBytes(uint64(len(kvs.Data))), humanize.IBytes(uint64(size)))
 
 		// Write the received data to BadgerDB.
@@ -246,7 +246,7 @@ func processStreamData(stream streamProcessor) error {
 		return err
 	}
 
-	glog.Info("P dir writes DONE. Sending ACK")
+	glog.Info("[import] P dir writes DONE. Sending ACK")
 
 	// Send an acknowledgment to the leader indicating completion.
 	return stream.SendAndClose(&apiv25.StreamSnapshotResponse{Done: true})
@@ -254,10 +254,10 @@ func processStreamData(stream streamProcessor) error {
 
 func postStreamProcessing(ctx context.Context) error {
 	if err := schema.LoadFromDb(ctx); err != nil {
-		return errors.Wrapf(err, "Cannot load schema after streaming data")
+		return errors.Wrapf(err, "cannot load schema after streaming data")
 	}
 	if err := UpdateMembershipState(ctx); err != nil {
-		return errors.Wrapf(err, "Cannot update membership state after streaming data")
+		return errors.Wrapf(err, "cannot update membership state after streaming data")
 	}
 
 	gr.informZeroAboutTablets()

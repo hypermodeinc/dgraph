@@ -27,7 +27,7 @@ import (
 func newClient(endpoint string, opts grpc.DialOption) (apiv25.DgraphClient, error) {
 	conn, err := grpc.NewClient(endpoint, opts)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to connect to endpoint [%s]: %w", endpoint, err)
+		return nil, fmt.Errorf("failed to connect to endpoint [%s]: %w", endpoint, err)
 	}
 
 	glog.Infof("Successfully connected to Dgraph endpoint: %s", endpoint)
@@ -53,7 +53,7 @@ func startSnapshotStream(ctx context.Context, dc apiv25.DgraphClient) (*apiv25.I
 	req := &apiv25.InitiateSnapshotStreamRequest{}
 	resp, err := dc.InitiateSnapshotStream(ctx, req)
 	if err != nil {
-		glog.Errorf("Failed to initiate snapshot stream: %v", err)
+		glog.Errorf("failed to initiate snapshot stream: %v", err)
 		return nil, fmt.Errorf("Failed to initiate snapshot stream: %v", err)
 	}
 	glog.Info("Snapshot stream initiated successfully")
@@ -117,14 +117,14 @@ func streamData(ctx context.Context, dg apiv25.DgraphClient, pdir string, groupI
 	}()
 
 	// Send group ID as the first message in the stream
-	glog.V(2).Infof("Sending group ID [%d] to server", groupId)
+	glog.Infof("Sending group ID [%d] to server", groupId)
 	groupReq := &apiv25.StreamSnapshotRequest{GroupId: groupId}
 	if err := out.Send(groupReq); err != nil {
 		return fmt.Errorf("failed to send group ID [%d]: %w", groupId, err)
 	}
 
 	// Configure and start the BadgerDB stream
-	glog.V(2).Infof("Starting BadgerDB stream for group [%d]", groupId)
+	glog.Infof("Starting BadgerDB stream for group [%d]", groupId)
 	stream := ps.NewStreamAt(math.MaxUint64)
 	stream.LogPrefix = fmt.Sprintf("Sending P dir for group [%d]", groupId)
 	stream.KeyToList = nil
@@ -142,7 +142,7 @@ func streamData(ctx context.Context, dg apiv25.DgraphClient, pdir string, groupI
 	}
 
 	// Send the final 'done' signal to mark completion
-	glog.V(2).Infof("Sending completion signal for group [%d]", groupId)
+	glog.Infof("Sending completion signal for group [%d]", groupId)
 	done := &apiv25.KVS{Done: true}
 
 	if err := out.Send(&apiv25.StreamSnapshotRequest{Pairs: done}); err != nil && !errors.Is(err, io.EOF) {
