@@ -11,11 +11,11 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/hypermodeinc/dgraph/v25/dgraphapi"
 	"github.com/hypermodeinc/dgraph/v25/dgraphtest"
 	"github.com/hypermodeinc/dgraph/v25/systest/1million/common"
+
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -191,13 +191,7 @@ func verifyImportResults(t *testing.T, gc *dgraphapi.GrpcClient) {
 	}
 
 	for _, tt := range common.OneMillionTCs {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		resp, err := gc.Query(tt.Query)
-		cancel()
-
-		if ctx.Err() == context.DeadlineExceeded {
-			t.Fatal("aborting test due to query timeout")
-		}
 		require.NoError(t, err)
 		require.NoError(t, dgraphapi.CompareJSON(tt.Resp, string(resp.Json)))
 	}

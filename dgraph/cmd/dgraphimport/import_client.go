@@ -7,6 +7,7 @@ package dgraphimport
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -22,11 +23,11 @@ import (
 	"google.golang.org/grpc"
 )
 
-// NewClient creates a new import client with the specified endpoint and gRPC options.
+// newClient creates a new import client with the specified endpoint and gRPC options.
 func newClient(endpoint string, opts grpc.DialOption) (apiv25.DgraphClient, error) {
 	conn, err := grpc.NewClient(endpoint, opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to endpoint [%s]: %w", endpoint, err)
+		return nil, fmt.Errorf("Failed to connect to endpoint [%s]: %w", endpoint, err)
 	}
 
 	glog.Infof("Successfully connected to Dgraph endpoint: %s", endpoint)
@@ -46,20 +47,20 @@ func Import(ctx context.Context, endpoint string, opts grpc.DialOption, bulkOutD
 	return sendSnapshot(ctx, dg, bulkOutDir, resp.Groups)
 }
 
-// StartSnapshotStream initiates a snapshot stream session with the Dgraph server.
+// startSnapshotStream initiates a snapshot stream session with the Dgraph server.
 func startSnapshotStream(ctx context.Context, dc apiv25.DgraphClient) (*apiv25.InitiateSnapshotStreamResponse, error) {
-	glog.V(2).Infof("Initiating snapshot stream")
+	glog.Info("Initiating snapshot stream")
 	req := &apiv25.InitiateSnapshotStreamRequest{}
 	resp, err := dc.InitiateSnapshotStream(ctx, req)
 	if err != nil {
 		glog.Errorf("Failed to initiate snapshot stream: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("Failed to initiate snapshot stream: %v", err)
 	}
-	glog.Infof("Snapshot stream initiated successfully")
+	glog.Info("Snapshot stream initiated successfully")
 	return resp, nil
 }
 
-// SendSnapshot takes a p directory and a set of group IDs and streams the data from the
+// sendSnapshot takes a p directory and a set of group IDs and streams the data from the
 // p directory to the corresponding group IDs. It first scans the provided directory for
 // subdirectories named with numeric group IDs.
 func sendSnapshot(ctx context.Context, dg apiv25.DgraphClient, baseDir string, groups []uint32) error {
@@ -71,11 +72,12 @@ func sendSnapshot(ctx context.Context, dg apiv25.DgraphClient, baseDir string, g
 		errG.Go(func() error {
 			pDir := filepath.Join(baseDir, fmt.Sprintf("%d", group-1), "p")
 			if _, err := os.Stat(pDir); err != nil {
-				return fmt.Errorf("p directory does not exist for group %d: %s", group, pDir)
+				return fmt.Errorf("p directory does not exist for group [%d]: [%s]", group, pDir)
 			}
 
-			glog.Infof("Streaming data for group %d from directory: %s", group, pDir)
+			glog.Infof("Streaming data for group [%d] from directory: [%s]", group, pDir)
 			if err := streamData(ctx, dg, pDir, group); err != nil {
+				glog.Errorf("Failed to stream data for groups [%v] from directory: [%s]: %v", group, pDir, err)
 				return err
 			}
 
@@ -98,32 +100,37 @@ func streamData(ctx context.Context, dg apiv25.DgraphClient, pdir string, groupI
 	// Initialize stream with the server
 	out, err := dg.StreamSnapshot(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to start snapshot stream: %w", err)
+		return fmt.Errorf("failed to start snapshot stream for group %d: %w", groupId, err)
 	}
 
 	// Open the BadgerDB instance at the specified directory
 	opt := badger.DefaultOptions(pdir)
 	ps, err := badger.OpenManaged(opt)
 	if err != nil {
-		return fmt.Errorf("failed to open BadgerDB at %s: %w", pdir, err)
+		return fmt.Errorf("failed to open BadgerDB at [%s]: %w", pdir, err)
 	}
-	defer ps.Close()
+
+	defer func() {
+		if err := ps.Close(); err != nil {
+			glog.Warningf("Error closing BadgerDB: %v", err)
+		}
+	}()
 
 	// Send group ID as the first message in the stream
-	glog.V(2).Infof("Sending group ID %d to server", groupId)
+	glog.V(2).Infof("Sending group ID [%d] to server", groupId)
 	groupReq := &apiv25.StreamSnapshotRequest{GroupId: groupId}
 	if err := out.Send(groupReq); err != nil {
-		return fmt.Errorf("failed to send group ID %d: %w", groupId, err)
+		return fmt.Errorf("failed to send group ID [%d]: %w", groupId, err)
 	}
 
 	// Configure and start the BadgerDB stream
-	glog.V(2).Infof("Starting BadgerDB stream for group %d", groupId)
+	glog.V(2).Infof("Starting BadgerDB stream for group [%d]", groupId)
 	stream := ps.NewStreamAt(math.MaxUint64)
-	stream.LogPrefix = fmt.Sprintf("Sending P dir (group %d)", groupId)
+	stream.LogPrefix = fmt.Sprintf("Sending P dir for group [%d]", groupId)
 	stream.KeyToList = nil
 	stream.Send = func(buf *z.Buffer) error {
 		kvs := &apiv25.KVS{Data: buf.Bytes()}
-		if err := out.Send(&apiv25.StreamSnapshotRequest{Pairs: kvs}); err != nil && err != io.EOF {
+		if err := out.Send(&apiv25.StreamSnapshotRequest{Pairs: kvs}); err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("failed to send data chunk: %w", err)
 		}
 		return nil
@@ -131,22 +138,21 @@ func streamData(ctx context.Context, dg apiv25.DgraphClient, pdir string, groupI
 
 	// Execute the stream process
 	if err := stream.Orchestrate(ctx); err != nil {
-		return fmt.Errorf("stream orchestration failed for group %d: %w", groupId, err)
+		return fmt.Errorf("stream orchestration failed for group [%d]: %w", groupId, err)
 	}
 
 	// Send the final 'done' signal to mark completion
-	glog.V(2).Infof("Sending completion signal for group %d", groupId)
+	glog.V(2).Infof("Sending completion signal for group [%d]", groupId)
 	done := &apiv25.KVS{Done: true}
 
-	if err := out.Send(&apiv25.StreamSnapshotRequest{Pairs: done}); err != nil && err != io.EOF {
-		return fmt.Errorf("failed to send 'done' signal for group %d: %w", groupId, err)
+	if err := out.Send(&apiv25.StreamSnapshotRequest{Pairs: done}); err != nil && !errors.Is(err, io.EOF) {
+		return fmt.Errorf("failed to send 'done' signal for group [%d]: %w", groupId, err)
 	}
 	// Wait for acknowledgment from the server
-	ack, err := out.CloseAndRecv()
-	if err != nil {
-		return fmt.Errorf("failed to receive ACK for group %d: %w", groupId, err)
+	if _, err := out.CloseAndRecv(); err != nil {
+		return fmt.Errorf("failed to receive ACK for group [%d]: %w", groupId, err)
 	}
-	glog.Infof("Group %d: Received ACK with message: %v", groupId, ack.Done)
+	glog.Infof("Group [%d]: Received ACK ", groupId)
 
 	return nil
 }

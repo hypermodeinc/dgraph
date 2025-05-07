@@ -16,11 +16,19 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/posting"
 	"github.com/hypermodeinc/dgraph/v25/protos/pb"
 	"github.com/hypermodeinc/dgraph/v25/schema"
+	"google.golang.org/grpc"
 
 	"github.com/dustin/go-humanize"
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
 )
+
+// streamProcessor defines the common interface for stream processing
+type streamProcessor interface {
+	SendAndClose(*apiv25.StreamSnapshotResponse) error
+	Recv() (*apiv25.StreamSnapshotRequest, error)
+	grpc.ServerStream
+}
 
 func ProposeDrain(ctx context.Context, drainMode *pb.DrainModeRequest) ([]uint32, error) {
 	memState := GetMembershipState()
@@ -34,15 +42,21 @@ func ProposeDrain(ctx context.Context, drainMode *pb.DrainModeRequest) ([]uint32
 			if _, err := (&grpcWorker{}).ApplyDrainmode(ctx, drainMode); err != nil {
 				return nil, err
 			}
+			continue
 		}
+		glog.Infof("Connecting to the leader of the group [%v] from alpha addr [%v]", gid, groups().Node.MyAddr)
 
 		pl := groups().Leader(gid)
 		if pl == nil {
-			return nil, conn.ErrNoConnection
+			glog.Errorf("Unable to connect to the leader of group [%v]", gid)
+			return nil, fmt.Errorf("unable to connect to the leader of group [%v] : %v", gid, conn.ErrNoConnection)
 		}
 		con := pl.Get()
 		c := pb.NewWorkerClient(con)
+		glog.Infof("Successfully connected to leader of group [%v]", gid)
+
 		if _, err := c.ApplyDrainmode(ctx, drainMode); err != nil {
+			glog.Errorf("Unable to apply drainmode : %v", err)
 			return nil, err
 		}
 	}
@@ -59,7 +73,7 @@ func ProposeDrain(ctx context.Context, drainMode *pb.DrainModeRequest) ([]uint32
 func InStream(stream apiv25.Dgraph_StreamSnapshotServer) error {
 	req, err := stream.Recv()
 	if err != nil {
-		return fmt.Errorf("failed to receive initial stream message: %v", err)
+		return fmt.Errorf("Failed to receive initial stream message: %v", err)
 	}
 
 	groupId := req.GroupId
@@ -69,14 +83,15 @@ func InStream(stream apiv25.Dgraph_StreamSnapshotServer) error {
 
 	pl := groups().Leader(groupId)
 	if pl == nil {
-		return conn.ErrNoConnection
+		glog.Errorf("Unable to connect to the leader of group [%v]", groupId)
+		return fmt.Errorf("unable to connect to the leader of group [%v] : %v", groupId, conn.ErrNoConnection)
 	}
 
 	con := pl.Get()
 	c := pb.NewWorkerClient(con)
 	alphaStream, err := c.InternalStreamSnapshot(stream.Context())
 	if err != nil {
-		return fmt.Errorf("failed to establish stream with leader: %v", err)
+		return fmt.Errorf("Failed to establish stream with leader: %v", err)
 	}
 
 	return pipeTwoStream(stream, alphaStream)
@@ -92,13 +107,13 @@ func pipeTwoStream(in apiv25.Dgraph_StreamSnapshotServer, out pb.Worker_Internal
 		for {
 			select {
 			case <-ctx.Done():
-				glog.Infof("Context cancelled, stopping receive goroutine.")
-				errCh <- fmt.Errorf("context deadline exceeded")
+				glog.Info("Context cancelled, stopping receive goroutine.")
+				errCh <- fmt.Errorf("Context deadline exceeded")
 				return
 			default:
 				msg, err := in.Recv()
 				if err != nil {
-					if err != io.EOF {
+					if !errors.Is(err, io.EOF) {
 						glog.Errorf("Error receiving from in stream: %v", err)
 						errCh <- err
 					}
@@ -115,18 +130,18 @@ Loop:
 	for {
 		select {
 		case err := <-errCh:
+			close(errCh)
 			return err
 
 		case msg, ok := <-buffer:
 			if !ok {
-				// Channel closed, exit loop
 				break Loop
 			}
 
-			data := &pb.KVS{Data: msg.Pairs.Data}
+			data := &apiv25.StreamSnapshotRequest{Pairs: &apiv25.KVS{Data: msg.Pairs.Data}}
 
 			if msg.Pairs.Done {
-				if err := out.Send(&pb.KVS{Done: true}); err != nil {
+				if err := out.Send(&apiv25.StreamSnapshotRequest{Pairs: &apiv25.KVS{Done: true}}); err != nil {
 					glog.Errorf("Error sending 'done' to out stream: %v", err)
 					return err
 				}
@@ -147,83 +162,27 @@ Loop:
 
 	// Close the incoming stream properly
 	if err := in.SendAndClose(&apiv25.StreamSnapshotResponse{Done: true}); err != nil {
-		return fmt.Errorf("failed to send close on in: %v", err)
+		return fmt.Errorf("Failed to send close on in: %v", err)
 	}
 
 	// Wait for ACK from the out stream
-	ack, err := out.CloseAndRecv()
+	_, err := out.CloseAndRecv()
 	if err != nil {
-		return fmt.Errorf("failed to receive ACK from out stream: %w", err)
+		return fmt.Errorf("Failed to receive ACK from out stream: %w", err)
 	}
 
-	glog.Infof("Received ACK with message: %v\n", ack.Done)
+	glog.Info("Received ACK")
 	return nil
 }
 
 // flushKvs receives the stream of data from the client and writes it to BadgerDB.
 // It also sends a streams the data to other nodes of the same group and reloads the schema from the DB.
 func flushKvs(stream apiv25.Dgraph_StreamSnapshotServer) error {
-	sw := pstore.NewStreamWriter()
-	defer sw.Cancel()
-
-	// we should delete all the existing data before starting the stream
-	if err := sw.Prepare(); err != nil {
+	if err := processStreamData(stream); err != nil {
 		return err
 	}
 
-	// We can use count to check the number of posting lists returned in tests.
-	size := 0
-	for {
-		req, err := stream.Recv()
-		if err != nil {
-			return err
-		}
-		kvs := req.GetPairs()
-
-		if kvs.Done {
-			glog.Infoln("All key-values have been received.")
-			break
-		}
-
-		size += len(kvs.Data)
-		glog.Infof("Received batch of size: %s. Total so far: %s\n",
-			humanize.IBytes(uint64(len(kvs.Data))), humanize.IBytes(uint64(size)))
-
-		buf := z.NewBufferSlice(kvs.Data)
-		if err := sw.Write(buf); err != nil {
-			return err
-		}
-	}
-
-	if err := sw.Flush(); err != nil {
-		return err
-	}
-
-	glog.Infof("P dir writes DONE. Sending ACK")
-	// Send an acknowledgement back to the leader.
-	if err := stream.SendAndClose(&apiv25.StreamSnapshotResponse{Done: true}); err != nil {
-		return err
-	}
-
-	// Reload the schema from the DB.
-	if err := schema.LoadFromDb(stream.Context()); err != nil {
-		return errors.Wrapf(err, "cannot load schema after streaming data")
-	}
-	if err := UpdateMembershipState(stream.Context()); err != nil {
-		return errors.Wrapf(err, "cannot update membership state after restore")
-	}
-
-	// Inform Zero about the new tablets.
-	gr.informZeroAboutTablets()
-
-	posting.ResetCache()
-	ResetAclCache()
-	groups().applyInitialSchema()
-	groups().applyInitialTypes()
-
-	ResetGQLSchemaStore()
-
-	return nil
+	return postStreamProcessing(stream.Context())
 }
 
 func (w *grpcWorker) ApplyDrainmode(ctx context.Context, req *pb.DrainModeRequest) (*pb.Status, error) {
@@ -238,6 +197,14 @@ func (w *grpcWorker) ApplyDrainmode(ctx context.Context, req *pb.DrainModeReques
 // It writes the data to BadgerDB, sends an acknowledgment once all data is received,
 // and proposes to accept the newly added data to other group nodes.
 func (w *grpcWorker) InternalStreamSnapshot(stream pb.Worker_InternalStreamSnapshotServer) error {
+	if err := processStreamData(stream); err != nil {
+		return err
+	}
+	// Inform Zero about the new tablets.
+	return postStreamProcessing(stream.Context())
+}
+
+func processStreamData(stream streamProcessor) error {
 	sw := pstore.NewStreamWriter()
 	defer sw.Cancel()
 
@@ -250,14 +217,15 @@ func (w *grpcWorker) InternalStreamSnapshot(stream pb.Worker_InternalStreamSnaps
 	size := 0
 	for {
 		// Receive a batch of key-value pairs from the stream.
-		kvs, err := stream.Recv()
+		req, err := stream.Recv()
 		if err != nil {
 			return err
 		}
 
+		kvs := req.GetPairs()
 		// Check if all key-value pairs have been received.
 		if kvs != nil && kvs.Done {
-			glog.Infoln("All key-values have been received.")
+			glog.Info("All key-values have been received.")
 			break
 		}
 
@@ -278,28 +246,27 @@ func (w *grpcWorker) InternalStreamSnapshot(stream pb.Worker_InternalStreamSnaps
 		return err
 	}
 
-	glog.Infof("P dir writes DONE. Sending ACK")
+	glog.Info("P dir writes DONE. Sending ACK")
 
 	// Send an acknowledgment to the leader indicating completion.
-	if err := stream.SendAndClose(&pb.ReceiveSnapshotKVRequest{Done: true}); err != nil {
-		return err
+	return stream.SendAndClose(&apiv25.StreamSnapshotResponse{Done: true})
+}
+
+func postStreamProcessing(ctx context.Context) error {
+	if err := schema.LoadFromDb(ctx); err != nil {
+		return errors.Wrapf(err, "Cannot load schema after streaming data")
 	}
-	// Reload the schema from the DB.
-	if err := schema.LoadFromDb(stream.Context()); err != nil {
-		return errors.Wrapf(err, "cannot load schema after streaming data")
-	}
-	if err := UpdateMembershipState(stream.Context()); err != nil {
-		return errors.Wrapf(err, "cannot update membership state after streaming data")
+	if err := UpdateMembershipState(ctx); err != nil {
+		return errors.Wrapf(err, "Cannot update membership state after streaming data")
 	}
 
-	// Inform Zero about the new tablets.
 	gr.informZeroAboutTablets()
 
 	posting.ResetCache()
 	ResetAclCache()
 	groups().applyInitialSchema()
 	groups().applyInitialTypes()
-
 	ResetGQLSchemaStore()
+
 	return nil
 }

@@ -1812,6 +1812,7 @@ func validateNamespace(ctx context.Context, tc *api.TxnContext) error {
 
 func (s *ServerV25) InitiateSnapshotStream(ctx context.Context,
 	c *apiv25.InitiateSnapshotStreamRequest) (v *apiv25.InitiateSnapshotStreamResponse, err error) {
+
 	drainMode := &pb.DrainModeRequest{State: true}
 	groups, err := worker.ProposeDrain(ctx, drainMode)
 	if err != nil {

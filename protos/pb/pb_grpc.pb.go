@@ -19,6 +19,7 @@ import (
 	context "context"
 	pb "github.com/dgraph-io/badger/v4/pb"
 	api "github.com/dgraph-io/dgo/v250/protos/api"
+	api_v25 "github.com/dgraph-io/dgo/v250/protos/api.v25"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -1148,8 +1149,8 @@ func (c *workerClient) InternalStreamSnapshot(ctx context.Context, opts ...grpc.
 }
 
 type Worker_InternalStreamSnapshotClient interface {
-	Send(*KVS) error
-	CloseAndRecv() (*ReceiveSnapshotKVRequest, error)
+	Send(*api_v25.StreamSnapshotRequest) error
+	CloseAndRecv() (*api_v25.StreamSnapshotResponse, error)
 	grpc.ClientStream
 }
 
@@ -1157,15 +1158,15 @@ type workerInternalStreamSnapshotClient struct {
 	grpc.ClientStream
 }
 
-func (x *workerInternalStreamSnapshotClient) Send(m *KVS) error {
+func (x *workerInternalStreamSnapshotClient) Send(m *api_v25.StreamSnapshotRequest) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *workerInternalStreamSnapshotClient) CloseAndRecv() (*ReceiveSnapshotKVRequest, error) {
+func (x *workerInternalStreamSnapshotClient) CloseAndRecv() (*api_v25.StreamSnapshotResponse, error) {
 	if err := x.ClientStream.CloseSend(); err != nil {
 		return nil, err
 	}
-	m := new(ReceiveSnapshotKVRequest)
+	m := new(api_v25.StreamSnapshotResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -1555,8 +1556,8 @@ func _Worker_InternalStreamSnapshot_Handler(srv interface{}, stream grpc.ServerS
 }
 
 type Worker_InternalStreamSnapshotServer interface {
-	SendAndClose(*ReceiveSnapshotKVRequest) error
-	Recv() (*KVS, error)
+	SendAndClose(*api_v25.StreamSnapshotResponse) error
+	Recv() (*api_v25.StreamSnapshotRequest, error)
 	grpc.ServerStream
 }
 
@@ -1564,12 +1565,12 @@ type workerInternalStreamSnapshotServer struct {
 	grpc.ServerStream
 }
 
-func (x *workerInternalStreamSnapshotServer) SendAndClose(m *ReceiveSnapshotKVRequest) error {
+func (x *workerInternalStreamSnapshotServer) SendAndClose(m *api_v25.StreamSnapshotResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *workerInternalStreamSnapshotServer) Recv() (*KVS, error) {
-	m := new(KVS)
+func (x *workerInternalStreamSnapshotServer) Recv() (*api_v25.StreamSnapshotRequest, error) {
+	m := new(api_v25.StreamSnapshotRequest)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
