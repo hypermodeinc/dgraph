@@ -42,7 +42,8 @@ func TestIncrementalRestore(t *testing.T) {
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
 	uids := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}
-	c.AssignUids(gc.Dgraph, uint64(len(uids)))
+	_, _, err = gc.AllocateUIDs(context.Background(), uint64(len(uids)))
+	require.NoError(t, err)
 	require.NoError(t, gc.SetupSchema(`money: [int] @index(int) @count .`))
 
 	for i := 1; i <= len(uids); i++ {

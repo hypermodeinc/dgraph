@@ -25,7 +25,6 @@ func TestMain(m *testing.M) {
 	rdfFile := filepath.Join(testutil.TestDataDirectory, "21million.rdf.gz")
 	if err := testutil.LiveLoad(testutil.LiveOpts{
 		Alpha:      testutil.ContainerAddr("alpha1", 9080),
-		Zero:       testutil.SockAddrZero,
 		RdfFile:    rdfFile,
 		SchemaFile: schemaFile,
 	}); err != nil {

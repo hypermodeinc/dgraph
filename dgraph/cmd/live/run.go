@@ -9,7 +9,6 @@ import (
 	"bufio"
 	"compress/gzip"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -48,7 +47,6 @@ type options struct {
 	dataFiles       string
 	dataFormat      string
 	schemaFile      string
-	zero            string
 	concurrent      int
 	batchSize       int
 	clientDir       string
@@ -137,7 +135,7 @@ func init() {
 		"from filename")
 	flag.StringP("alpha", "a", "127.0.0.1:9080",
 		"Comma-separated list of Dgraph alpha gRPC server addresses")
-	flag.StringP("zero", "z", "127.0.0.1:5080", "Dgraph zero gRPC server address")
+	flag.StringP("zero", "z", "", "(deprecated) Dgraph zero gRPC server address")
 	flag.IntP("conc", "c", 10,
 		"Number of concurrent requests to make to Dgraph")
 	flag.IntP("batch", "b", 1000,
@@ -599,7 +597,6 @@ func setup(opts batchMutationOptions, dc *dgo.Dgraph, conf *viper.Viper) *loader
 			WithIndexCacheSize(100 * (1 << 20)).
 			WithZSTDCompressionLevel(3))
 		x.Checkf(err, "Error while creating badger KV posting store")
-
 	}
 
 	dialOpts := []grpc.DialOption{}
@@ -607,26 +604,7 @@ func setup(opts batchMutationOptions, dc *dgo.Dgraph, conf *viper.Viper) *loader
 		dialOpts = append(dialOpts, x.WithAuthorizationCredentials(conf.GetString("auth_token")))
 	}
 
-	var tlsConfig *tls.Config
-	if conf.GetString("slash_grpc_endpoint") != "" {
-		var tlsErr error
-		tlsConfig, tlsErr = x.SlashTLSConfig(conf.GetString("slash_grpc_endpoint"))
-		x.Checkf(tlsErr, "Unable to generate TLS Cert Pool")
-	} else {
-		var tlsErr error
-		tlsConfig, tlsErr = x.LoadClientTLSConfigForInternalPort(conf)
-		x.Check(tlsErr)
-	}
-
-	// compression with zero server actually makes things worse
-	connzero, err := x.SetupConnection(opt.zero, tlsConfig, false, dialOpts...)
-	x.Checkf(err, "Unable to connect to zero, Is it running at %s?", opt.zero)
-
-	xopts := xidmap.XidMapOptions{UidAssigner: connzero, DB: db}
-	// Slash uses alpha to assign UIDs in live loader. Dgraph client is needed by xidmap to do
-	// authorization.
-	xopts.DgClient = dc
-
+	xopts := xidmap.XidMapOptions{DB: db, DgClient: dc}
 	alloc := xidmap.New(xopts)
 	l := &loader{
 		opts:       opts,
@@ -636,7 +614,6 @@ func setup(opts batchMutationOptions, dc *dgo.Dgraph, conf *viper.Viper) *loader
 		conflicts:  make(map[uint64]struct{}),
 		alloc:      alloc,
 		db:         db,
-		zeroconn:   connzero,
 		namespaces: make(map[uint64]struct{}),
 	}
 
@@ -684,13 +661,6 @@ func (l *loader) populateNamespaces(ctx context.Context, dc *dgo.Dgraph, singleN
 }
 
 func run() error {
-	var zero string
-	if Live.Conf.GetString("slash_grpc_endpoint") != "" {
-		zero = Live.Conf.GetString("slash_grpc_endpoint")
-	} else {
-		zero = Live.Conf.GetString("zero")
-	}
-
 	creds := z.NewSuperFlag(Live.Conf.GetString("creds")).MergeAndCheckDefault(x.DefaultCreds)
 	keys, err := x.GetEncAclKeys(Live.Conf)
 	if err != nil {
@@ -702,7 +672,6 @@ func run() error {
 		dataFiles:       Live.Conf.GetString("files"),
 		dataFormat:      Live.Conf.GetString("format"),
 		schemaFile:      Live.Conf.GetString("schema"),
-		zero:            zero,
 		concurrent:      Live.Conf.GetInt("conc"),
 		batchSize:       Live.Conf.GetInt("batch"),
 		clientDir:       Live.Conf.GetString("xidmap"),
@@ -731,7 +700,6 @@ func run() error {
 			return errors.Errorf("cannot force namespace %#x when provided creds are not of"+
 				" superadmin user", forceNs)
 		}
-		opt.namespaceToLoad = creds.GetUint64("namespace")
 	}
 
 	z.SetTmpDir(opt.tmpDir)
@@ -778,8 +746,6 @@ func run() error {
 	defer closeFunc()
 
 	l := setup(bmOpts, dg, Live.Conf)
-	defer l.zeroconn.Close()
-
 	if err := l.populateNamespaces(ctx, dg, singleNsOp); err != nil {
 		fmt.Printf("Error while populating namespaces %s\n", err)
 		return err

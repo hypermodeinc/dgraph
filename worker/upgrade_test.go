@@ -52,10 +52,17 @@ func setSchema(schema string) {
 
 func populateCluster(t *testing.T, dc dgraphapi.Cluster) {
 	x.Panic(client.Alter(context.Background(), &api.Operation{DropAll: true}))
-	x.Panic(dc.AssignUids(client.Dgraph, 65536))
+
+	isHigher, err := dgraphtest.IsHigherVersion(dc.GetVersion(), "e648e774befe03ca2e602b192b4c888cddba6b89")
+	x.Panic(err)
+	if isHigher {
+		_, _, err := client.AllocateUIDs(context.Background(), 65536)
+		x.Panic(err)
+	} else {
+		x.Panic(dc.AssignUids(client.Dgraph, 65536))
+	}
 
 	setSchema(schemaIndexed)
-
 	require.NoError(t, delClusterEdge(t, fmt.Sprintf("<%#x> <friend> <%#x> .", 1, 2)))
 }
 

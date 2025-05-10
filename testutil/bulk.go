@@ -22,7 +22,6 @@ import (
 
 type LiveOpts struct {
 	Alpha      string
-	Zero       string
 	RdfFile    string
 	SchemaFile string
 	Dir        string
@@ -42,7 +41,6 @@ func LiveLoad(opts LiveOpts) error {
 		"--files", opts.RdfFile,
 		"--schema", opts.SchemaFile,
 		"--alpha", opts.Alpha,
-		"--zero", opts.Zero,
 	}
 	if opts.Creds != nil {
 		if opts.Creds.Namespace == x.RootNamespace || opts.ForceNs != 0 {
@@ -63,8 +61,10 @@ func LiveLoad(opts LiveOpts) error {
 
 	out, err := liveCmd.CombinedOutput()
 	if err != nil {
+		fmt.Println("================================================================")
 		fmt.Printf("Error %v\n", err)
 		fmt.Printf("Output %v\n", string(out))
+		fmt.Println("================================================================")
 		return errors.Wrap(err, string(out))
 	}
 	if CheckIfRace(out) {

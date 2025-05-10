@@ -40,20 +40,26 @@ func TestRemoveNode(t *testing.T) {
 }
 
 func TestIdLeaseOverflow(t *testing.T) {
-	require.NoError(t, testutil.AssignUids(100))
-	err := testutil.AssignUids(math.MaxUint64 - 10)
+	dialOpts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	con, err := grpc.NewClient(testutil.SockAddrZero, dialOpts...)
+	require.NoError(t, err)
+	zc := pb.NewZeroClient(con)
+
+	_, err = zc.AssignIds(context.Background(), &pb.Num{Val: 100, Type: pb.Num_UID})
+	require.NoError(t, err)
+
+	_, err = zc.AssignIds(context.Background(), &pb.Num{Val: math.MaxUint64 - 10, Type: pb.Num_UID})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "limit has reached")
 }
 
 func TestIdBump(t *testing.T) {
 	dialOpts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
-	ctx := context.Background()
 	con, err := grpc.NewClient(testutil.SockAddrZero, dialOpts...)
 	require.NoError(t, err)
-
 	zc := pb.NewZeroClient(con)
 
+	ctx := context.Background()
 	res, err := zc.AssignIds(ctx, &pb.Num{Val: 10, Type: pb.Num_UID})
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), res.GetEndId()-res.GetStartId()+1)

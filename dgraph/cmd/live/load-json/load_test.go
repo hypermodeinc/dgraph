@@ -23,7 +23,6 @@ import (
 )
 
 var alphaService = testutil.SockAddr
-var zeroService = testutil.SockAddrZero
 
 var (
 	testDataDir string
@@ -91,8 +90,7 @@ func TestLiveLoadJSONFileEmpty(t *testing.T) {
 		{"echo", "[]"},
 		{testutil.DgraphBinaryPath(), "live",
 			"--schema", testDataDir + "/family.schema", "--files", "/dev/stdin",
-			"--alpha", alphaService, "--zero", zeroService,
-			"--creds", "user=groot;password=password;"},
+			"--alpha", alphaService, "--creds", "user=groot;password=password;"},
 	}
 	_, err := testutil.Pipeline(pipeline)
 	require.NoError(t, err, "live loading JSON file ran successfully")
@@ -104,8 +102,7 @@ func TestLiveLoadJSONFile(t *testing.T) {
 	pipeline := [][]string{
 		{testutil.DgraphBinaryPath(), "live",
 			"--schema", testDataDir + "/family.schema", "--files", testDataDir + "/family.json",
-			"--alpha", alphaService, "--zero", zeroService,
-			"--creds", "user=groot;password=password;"},
+			"--alpha", alphaService, "--creds", "user=groot;password=password;"},
 	}
 	_, err := testutil.Pipeline(pipeline)
 	require.NoError(t, err, "live loading JSON file exited with error")
@@ -119,8 +116,7 @@ func TestLiveLoadCanUseAlphaForAssigningUids(t *testing.T) {
 	pipeline := [][]string{
 		{testutil.DgraphBinaryPath(), "live",
 			"--schema", testDataDir + "/family.schema", "--files", testDataDir + "/family.json",
-			"--alpha", alphaService, "--zero", alphaService,
-			"--creds", "user=groot;password=password;"},
+			"--alpha", alphaService, "--creds", "user=groot;password=password;"},
 	}
 	_, err := testutil.Pipeline(pipeline)
 	require.NoError(t, err, "live loading JSON file exited with error")
@@ -135,8 +131,7 @@ func TestLiveLoadJSONCompressedStream(t *testing.T) {
 		{"gzip", "-c", testDataDir + "/family.json"},
 		{testutil.DgraphBinaryPath(), "live",
 			"--schema", testDataDir + "/family.schema", "--files", "/dev/stdin",
-			"--alpha", alphaService, "--zero", zeroService,
-			"--creds", "user=groot;password=password;"},
+			"--alpha", alphaService, "--creds", "user=groot;password=password;"},
 	}
 	_, err := testutil.Pipeline(pipeline)
 	require.NoError(t, err, "live loading JSON stream exited with error")
@@ -157,8 +152,7 @@ func TestLiveLoadJSONMultipleFiles(t *testing.T) {
 	pipeline := [][]string{
 		{testutil.DgraphBinaryPath(), "live",
 			"--schema", testDataDir + "/family.schema", "--files", fileList,
-			"--alpha", alphaService, "--zero", zeroService,
-			"--creds", "user=groot;password=password;"},
+			"--alpha", alphaService, "--creds", "user=groot;password=password;"},
 	}
 	_, err := testutil.Pipeline(pipeline)
 	require.NoError(t, err, "live loading multiple JSON files exited with error")
