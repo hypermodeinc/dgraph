@@ -102,7 +102,7 @@ type ClusterConfig struct {
 	refillInterval        time.Duration
 	uidLease              int
 	portOffset            int // exposed port offset for grpc/http port for both alpha/zero
-	bulkOutDir            string
+	bulkOutDirForMount    string
 	lambdaURL             string
 	featureFlags          []string
 	customPlugins         bool
@@ -224,7 +224,7 @@ func (cc ClusterConfig) WithExposedPortOffset(offset uint64) ClusterConfig {
 // WithBulkLoadOutDir sets the out dir for the bulk loader. This ensures
 // that the same p directory is used while setting up alphas.
 func (cc ClusterConfig) WithBulkLoadOutDir(dir string) ClusterConfig {
-	cc.bulkOutDir = dir
+	cc.bulkOutDirForMount = dir
 	return cc
 }
 

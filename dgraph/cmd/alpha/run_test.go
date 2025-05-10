@@ -1640,14 +1640,14 @@ func TestMain(m *testing.M) {
 
 	x.Panic(dg.Login(context.Background(), dgraphapi.DefaultUser, dgraphapi.DefaultPassword))
 
-	alphaGrpcPort, err := c.GetAlphaGrpcPublicPort()
+	alphaGrpcPort, err := c.GetAlphaGrpcPublicPort(0)
 	x.Panic(err)
 
 	alphaSockAdd = "0.0.0.0:" + alphaGrpcPort
-	alphaSockAddHttp, err := c.GetAlphaHttpPublicPort()
+	alphaSockAddHttp, err := c.GetAlphaHttpPublicPort(0)
 	x.Panic(err)
 	addr = "http://0.0.0.0:" + alphaSockAddHttp
-	zeroSockAdd, err := c.GetZeroGrpcPublicPort()
+	zeroSockAdd, err := c.GetZeroGrpcPublicPort(0)
 	x.Panic(err)
 
 	// Increment lease, so that mutations work.
