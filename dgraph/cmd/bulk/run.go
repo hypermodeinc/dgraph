@@ -213,8 +213,8 @@ func run() {
 		fmt.Fprint(os.Stderr, "RDF or JSON file(s) location must be specified.\n")
 		os.Exit(1)
 	} else {
-		fileList := strings.Split(opt.DataFiles, ",")
-		for _, file := range fileList {
+		fileList := strings.SplitSeq(opt.DataFiles, ",")
+		for file := range fileList {
 			if !filestore.Exists(file) {
 				fmt.Fprintf(os.Stderr, "Data path(%v) does not exist.\n", file)
 				os.Exit(1)

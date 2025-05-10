@@ -400,9 +400,11 @@ func (ld *loader) processGqlSchema(loadType chunker.InputFormat) {
 		schema = strconv.Quote(schema)
 		switch loadType {
 		case chunker.RdfFormat:
-			x.Check2(gqlBuf.Write([]byte(fmt.Sprintf(rdfSchema, ns, ns, schema, ns))))
+			_, err := fmt.Fprintf(gqlBuf, rdfSchema, ns, ns, schema, ns)
+			x.Check(err)
 		case chunker.JsonFormat:
-			x.Check2(gqlBuf.Write([]byte(fmt.Sprintf(jsonSchema, ns, schema))))
+			_, err := fmt.Fprintf(gqlBuf, jsonSchema, ns, schema)
+			x.Check(err)
 		}
 		ld.readerChunkCh <- gqlBuf
 	}
