@@ -1810,31 +1810,35 @@ func validateNamespace(ctx context.Context, tc *api.TxnContext) error {
 	return nil
 }
 
-func (s *ServerV25) InitiatePDirStream(ctx context.Context,
-	c *apiv2.InitiatePDirStreamRequest) (v *apiv2.InitiatePDirStreamResponse, err error) {
+func (s *ServerV25) UpdateExtSnapshotStreamingState(ctx context.Context,
+	req *apiv2.UpdateExtSnapshotStreamingStateRequest) (v *apiv2.UpdateExtSnapshotStreamingStateResponse, err error) {
+	if req == nil {
+		return nil, errors.New("UpdateExtSnapshotStreamingStateRequest should not be empty")
+	}
 
-	drainMode := &pb.DrainModeRequest{State: true}
-	groups, err := worker.ProposeDrain(ctx, drainMode)
+	if req.Start && req.Finish {
+		return nil, errors.New("UpdateExtSnapshotStreamingStateRequest should not be both start and finish")
+	}
+
+	drainModeReq := &apiv2.UpdateExtSnapshotStreamingStateRequest{
+		Start:    req.Start,
+		Finish:   req.Finish,
+		DropData: req.DropData,
+	}
+	groups, err := worker.ProposeDrain(ctx, drainModeReq)
 	if err != nil {
 		return nil, err
 	}
 
-	resp := &apiv2.InitiatePDirStreamResponse{Groups: groups}
+	resp := &apiv2.UpdateExtSnapshotStreamingStateResponse{Groups: groups}
 
 	return resp, nil
 }
 
-func (s *ServerV25) StreamPDir(stream apiv2.Dgraph_StreamPDirServer) error {
-	if err := worker.InStream(stream); err != nil {
-		return err
-	}
+func (s *ServerV25) StreamExtSnapshot(stream apiv2.Dgraph_StreamExtSnapshotServer) error {
+	defer x.ExtSnapshotStreamingState(false)
 
-	drainMode := &pb.DrainModeRequest{State: false}
-	if _, err := worker.ProposeDrain(stream.Context(), drainMode); err != nil {
-		return err
-	}
-
-	return nil
+	return worker.InStream(stream)
 }
 
 // CommitOrAbort commits or aborts a transaction.

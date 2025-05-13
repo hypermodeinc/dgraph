@@ -7,16 +7,13 @@ package dgraphimport
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
-	"math"
 	"os"
 	"path/filepath"
 
 	"github.com/dgraph-io/badger/v4"
 	apiv2 "github.com/dgraph-io/dgo/v250/protos/api.v2"
-	"github.com/dgraph-io/ristretto/v2/z"
+	"github.com/hypermodeinc/dgraph/v25/worker"
 
 	"github.com/golang/glog"
 	"golang.org/x/sync/errgroup"
@@ -48,10 +45,12 @@ func Import(ctx context.Context, endpoint string, opts grpc.DialOption, bulkOutD
 }
 
 // startPDirStream initiates a snapshot stream session with the Dgraph server.
-func startPDirStream(ctx context.Context, dc apiv2.DgraphClient) (*apiv2.InitiatePDirStreamResponse, error) {
+func startPDirStream(ctx context.Context, dc apiv2.DgraphClient) (*apiv2.UpdateExtSnapshotStreamingStateResponse, error) {
 	glog.Info("Initiating pdir stream")
-	req := &apiv2.InitiatePDirStreamRequest{}
-	resp, err := dc.InitiatePDirStream(ctx, req)
+	req := &apiv2.UpdateExtSnapshotStreamingStateRequest{
+		Start: true,
+	}
+	resp, err := dc.UpdateExtSnapshotStreamingState(ctx, req)
 	if err != nil {
 		glog.Errorf("failed to initiate pdir stream: %v", err)
 		return nil, fmt.Errorf("failed to initiate pdir stream: %v", err)
@@ -63,7 +62,7 @@ func startPDirStream(ctx context.Context, dc apiv2.DgraphClient) (*apiv2.Initiat
 // sendPDir takes a p directory and a set of group IDs and streams the data from the
 // p directory to the corresponding group IDs. It first scans the provided directory for
 // subdirectories named with numeric group IDs.
-func sendPDir(ctx context.Context, dg apiv2.DgraphClient, baseDir string, groups []uint32) error {
+func sendPDir(ctx context.Context, dc apiv2.DgraphClient, baseDir string, groups []uint32) error {
 	glog.Infof("Starting to stream pdir from directory: %s", baseDir)
 
 	errG, ctx := errgroup.WithContext(ctx)
@@ -74,9 +73,8 @@ func sendPDir(ctx context.Context, dg apiv2.DgraphClient, baseDir string, groups
 			if _, err := os.Stat(pDir); err != nil {
 				return fmt.Errorf("p directory does not exist for group [%d]: [%s]", group, pDir)
 			}
-
 			glog.Infof("Streaming data for group [%d] from directory: [%s]", group, pDir)
-			if err := streamData(ctx, dg, pDir, group); err != nil {
+			if err := streamData(ctx, dc, pDir, group); err != nil {
 				glog.Errorf("Failed to stream data for groups [%v] from directory: [%s]: %v", group, pDir, err)
 				return err
 			}
@@ -84,21 +82,34 @@ func sendPDir(ctx context.Context, dg apiv2.DgraphClient, baseDir string, groups
 			return nil
 		})
 	}
-	if err := errG.Wait(); err != nil {
-		return err
+	if err1 := errG.Wait(); err1 != nil {
+		// If the p directory doesn't exist for this group, it indicates that
+		// streaming might be in progress to other groups. We disable drain mode
+		// to prevent interference and drop any streamed data to ensure a clean state.
+		req := &apiv2.UpdateExtSnapshotStreamingStateRequest{
+			Start:    false,
+			Finish:   true,
+			DropData: true,
+		}
+		if _, err := dc.UpdateExtSnapshotStreamingState(context.Background(), req); err != nil {
+			return fmt.Errorf("failed to stream data :%v failed to off drain mode: %v", err1, err)
+		}
+
+		glog.Info("successfully disabled drain mode")
+		return err1
 	}
 
-	glog.Infof("Completed streaming all pdirs")
+	glog.Info("Completed streaming all pdirs")
 	return nil
 }
 
 // streamData handles the actual data streaming process for a single group.
 // It opens the BadgerDB at the specified directory and streams all data to the server.
-func streamData(ctx context.Context, dg apiv2.DgraphClient, pdir string, groupId uint32) error {
+func streamData(ctx context.Context, dc apiv2.DgraphClient, pdir string, groupId uint32) error {
 	glog.Infof("Opening stream for group %d from directory %s", groupId, pdir)
 
 	// Initialize stream with the server
-	out, err := dg.StreamPDir(ctx)
+	out, err := dc.StreamExtSnapshot(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to start pdir stream for group %d: %w", groupId, err)
 	}
@@ -118,41 +129,23 @@ func streamData(ctx context.Context, dg apiv2.DgraphClient, pdir string, groupId
 
 	// Send group ID as the first message in the stream
 	glog.Infof("Sending group ID [%d] to server", groupId)
-	groupReq := &apiv2.StreamPDirRequest{GroupId: groupId}
+	groupReq := &apiv2.StreamExtSnapshotRequest{GroupId: groupId}
 	if err := out.Send(groupReq); err != nil {
 		return fmt.Errorf("failed to send group ID [%d]: %w", groupId, err)
 	}
 
 	// Configure and start the BadgerDB stream
 	glog.Infof("Starting BadgerDB stream for group [%d]", groupId)
-	stream := ps.NewStreamAt(math.MaxUint64)
-	stream.LogPrefix = fmt.Sprintf("Sending P dir for group [%d]", groupId)
-	stream.KeyToList = nil
-	stream.Send = func(buf *z.Buffer) error {
-		p := &apiv2.StreamPacket{Data: buf.Bytes()}
-		if err := out.Send(&apiv2.StreamPDirRequest{StreamPacket: p}); err != nil && !errors.Is(err, io.EOF) {
-			return fmt.Errorf("failed to send data chunk: %w", err)
-		}
-		return nil
-	}
+	// if err := RunBadgerStream(ctx, ps, out, groupId); err != nil {
+	// 	return fmt.Errorf("badger stream failed for group [%d]: %w", groupId, err)
+	// }
 
-	// Execute the stream process
-	if err := stream.Orchestrate(ctx); err != nil {
-		return fmt.Errorf("stream orchestration failed for group [%d]: %w", groupId, err)
+	if err := worker.RunBadgerStream(ctx, ps, out, groupId); err != nil {
+		return fmt.Errorf("badger stream failed for group [%d]: %w", groupId, err)
 	}
-
-	// Send the final 'done' signal to mark completion
-	glog.Infof("Sending completion signal for group [%d]", groupId)
-	done := &apiv2.StreamPacket{Done: true}
-
-	if err := out.Send(&apiv2.StreamPDirRequest{StreamPacket: done}); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("failed to send 'done' signal for group [%d]: %w", groupId, err)
-	}
-	// Wait for acknowledgment from the server
 	if _, err := out.CloseAndRecv(); err != nil {
 		return fmt.Errorf("failed to receive ACK for group [%d]: %w", groupId, err)
 	}
 	glog.Infof("Group [%d]: Received ACK ", groupId)
-
 	return nil
 }
