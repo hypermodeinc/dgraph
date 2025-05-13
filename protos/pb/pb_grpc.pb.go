@@ -901,6 +901,7 @@ const (
 	Worker_TaskStatus_FullMethodName          = "/pb.Worker/TaskStatus"
 	Worker_ApplyDrainmode_FullMethodName      = "/pb.Worker/ApplyDrainmode"
 	Worker_InternalStreamPDir_FullMethodName  = "/pb.Worker/InternalStreamPDir"
+	Worker_ReqPDirStream_FullMethodName       = "/pb.Worker/ReqPDirStream"
 )
 
 // WorkerClient is the client API for Worker service.
@@ -924,6 +925,7 @@ type WorkerClient interface {
 	TaskStatus(ctx context.Context, in *TaskStatusRequest, opts ...grpc.CallOption) (*TaskStatusResponse, error)
 	ApplyDrainmode(ctx context.Context, in *DrainModeRequest, opts ...grpc.CallOption) (*Status, error)
 	InternalStreamPDir(ctx context.Context, opts ...grpc.CallOption) (Worker_InternalStreamPDirClient, error)
+	ReqPDirStream(ctx context.Context, in *ReqPDirStreamRequest, opts ...grpc.CallOption) (Worker_ReqPDirStreamClient, error)
 }
 
 type workerClient struct {
@@ -1173,6 +1175,38 @@ func (x *workerInternalStreamPDirClient) CloseAndRecv() (*api_v25.StreamPDirResp
 	return m, nil
 }
 
+func (c *workerClient) ReqPDirStream(ctx context.Context, in *ReqPDirStreamRequest, opts ...grpc.CallOption) (Worker_ReqPDirStreamClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Worker_ServiceDesc.Streams[4], Worker_ReqPDirStream_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &workerReqPDirStreamClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Worker_ReqPDirStreamClient interface {
+	Recv() (*api_v25.StreamPDirRequest, error)
+	grpc.ClientStream
+}
+
+type workerReqPDirStreamClient struct {
+	grpc.ClientStream
+}
+
+func (x *workerReqPDirStreamClient) Recv() (*api_v25.StreamPDirRequest, error) {
+	m := new(api_v25.StreamPDirRequest)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // WorkerServer is the server API for Worker service.
 // All implementations must embed UnimplementedWorkerServer
 // for forward compatibility
@@ -1194,6 +1228,7 @@ type WorkerServer interface {
 	TaskStatus(context.Context, *TaskStatusRequest) (*TaskStatusResponse, error)
 	ApplyDrainmode(context.Context, *DrainModeRequest) (*Status, error)
 	InternalStreamPDir(Worker_InternalStreamPDirServer) error
+	ReqPDirStream(*ReqPDirStreamRequest, Worker_ReqPDirStreamServer) error
 	mustEmbedUnimplementedWorkerServer()
 }
 
@@ -1248,6 +1283,9 @@ func (UnimplementedWorkerServer) ApplyDrainmode(context.Context, *DrainModeReque
 }
 func (UnimplementedWorkerServer) InternalStreamPDir(Worker_InternalStreamPDirServer) error {
 	return status.Errorf(codes.Unimplemented, "method InternalStreamPDir not implemented")
+}
+func (UnimplementedWorkerServer) ReqPDirStream(*ReqPDirStreamRequest, Worker_ReqPDirStreamServer) error {
+	return status.Errorf(codes.Unimplemented, "method ReqPDirStream not implemented")
 }
 func (UnimplementedWorkerServer) mustEmbedUnimplementedWorkerServer() {}
 
@@ -1577,6 +1615,27 @@ func (x *workerInternalStreamPDirServer) Recv() (*api_v25.StreamPDirRequest, err
 	return m, nil
 }
 
+func _Worker_ReqPDirStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(ReqPDirStreamRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(WorkerServer).ReqPDirStream(m, &workerReqPDirStreamServer{stream})
+}
+
+type Worker_ReqPDirStreamServer interface {
+	Send(*api_v25.StreamPDirRequest) error
+	grpc.ServerStream
+}
+
+type workerReqPDirStreamServer struct {
+	grpc.ServerStream
+}
+
+func (x *workerReqPDirStreamServer) Send(m *api_v25.StreamPDirRequest) error {
+	return x.ServerStream.SendMsg(m)
+}
+
 // Worker_ServiceDesc is the grpc.ServiceDesc for Worker service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1654,6 +1713,11 @@ var Worker_ServiceDesc = grpc.ServiceDesc{
 			StreamName:    "InternalStreamPDir",
 			Handler:       _Worker_InternalStreamPDir_Handler,
 			ClientStreams: true,
+		},
+		{
+			StreamName:    "ReqPDirStream",
+			Handler:       _Worker_ReqPDirStream_Handler,
+			ServerStreams: true,
 		},
 	},
 	Metadata: "pb.proto",

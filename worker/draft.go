@@ -86,6 +86,8 @@ func (id op) String() string {
 		return "opBackup"
 	case opPredMove:
 		return "opPredMove"
+	case opStreamPDir:
+		return "opStreamPDir"
 	default:
 		return "opUnknown"
 	}
@@ -98,6 +100,7 @@ const (
 	opRestore
 	opBackup
 	opPredMove
+	opStreamPDir
 )
 
 // startTask is used for the tasks that do not require tracking of timestamp.
@@ -692,6 +695,44 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 	case proposal.Drainmode != nil:
 		x.UpdateDrainingMode(proposal.Drainmode.State)
 		return nil
+
+	case proposal.Reqpdirstream != nil:
+		defer x.UpdateDrainingMode(false)
+
+		glog.Info("[import] Got proposal to get latest from leader P dir")
+		if proposal.Reqpdirstream.Addr == n.MyAddr {
+			glog.Info("[import] already have latest p dir skipping")
+			return nil
+		}
+
+		var err error
+		var closer *z.Closer
+		closer, err = n.startTask(opStreamPDir)
+		if err != nil {
+			return errors.Wrapf(err, "cannot start stream p dir task")
+		}
+		defer closer.Done()
+
+		pl, err := conn.GetPools().Get(proposal.Reqpdirstream.Addr)
+		if err != nil {
+			glog.Error("[import] unable to set connection pool")
+			return err
+		}
+
+		if pl == nil {
+			glog.Error("[import] connection is broken")
+			return fmt.Errorf("connection is broken")
+		}
+
+		con := pl.Get()
+		c := pb.NewWorkerClient(con)
+		r := &pb.ReqPDirStreamRequest{Addr: n.MyAddr}
+		stream, err := c.ReqPDirStream(ctx, r)
+		if err != nil {
+			glog.Error("[import] Error streaming P dir")
+			return err
+		}
+		return FlushData(stream)
 
 	case proposal.Snapshot != nil:
 		existing, err := n.Store.Snapshot()
