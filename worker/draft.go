@@ -689,8 +689,66 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 			attribute.Int64("key", int64(key))))
 		return n.commitOrAbort(key, proposal.Delta)
 
-	case proposal.Drainmode != nil:
-		x.UpdateDrainingMode(proposal.Drainmode.State)
+	case proposal.ExtSnapshotState != nil:
+		// Handle ExtSnapshotState proposal with two distinct scenarios:
+		// 1. Node was offline during streaming and is now rejoining so this we are figuring out using
+		//    x.ExtSnapshotStreamingState if that is true then we can say node is rejoined because
+		//    we are disabling it after completion of streaming:
+		//     - We request and populate snapshot from the group leader
+		//     - After receiving the snapshot, we perform post-stream processing to ensure data consistency
+		//
+		// 2. Node was online during streaming:
+		//     - If the node was online during streaming, we only need to disable drain mode
+		//     - No additional data synchronization is required since the node was already receiving updates
+		//
+		// Drop Data Handling:
+		// - When DropData is true, we clear all data from the node
+		// - This is used as a safety measure when:
+		//   - Something went wrong with other groups/nodes
+		//   - The node needs to be brought back in sync with the cluster
+		//   - Ensures the node reaches a clean, consistent state
+		switch {
+		case proposal.ExtSnapshotState.Start:
+			x.ExtSnapshotStreamingState(true)
+			return nil
+		case proposal.ExtSnapshotState.DropData:
+			// When DropData is true, it implies that there was some issue with import (e.g. some group
+			// may have started streaming but not finished or streaming never started because p directory
+			// was not there). We can't be certain if we have disabled x.UpdateExtSnapshotStreamingState or
+			// not, so we are disabling it here:
+			x.ExtSnapshotStreamingState(false)
+			if err := posting.DeleteAll(); err != nil {
+				glog.Errorf("[import] failed to delete all data: %v", err)
+				return err
+			}
+			return nil
+		case proposal.ExtSnapshotState.Finish && x.IsExtSnapshotStreamingStateTrue():
+			lastApplied := n.Applied.LastIndex()
+			pl := groups().Leader(n.gid)
+			if pl == nil {
+				glog.Errorf("[import] failed to get connection pool for group %d", n.gid)
+				return errors.Errorf("failed to get connection pool for group %d", n.gid)
+			}
+			glog.Infof("[import] requesting snapshot from leader")
+			snap := &pb.Snapshot{
+				Context: n.RaftContext,
+				Index:   lastApplied,
+				ReadTs:  State.GetTimestamp(false),
+			}
+			// Request and populate snapshot
+			if err := n.populateSnapshot(snap, pl); err != nil {
+				glog.Errorf("[import] failed to populate snapshot for rejoining node: %v", err)
+				return errors.Wrapf(err, "failed to populate snapshot for rejoining node")
+			}
+
+			if err := postStreamProcessing(ctx); err != nil {
+				glog.Errorf("[import] failed to post stream processing for rejoining node: %v", err)
+				return errors.Wrapf(err, "failed to post stream processing for rejoining node")
+			}
+			glog.Infof("[import] successfully rejoined node")
+			x.ExtSnapshotStreamingState(false)
+		}
+
 		return nil
 
 	case proposal.Snapshot != nil:

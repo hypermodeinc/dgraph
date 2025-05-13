@@ -57,11 +57,12 @@ type HttpToken struct {
 // HTTPClient allows doing operations on Dgraph over http
 type HTTPClient struct {
 	*HttpToken
-	adminURL     string
-	graphqlURL   string
-	stateURL     string
-	dqlURL       string
-	dqlMutateUrl string
+	adminURL      string
+	graphqlURL    string
+	stateURL      string
+	dqlURL        string
+	dqlMutateUrl  string
+	alphaStateUrl string
 }
 
 // GraphQLParams are used for making graphql requests to dgraph
@@ -647,6 +648,25 @@ func (hc *HTTPClient) GetZeroState() (*LicenseResponse, error) {
 	return &stateResponse, nil
 }
 
+func (hc *HTTPClient) GetAlphaState() ([]byte, error) {
+	response, err := http.Get(hc.alphaStateUrl)
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting alpha state http response")
+	}
+	defer func() {
+		if err := response.Body.Close(); err != nil {
+			log.Printf("[WARNING] error closing body: %v", err)
+		}
+	}()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error reading zero state response body")
+	}
+
+	return body, nil
+}
+
 func (hc *HTTPClient) PostDqlQuery(query string) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodPost, hc.dqlURL, bytes.NewBufferString(query))
 	if err != nil {
@@ -760,14 +780,17 @@ func GetHttpClient(alphaUrl, zeroUrl string) (*HTTPClient, error) {
 	adminUrl := "http://" + alphaUrl + "/admin"
 	graphQLUrl := "http://" + alphaUrl + "/graphql"
 	stateUrl := "http://" + zeroUrl + "/state"
+	alphaStateUrl := "http://" + alphaUrl + "/state"
+
 	dqlUrl := "http://" + alphaUrl + "/query"
 	dqlMutateUrl := "http://" + alphaUrl + "/mutate"
 	return &HTTPClient{
-		adminURL:     adminUrl,
-		graphqlURL:   graphQLUrl,
-		stateURL:     stateUrl,
-		dqlURL:       dqlUrl,
-		dqlMutateUrl: dqlMutateUrl,
-		HttpToken:    &HttpToken{},
+		adminURL:      adminUrl,
+		graphqlURL:    graphQLUrl,
+		stateURL:      stateUrl,
+		dqlURL:        dqlUrl,
+		dqlMutateUrl:  dqlMutateUrl,
+		alphaStateUrl: alphaStateUrl,
+		HttpToken:     &HttpToken{},
 	}, nil
 }
