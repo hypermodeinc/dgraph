@@ -4,6 +4,8 @@
 /dgraph-bulk-loader
 /osx-docker-gopath
 
+/mcp/dgraph-mcp/dgraph-mcp
+
 # goland project folder
 .idea
 dgraph.iml

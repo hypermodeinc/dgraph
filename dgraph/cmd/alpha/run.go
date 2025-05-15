@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"go.opencensus.io/plugin/ocgrpc"
@@ -44,6 +45,7 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/audit"
 	"github.com/hypermodeinc/dgraph/v25/edgraph"
 	"github.com/hypermodeinc/dgraph/v25/graphql/admin"
+	dgraphmcp "github.com/hypermodeinc/dgraph/v25/mcp"
 	"github.com/hypermodeinc/dgraph/v25/posting"
 	"github.com/hypermodeinc/dgraph/v25/schema"
 	"github.com/hypermodeinc/dgraph/v25/tok"
@@ -472,9 +474,27 @@ func serveGRPC(l net.Listener, tlsCfg *tls.Config, closer *z.Closer) {
 	s.Stop()
 }
 
+func setupMcp(baseMux *http.ServeMux, connectionString, readOnly string) error {
+	s, err := dgraphmcp.NewMCPServer(connectionString, readOnly)
+	if err != nil {
+		glog.Errorf("Failed to initialize MCPServer: %v\n", err)
+		return err
+	}
+
+	sse := server.NewSSEServer(s,
+		server.WithBasePath("/mcp"),
+	)
+	baseMux.HandleFunc("/mcp", sse.ServeHTTP)
+	baseMux.HandleFunc("/mcp/", sse.ServeHTTP)
+	return nil
+}
+
+func buildConnectionString(addr string, port int) string {
+	return fmt.Sprintf("dgraph://%s:%d", addr, port)
+}
+
 func setupServer(closer *z.Closer) {
 	go worker.RunServer(bindall) // For pb.communication.
-
 	laddr := "localhost"
 	if bindall {
 		laddr = "0.0.0.0"
@@ -576,6 +596,10 @@ func setupServer(closer *z.Closer) {
 	// Initialize the servers.
 	x.ServerCloser.AddRunning(3)
 	go serveGRPC(grpcListener, tlsCfg, x.ServerCloser)
+
+	if err := setupMcp(baseMux, buildConnectionString(laddr, grpcPort()), "true"); err != nil {
+		log.Fatal(err)
+	}
 	go x.StartListenHttpAndHttps(httpListener, tlsCfg, x.ServerCloser)
 
 	go func() {
