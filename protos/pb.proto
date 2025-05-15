@@ -320,6 +320,7 @@ message Proposal {
   // Skipping 15 as it is used for uint64 key in master and might be needed later here.
   uint64 start_ts = 16;
   DrainModeRequest drainmode = 17;
+  ReqPDirStreamRequest reqpdirstream = 18;
 }
 
 message CDCState {
@@ -598,6 +599,7 @@ service Worker {
   rpc TaskStatus(TaskStatusRequest) returns (TaskStatusResponse) {}
   rpc ApplyDrainmode(DrainModeRequest) returns (Status) {}
   rpc InternalStreamPDir(stream api.v25.StreamPDirRequest) returns (api.v25.StreamPDirResponse) {}
+  rpc ReqPDirStream(ReqPDirStreamRequest) returns (stream api.v25.StreamPDirRequest) {}
 }
 
 message DrainModeRequest {
@@ -793,6 +795,10 @@ message TaskStatusRequest {
 
 message TaskStatusResponse {
   uint64 task_meta = 1;
+}
+
+message ReqPDirStreamRequest {
+  string addr=2 ;
 }
 
 // vim: expandtab sw=2 ts=2

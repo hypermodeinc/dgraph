@@ -9,7 +9,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 
+	"github.com/dgraph-io/badger/v4"
 	apiv25 "github.com/dgraph-io/dgo/v250/protos/api.v25"
 	"github.com/dgraph-io/ristretto/v2/z"
 	"github.com/hypermodeinc/dgraph/v25/conn"
@@ -20,17 +22,33 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
-	"google.golang.org/grpc"
 )
 
 // streamProcessor defines the common interface for stream processing
 type streamProcessor interface {
-	SendAndClose(*apiv25.StreamPDirResponse) error
 	Recv() (*apiv25.StreamPDirRequest, error)
-	grpc.ServerStream
+}
+
+type streamProcessorSender interface {
+	Send(*apiv25.StreamPDirRequest) error
 }
 
 func ProposeDrain(ctx context.Context, drainMode *pb.DrainModeRequest) ([]uint32, error) {
+	isStreamPDirRunning := func() bool {
+		tasks := GetOngoingTasks()
+		for _, t := range tasks {
+			if t == opStreamPDir.String() {
+				return true
+			}
+		}
+		return false
+	}
+
+	if isStreamPDirRunning() {
+		return nil, errors.Errorf("another stream p dir operation is already running. " +
+			"Please retry later.")
+	}
+
 	memState := GetMembershipState()
 	currentGroups := make([]uint32, 0)
 	for gid := range memState.GetGroups() {
@@ -71,6 +89,12 @@ func ProposeDrain(ctx context.Context, drainMode *pb.DrainModeRequest) ([]uint32
 // there are any issues in the process, such as a broken connection or failure to establish
 // a stream with the leader.
 func InStream(stream apiv25.Dgraph_StreamPDirServer) error {
+	closer, err := groups().Node.startTask(opStreamPDir)
+	if err != nil {
+		return errors.Wrapf(err, "cannot start stream p dir task")
+	}
+	defer closer.Done()
+
 	req, err := stream.Recv()
 	if err != nil {
 		return fmt.Errorf("failed to receive initial stream message: %v", err)
@@ -183,7 +207,25 @@ func flushKvs(stream apiv25.Dgraph_StreamPDirServer) error {
 		return err
 	}
 
-	return postStreamProcessing(stream.Context())
+	if err := stream.SendAndClose(&apiv25.StreamPDirResponse{Done: true}); err != nil {
+		return err
+	}
+
+	if err := postStreamProcessing(stream.Context()); err != nil {
+		return err
+	}
+
+	glog.Info("[import] Streaming P dir to other nodes")
+	currentNode := groups().Node
+	streamProposal := &pb.ReqPDirStreamRequest{Addr: currentNode.MyAddr}
+	glog.Info("[import] apply proposal to other nodes")
+
+	err := currentNode.proposeAndWait(stream.Context(), &pb.Proposal{Reqpdirstream: streamProposal})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (w *grpcWorker) ApplyDrainmode(ctx context.Context, req *pb.DrainModeRequest) (*pb.Status, error) {
@@ -198,11 +240,35 @@ func (w *grpcWorker) ApplyDrainmode(ctx context.Context, req *pb.DrainModeReques
 // It writes the data to BadgerDB, sends an acknowledgment once all data is received,
 // and proposes to accept the newly added data to other group nodes.
 func (w *grpcWorker) InternalStreamPDir(stream pb.Worker_InternalStreamPDirServer) error {
+	closer, err := groups().Node.startTask(opStreamPDir)
+	if err != nil {
+		return errors.Wrapf(err, "cannot start stream p dir task")
+	}
+	defer closer.Done()
+
 	if err := processStreamData(stream); err != nil {
 		return err
 	}
+
+	if err := stream.SendAndClose(&apiv25.StreamPDirResponse{Done: true}); err != nil {
+		return err
+	}
 	// Inform Zero about the new tablets.
-	return postStreamProcessing(stream.Context())
+	if err := postStreamProcessing(stream.Context()); err != nil {
+		return err
+	}
+
+	glog.Info("[import] Streaming P dir to other nodes")
+	currentNode := groups().Node
+	streamProposal := &pb.ReqPDirStreamRequest{Addr: currentNode.MyAddr}
+	glog.Info("[import] apply proposal to other nodes")
+
+	err = currentNode.proposeAndWait(stream.Context(), &pb.Proposal{Reqpdirstream: streamProposal})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func processStreamData(stream streamProcessor) error {
@@ -250,7 +316,7 @@ func processStreamData(stream streamProcessor) error {
 	glog.Info("[import] P dir writes DONE. Sending ACK")
 
 	// Send an acknowledgment to the leader indicating completion.
-	return stream.SendAndClose(&apiv25.StreamPDirResponse{Done: true})
+	return nil
 }
 
 func postStreamProcessing(ctx context.Context) error {
@@ -270,4 +336,49 @@ func postStreamProcessing(ctx context.Context) error {
 	ResetGQLSchemaStore()
 
 	return nil
+}
+
+func RunBadgerStream(ctx context.Context, ps *badger.DB, out streamProcessorSender, groupId uint32) error {
+	stream := ps.NewStreamAt(math.MaxUint64)
+	stream.LogPrefix = "Sending P dir"
+	stream.KeyToList = nil
+	stream.Send = func(buf *z.Buffer) error {
+		p := &apiv25.StreamPacket{Data: buf.Bytes()}
+		if err := out.Send(&apiv25.StreamPDirRequest{StreamPacket: p}); err != nil && !errors.Is(err, io.EOF) {
+			return fmt.Errorf("failed to send data chunk: %w", err)
+		}
+		return nil
+	}
+
+	// Execute the stream process
+	if err := stream.Orchestrate(ctx); err != nil {
+		return fmt.Errorf("stream orchestration failed: %w", err)
+	}
+
+	// Send the final 'done' signal to mark completion
+	glog.Infof("Sending completion signal for group [%d]", groupId)
+	done := &apiv25.StreamPacket{Done: true}
+
+	if err := out.Send(&apiv25.StreamPDirRequest{StreamPacket: done}); err != nil && !errors.Is(err, io.EOF) {
+		return fmt.Errorf("failed to send 'done' signal for group [%d]: %w", groupId, err)
+	}
+
+	return nil
+}
+
+func (w *grpcWorker) ReqPDirStream(req *pb.ReqPDirStreamRequest, stream pb.Worker_ReqPDirStreamServer) error {
+	if err := RunBadgerStream(stream.Context(), pstore, stream, gr.Node.gid); err != nil {
+		return err
+	}
+	return nil
+}
+
+// It also sends a streams the data to other nodes of the same group and reloads the schema from the DB.
+func FlushData(stream pb.Worker_ReqPDirStreamClient) error {
+	glog.Info("[import] got stream from leader")
+	if err := processStreamData(stream); err != nil {
+		return err
+	}
+
+	return postStreamProcessing(stream.Context())
 }

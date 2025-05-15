@@ -7,16 +7,13 @@ package dgraphimport
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
-	"math"
 	"os"
 	"path/filepath"
 
 	"github.com/dgraph-io/badger/v4"
 	apiv25 "github.com/dgraph-io/dgo/v250/protos/api.v25"
-	"github.com/dgraph-io/ristretto/v2/z"
+	"github.com/hypermodeinc/dgraph/v25/worker"
 
 	"github.com/golang/glog"
 	"golang.org/x/sync/errgroup"
@@ -125,34 +122,16 @@ func streamData(ctx context.Context, dg apiv25.DgraphClient, pdir string, groupI
 
 	// Configure and start the BadgerDB stream
 	glog.Infof("Starting BadgerDB stream for group [%d]", groupId)
-	stream := ps.NewStreamAt(math.MaxUint64)
-	stream.LogPrefix = fmt.Sprintf("Sending P dir for group [%d]", groupId)
-	stream.KeyToList = nil
-	stream.Send = func(buf *z.Buffer) error {
-		p := &apiv25.StreamPacket{Data: buf.Bytes()}
-		if err := out.Send(&apiv25.StreamPDirRequest{StreamPacket: p}); err != nil && !errors.Is(err, io.EOF) {
-			return fmt.Errorf("failed to send data chunk: %w", err)
-		}
-		return nil
-	}
+	// if err := RunBadgerStream(ctx, ps, out, groupId); err != nil {
+	// 	return fmt.Errorf("badger stream failed for group [%d]: %w", groupId, err)
+	// }
 
-	// Execute the stream process
-	if err := stream.Orchestrate(ctx); err != nil {
-		return fmt.Errorf("stream orchestration failed for group [%d]: %w", groupId, err)
+	if err := worker.RunBadgerStream(ctx, ps, out, groupId); err != nil {
+		return fmt.Errorf("badger stream failed for group [%d]: %w", groupId, err)
 	}
-
-	// Send the final 'done' signal to mark completion
-	glog.Infof("Sending completion signal for group [%d]", groupId)
-	done := &apiv25.StreamPacket{Done: true}
-
-	if err := out.Send(&apiv25.StreamPDirRequest{StreamPacket: done}); err != nil && !errors.Is(err, io.EOF) {
-		return fmt.Errorf("failed to send 'done' signal for group [%d]: %w", groupId, err)
-	}
-	// Wait for acknowledgment from the server
 	if _, err := out.CloseAndRecv(); err != nil {
 		return fmt.Errorf("failed to receive ACK for group [%d]: %w", groupId, err)
 	}
 	glog.Infof("Group [%d]: Received ACK ", groupId)
-
 	return nil
 }

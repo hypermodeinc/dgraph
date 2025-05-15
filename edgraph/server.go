@@ -1829,11 +1829,6 @@ func (s *ServerV25) StreamPDir(stream apiv25.Dgraph_StreamPDirServer) error {
 		return err
 	}
 
-	drainMode := &pb.DrainModeRequest{State: false}
-	if _, err := worker.ProposeDrain(stream.Context(), drainMode); err != nil {
-		return err
-	}
-
 	return nil
 }
 

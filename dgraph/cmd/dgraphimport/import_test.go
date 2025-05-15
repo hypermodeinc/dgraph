@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/hypermodeinc/dgraph/v25/dgraphapi"
 	"github.com/hypermodeinc/dgraph/v25/dgraphtest"
@@ -96,9 +97,9 @@ func TestImportApis(t *testing.T) {
 		targetAlphas   int
 		replicasFactor int
 	}{
-		{"SingleGroupSingleAlpha", 1, 1, 1},
-		{"TwoGroupsSingleAlpha", 2, 2, 1},
-		{"ThreeGroupsSingleAlpha", 3, 3, 1},
+		{"SingleGroupSingleAlpha", 1, 3, 3},
+		{"TwoGroupsSingleAlpha", 2, 6, 3},
+		{"ThreeGroupsSingleAlpha", 3, 9, 3},
 	}
 
 	for _, tt := range tests {
@@ -123,6 +124,7 @@ func runImportTest(t *testing.T, bulkAlphas, targetAlphas, replicasFactor int) {
 	require.NoError(t, Import(context.Background(), url,
 		grpc.WithTransportCredentials(insecure.NewCredentials()), outDir))
 
+	time.Sleep(time.Minute * 3)
 	verifyImportResults(t, gc)
 }
 
