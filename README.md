@@ -116,7 +116,7 @@ operations, which makes it easy to build applications with it.
 | Architecture                        | Sharded and Distributed       | Single server (+ replicas in enterprise)                 | Layer on top of other distributed DBs |
 | Replication                         | Consistent                    | None in community edition (only available in enterprise) | Via underlying DB                     |
 | Data movement for shard rebalancing | Automatic                     | Not applicable (all data lies on each server)            | Via underlying DB                     |
-| Language                            | GraphQL inspired              | Cypher, Gremlin                                          | Gremlin                               |
+| Language                            | GraphQL inspired              | Cypher                                                   | Gremlin                               |
 | Protocols                           | Grpc / HTTP + JSON / RDF      | Bolt + Cypher                                            | Websocket / HTTP                      |
 | Transactions                        | Distributed ACID transactions | Single server ACID transactions                          | Not typically ACID                    |
 | Full-Text Search                    | Native support                | Native support                                           | Via External Indexing System          |
