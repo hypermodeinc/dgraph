@@ -287,6 +287,10 @@ func (a *alpha) cmd(c *LocalCluster) []string {
 				c.conf.snapShotAfterEntries, c.conf.snapshotAfterDuration)))
 	}
 
+	if c.conf.mcp {
+		acmd = append(acmd, "--mcp")
+	}
+
 	return acmd
 }
 

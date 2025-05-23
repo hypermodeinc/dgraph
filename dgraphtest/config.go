@@ -109,11 +109,7 @@ type ClusterConfig struct {
 	snapShotAfterEntries  uint64
 	snapshotAfterDuration time.Duration
 	repoDir               string
-}
-
-func (cc ClusterConfig) WithGraphqlLambdaURL(url string) ClusterConfig {
-	cc.lambdaURL = url
-	return cc
+	mcp                   bool
 }
 
 // NewClusterConfig generates a default ClusterConfig
@@ -133,6 +129,7 @@ func NewClusterConfig() ClusterConfig {
 		uidLease:       50,
 		portOffset:     -1,
 		customPlugins:  false,
+		mcp:            false,
 	}
 }
 
@@ -237,6 +234,18 @@ func (cc ClusterConfig) WithNormalizeCompatibilityMode(mode string) ClusterConfi
 // Enables generation of the custom_plugins in testutil/custom_plugins
 func (cc ClusterConfig) WithCustomPlugins() ClusterConfig {
 	cc.customPlugins = true
+	return cc
+}
+
+// WithGraphqlLambdaURL sets the graphql lambda url for alpha
+func (cc ClusterConfig) WithGraphqlLambdaURL(url string) ClusterConfig {
+	cc.lambdaURL = url
+	return cc
+}
+
+// WithMcp sets the mcp flag for alpha
+func (cc ClusterConfig) WithMCP() ClusterConfig {
+	cc.mcp = true
 	return cc
 }
 

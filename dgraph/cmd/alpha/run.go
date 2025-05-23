@@ -484,10 +484,20 @@ func setupMcp(baseMux *http.ServeMux, connectionString, url string, readOnly boo
 	}
 
 	sse := server.NewSSEServer(s,
-		server.WithBasePath(url),
+		server.WithStaticBasePath(url),
 	)
-	baseMux.HandleFunc(url, sse.ServeHTTP)
-	baseMux.HandleFunc(url+"/", sse.ServeHTTP)
+
+	corsHandler := func(w http.ResponseWriter, r *http.Request) {
+		x.AddCorsHeaders(w)
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		sse.ServeHTTP(w, r)
+	}
+
+	baseMux.HandleFunc(url, corsHandler)
+	baseMux.HandleFunc(url+"/", corsHandler)
 	return nil
 }
 
