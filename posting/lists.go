@@ -330,32 +330,32 @@ func (lc *LocalCache) readPostingListAt(key []byte) (*pb.PostingList, error) {
 	return pl, err
 }
 
+func (lc *LocalCache) GetSinglePostingFromLocalCache(key []byte) (*pb.PostingList, error) {
+	lc.RLock()
+
+	pl := &pb.PostingList{}
+	if delta, ok := lc.deltas[string(key)]; ok && len(delta) > 0 {
+		err := proto.Unmarshal(delta, pl)
+		lc.RUnlock()
+		return pl, err
+	}
+
+	l := lc.plists[string(key)]
+	lc.RUnlock()
+
+	if l != nil {
+		return l.StaticValue(lc.startTs)
+	}
+
+	return nil, nil
+}
+
 // GetSinglePosting retrieves the cached version of the first item in the list associated with the
 // given key. This is used for retrieving the value of a scalar predicats.
 func (lc *LocalCache) GetSinglePosting(key []byte) (*pb.PostingList, error) {
 	// This would return an error if there is some data in the local cache, but we couldn't read it.
-	getListFromLocalCache := func() (*pb.PostingList, error) {
-		lc.RLock()
-
-		pl := &pb.PostingList{}
-		if delta, ok := lc.deltas[string(key)]; ok && len(delta) > 0 {
-			err := proto.Unmarshal(delta, pl)
-			lc.RUnlock()
-			return pl, err
-		}
-
-		l := lc.plists[string(key)]
-		lc.RUnlock()
-
-		if l != nil {
-			return l.StaticValue(lc.startTs)
-		}
-
-		return nil, nil
-	}
-
 	getPostings := func() (*pb.PostingList, error) {
-		pl, err := getListFromLocalCache()
+		pl, err := lc.GetSinglePostingFromLocalCache(key)
 		// If both pl and err are empty, that means that there was no data in local cache, hence we should
 		// read the data from badger.
 		if pl != nil || err != nil {
@@ -386,6 +386,59 @@ func (lc *LocalCache) GetSinglePosting(key []byte) (*pb.PostingList, error) {
 	}
 	pl.Postings = pl.Postings[:idx]
 	return pl, nil
+}
+
+func (lc *LocalCache) GetBatchSinglePosting(keys [][]byte) ([]*pb.PostingList, error) {
+	results := make([]*pb.PostingList, len(keys))
+	remaining_keys := make([][]byte, 0)
+	for i, key := range keys {
+		if pl, err := lc.GetSinglePostingFromLocalCache(key); pl != nil && err != nil {
+			results[i] = pl
+		} else {
+			remaining_keys = append(remaining_keys, key)
+		}
+	}
+
+	txn := pstore.NewTransactionAt(lc.startTs, false)
+	items, err := txn.GetBatch(remaining_keys)
+	if err != nil {
+		fmt.Println(err, keys)
+		return nil, err
+	}
+	idx := 0
+
+	for i := 0; i < len(results); i++ {
+		if results[i] != nil {
+			continue
+		}
+		pl := &pb.PostingList{}
+		err = items[idx].Value(func(val []byte) error {
+			if err := proto.Unmarshal(val, pl); err != nil {
+				return err
+			}
+			return nil
+		})
+		idx += 1
+		results[i] = pl
+	}
+
+	for i := 0; i < len(results); i++ {
+		pl := results[i]
+		idx := 0
+		for _, postings := range pl.Postings {
+			if hasDeleteAll(postings) {
+				return nil, nil
+			}
+			if postings.Op != Del {
+				pl.Postings[idx] = postings
+				idx++
+			}
+		}
+		pl.Postings = pl.Postings[:idx]
+		results[i] = pl
+	}
+
+	return results, err
 }
 
 // Get retrieves the cached version of the list associated with the given key.

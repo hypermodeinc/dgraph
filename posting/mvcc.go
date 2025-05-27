@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"fmt"
 	"math"
 	"strconv"
 	"sync"
@@ -415,7 +416,7 @@ func initMemoryLayer(cacheSize int64, removeOnUpdate bool) *MemoryLayer {
 	ml.removeOnUpdate = removeOnUpdate
 	ml.statsHolder = NewStatsHolder()
 	if cacheSize > 0 {
-		cache, err := ristretto.NewCache[[]byte, *CachePL](&ristretto.Config[[]byte, *CachePL]{
+		cache, err := ristretto.NewCache(&ristretto.Config[[]byte, *CachePL]{
 			// Use 5% of cache memory for storing counters.
 			NumCounters: int64(float64(cacheSize) * 0.05 * 2),
 			MaxCost:     int64(float64(cacheSize) * 0.95),
@@ -436,9 +437,10 @@ func initMemoryLayer(cacheSize int64, removeOnUpdate bool) *MemoryLayer {
 			for range ticker.C {
 				// Record the posting list cache hit ratio
 				ostats.Record(context.Background(), x.PLCacheHitRatio.M(m.Ratio()))
+				fmt.Println("CACHE STATS: ", ml.cache.numCacheRead.Load(), ml.cache.numCacheReadFails.Load(), ml.cache.numCacheSave.Load())
 
 				if EnableDetailedMetrics {
-					x.NumPostingListCacheSave.M(ml.cache.numCacheRead.Load())
+					x.NumPostingListCacheSave.M(ml.cache.numCacheSave.Load())
 					x.NumPostingListCacheRead.M(ml.cache.numCacheRead.Load())
 					x.NumPostingListCacheReadFail.M(ml.cache.numCacheReadFails.Load())
 				}
@@ -605,8 +607,12 @@ func ReadPostingList(key []byte, it *badger.Iterator) (*List, error) {
 			}
 
 			l.minTs = item.Version()
+			if l.mutationMap == nil {
+				l.mutationMap = newMutableLayer()
+			}
 			// No need to do Next here. The outer loop can take care of skipping
 			// more versions of the same key.
+			l.calculateUids()
 			return l, nil
 		case BitDeltaPosting:
 			err := item.Value(func(val []byte) error {
@@ -637,6 +643,8 @@ func ReadPostingList(key []byte, it *badger.Iterator) (*List, error) {
 		}
 		it.Next()
 	}
+
+	l.calculateUids()
 	return l, nil
 }
 
