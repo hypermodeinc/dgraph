@@ -27,6 +27,18 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
+type tc struct {
+	name             string
+	bulkAlphas       int
+	targetAlphas     int
+	replicasFactor   int
+	downAlphas       int
+	negativeTestCase bool
+	description      string
+	err              string
+	waitForSnapshot  bool
+}
+
 const expectedSchema = `{
 	"schema": [
 		{"predicate":"actor.film","type":"uid","count":true,"list":true},
@@ -96,17 +108,7 @@ func TestDrainModeAfterStartSnapshotStream(t *testing.T) {
 
 // TestImportApis tests import functionality with different cluster configurations
 func TestImportApis(t *testing.T) {
-	tests := []struct {
-		name             string
-		bulkAlphas       int  // Number of alphas in source cluster
-		targetAlphas     int  // Number of alphas in target cluster
-		replicasFactor   int  // Number of replicas for each group
-		downAlphas       int  // Number of alphas to be shutdown
-		negativeTestCase bool // True if this is an expected failure case
-		description      string
-		err              string
-		waitForSnapshot  bool
-	}{
+	tests := []tc{
 		{
 			name:             "SingleGroupShutTwoAlphasPerGroup",
 			bulkAlphas:       1,
@@ -219,18 +221,16 @@ func TestImportApis(t *testing.T) {
 			} else {
 				t.Logf("Running test case: %s", tt.description)
 			}
-			runImportTest(t, tt.bulkAlphas, tt.targetAlphas, tt.replicasFactor, tt.downAlphas, tt.negativeTestCase,
-				tt.err, tt.waitForSnapshot)
+			runImportTest(t, tt)
 		})
 	}
 }
 
-func runImportTest(t *testing.T, bulkAlphas, targetAlphas, replicasFactor, numDownAlphas int, negative bool,
-	errStr string, waitForSnapshot bool) {
-	bulkCluster, baseDir := setupBulkCluster(t, bulkAlphas)
+func runImportTest(t *testing.T, tt tc) {
+	bulkCluster, baseDir := setupBulkCluster(t, tt.bulkAlphas)
 	defer func() { bulkCluster.Cleanup(t.Failed()) }()
 
-	targetCluster, gc, gcCleanup := setupTargetCluster(t, targetAlphas, replicasFactor)
+	targetCluster, gc, gcCleanup := setupTargetCluster(t, tt.targetAlphas, tt.replicasFactor)
 	defer func() { targetCluster.Cleanup(t.Failed()) }()
 	defer gcCleanup()
 
@@ -254,8 +254,6 @@ func runImportTest(t *testing.T, bulkAlphas, targetAlphas, replicasFactor, numDo
 	healthResp, err := hc.GetAlphaState()
 	require.NoError(t, err)
 	require.NoError(t, protojson.Unmarshal(healthResp, &state))
-	fmt.Println("Health response: ", string(healthResp))
-
 	// Group alphas by their group number
 	alphaGroups := make(map[uint32][]int)
 	for _, group := range state.Groups {
@@ -273,18 +271,18 @@ func runImportTest(t *testing.T, bulkAlphas, targetAlphas, replicasFactor, numDo
 
 	// Shutdown specified number of alphas from each group
 	for group, alphas := range alphaGroups {
-		for i := 0; i < numDownAlphas; i++ {
+		for i := 0; i < tt.downAlphas; i++ {
 			alphaID := alphas[i]
 			t.Logf("Shutting down alpha %v from group %v", alphaID, group)
 			require.NoError(t, targetCluster.StopAlpha(alphaID))
 		}
 	}
 
-	if negative {
+	if tt.negativeTestCase {
 		err := Import(context.Background(), url, grpc.WithTransportCredentials(insecure.NewCredentials()), outDir)
 		require.Error(t, err)
 		fmt.Println("Error: ", err)
-		require.ErrorContains(t, err, errStr)
+		require.ErrorContains(t, err, tt.err)
 		return
 	}
 
@@ -292,7 +290,7 @@ func runImportTest(t *testing.T, bulkAlphas, targetAlphas, replicasFactor, numDo
 		grpc.WithTransportCredentials(insecure.NewCredentials()), outDir))
 
 	for group, alphas := range alphaGroups {
-		for i := 0; i < numDownAlphas; i++ {
+		for i := 0; i < tt.downAlphas; i++ {
 			alphaID := alphas[i]
 			t.Logf("Starting alpha %v from group %v", alphaID, group)
 			require.NoError(t, targetCluster.StartAlpha(alphaID))
@@ -301,9 +299,9 @@ func runImportTest(t *testing.T, bulkAlphas, targetAlphas, replicasFactor, numDo
 
 	require.NoError(t, targetCluster.HealthCheck(false))
 
-	if waitForSnapshot {
+	if tt.waitForSnapshot {
 		for grp, alphas := range alphaGroups {
-			for i := 0; i < numDownAlphas; i++ {
+			for i := 0; i < tt.downAlphas; i++ {
 				fmt.Println("Waiting for snapshot for alpha", alphas[i], "group", grp)
 				hc, err := targetCluster.GetAlphaHttpClient(alphas[i])
 				require.NoError(t, err)
@@ -318,7 +316,8 @@ func runImportTest(t *testing.T, bulkAlphas, targetAlphas, replicasFactor, numDo
 
 	t.Log("Import completed")
 
-	for i := 0; i < targetAlphas; i++ {
+	for i := 0; i < tt.targetAlphas; i++ {
+		t.Logf("Verifying import for alpha %v", i)
 		gc, cleanup, err := targetCluster.AlphaClient(i)
 		require.NoError(t, err)
 		defer cleanup()

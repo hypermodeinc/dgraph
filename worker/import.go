@@ -276,7 +276,7 @@ func (w *grpcWorker) InternalStreamPDir(stream pb.Worker_InternalStreamPDirServe
 // It also sends a final 'done' signal to mark completion.
 func RunBadgerStream(ctx context.Context, ps *badger.DB, out apiv2.Dgraph_StreamExtSnapshotClient, groupId uint32) error {
 	stream := ps.NewStreamAt(math.MaxUint64)
-	stream.LogPrefix = "Sending P dir to group [" + fmt.Sprintf("%d", groupId) + "]"
+	stream.LogPrefix = "[import:ext-snapshot] Sending P dir to group [" + fmt.Sprintf("%d", groupId) + "]"
 	stream.KeyToList = nil
 	stream.Send = func(buf *z.Buffer) error {
 		p := &apiv2.StreamPacket{Data: buf.Bytes()}
@@ -292,7 +292,7 @@ func RunBadgerStream(ctx context.Context, ps *badger.DB, out apiv2.Dgraph_Stream
 	}
 
 	// Send the final 'done' signal to mark completion
-	glog.Infof("Sending completion signal for group [%d]", groupId)
+	glog.Infof("[import:ext-snapshot] Sending completion signal for group [%d]", groupId)
 	done := &apiv2.StreamPacket{Done: true}
 
 	if err := out.Send(&apiv2.StreamExtSnapshotRequest{Pkt: done}); err != nil && !errors.Is(err, io.EOF) {

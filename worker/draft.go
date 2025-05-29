@@ -719,8 +719,7 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 			// was not there). We can't be certain if we have disabled x.UpdateExtSnapshotStreamingState or
 			// not, so we are disabling it here:
 			x.ExtSnapshotStreamingState(false)
-			err := posting.DeleteAll()
-			if err != nil {
+			if err := posting.DeleteAll(); err != nil {
 				glog.Errorf("[import] failed to delete all data: %v", err)
 				return err
 			}

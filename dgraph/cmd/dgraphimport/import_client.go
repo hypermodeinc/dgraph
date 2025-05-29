@@ -27,7 +27,7 @@ func newClient(endpoint string, opts grpc.DialOption) (apiv2.DgraphClient, error
 		return nil, fmt.Errorf("failed to connect to endpoint [%s]: %w", endpoint, err)
 	}
 
-	glog.Infof("Successfully connected to Dgraph endpoint: %s", endpoint)
+	glog.Infof("[import:ext-snapshot] Successfully connected to Dgraph endpoint: %s", endpoint)
 	return apiv2.NewDgraphClient(conn), nil
 }
 
@@ -46,16 +46,16 @@ func Import(ctx context.Context, endpoint string, opts grpc.DialOption, bulkOutD
 
 // startPDirStream initiates a snapshot stream session with the Dgraph server.
 func startPDirStream(ctx context.Context, dc apiv2.DgraphClient) (*apiv2.UpdateExtSnapshotStreamingStateResponse, error) {
-	glog.Info("Initiating pdir stream")
+	glog.Info("[import:ext-snapshot] Initiating pdir stream")
 	req := &apiv2.UpdateExtSnapshotStreamingStateRequest{
 		Start: true,
 	}
 	resp, err := dc.UpdateExtSnapshotStreamingState(ctx, req)
 	if err != nil {
-		glog.Errorf("failed to initiate pdir stream: %v", err)
+		glog.Errorf("[import:ext-snapshot] failed to initiate pdir stream: %v", err)
 		return nil, fmt.Errorf("failed to initiate pdir stream: %v", err)
 	}
-	glog.Info("Pdir stream initiated successfully")
+	glog.Info("[import:ext-snapshot] Pdir stream initiated successfully")
 	return resp, nil
 }
 
@@ -63,7 +63,7 @@ func startPDirStream(ctx context.Context, dc apiv2.DgraphClient) (*apiv2.UpdateE
 // p directory to the corresponding group IDs. It first scans the provided directory for
 // subdirectories named with numeric group IDs.
 func sendPDir(ctx context.Context, dc apiv2.DgraphClient, baseDir string, groups []uint32) error {
-	glog.Infof("Starting to stream pdir from directory: %s", baseDir)
+	glog.Infof("[import:ext-snapshot] Starting to stream pdir from directory: %s", baseDir)
 
 	errG, ctx := errgroup.WithContext(ctx)
 	for _, group := range groups {
@@ -73,9 +73,9 @@ func sendPDir(ctx context.Context, dc apiv2.DgraphClient, baseDir string, groups
 			if _, err := os.Stat(pDir); err != nil {
 				return fmt.Errorf("p directory does not exist for group [%d]: [%s]", group, pDir)
 			}
-			glog.Infof("Streaming data for group [%d] from directory: [%s]", group, pDir)
+			glog.Infof("[import:ext-snapshot] Streaming data for group [%d] from directory: [%s]", group, pDir)
 			if err := streamData(ctx, dc, pDir, group); err != nil {
-				glog.Errorf("Failed to stream data for groups [%v] from directory: [%s]: %v", group, pDir, err)
+				glog.Errorf("[import:ext-snapshot] Failed to stream data for groups [%v] from directory: [%s]: %v", group, pDir, err)
 				return err
 			}
 
@@ -83,6 +83,7 @@ func sendPDir(ctx context.Context, dc apiv2.DgraphClient, baseDir string, groups
 		})
 	}
 	if err1 := errG.Wait(); err1 != nil {
+		glog.Errorf("[import:ext-snapshot] something went wrong while streaming p directory: %v", err1)
 		// If the p directory doesn't exist for this group, it indicates that
 		// streaming might be in progress to other groups. We disable drain mode
 		// to prevent interference and drop any streamed data to ensure a clean state.
@@ -92,14 +93,14 @@ func sendPDir(ctx context.Context, dc apiv2.DgraphClient, baseDir string, groups
 			DropData: true,
 		}
 		if _, err := dc.UpdateExtSnapshotStreamingState(context.Background(), req); err != nil {
-			return fmt.Errorf("failed to stream data :%v failed to off drain mode: %v", err1, err)
+			return fmt.Errorf("failed to turn off drain mode: %v", err)
 		}
 
-		glog.Info("successfully disabled drain mode")
+		glog.Info("[import:ext-snapshot]successfully disabled drain mode")
 		return err1
 	}
 
-	glog.Info("Completed streaming all pdirs")
+	glog.Info("[import:ext-snapshot] Completed streaming all pdirs")
 	req := &apiv2.UpdateExtSnapshotStreamingStateRequest{
 		Start:    false,
 		Finish:   true,
@@ -108,7 +109,7 @@ func sendPDir(ctx context.Context, dc apiv2.DgraphClient, baseDir string, groups
 	if _, err := dc.UpdateExtSnapshotStreamingState(context.Background(), req); err != nil {
 		return fmt.Errorf("failed to disabled drain mode: %v", err)
 	}
-	glog.Infof("Completed streaming all pdirs")
+	glog.Info("[import:ext-snapshot] successfully disabled drain mode")
 	return nil
 }
 
@@ -127,27 +128,24 @@ func streamData(ctx context.Context, dc apiv2.DgraphClient, pdir string, groupId
 	opt := badger.DefaultOptions(pdir)
 	ps, err := badger.OpenManaged(opt)
 	if err != nil {
-		return fmt.Errorf("failed to open BadgerDB at [%s]: %w", pdir, err)
+		return fmt.Errorf("[import:ext-snapshot] failed to open BadgerDB at [%s]: %w", pdir, err)
 	}
 
 	defer func() {
 		if err := ps.Close(); err != nil {
-			glog.Warningf("Error closing BadgerDB: %v", err)
+			glog.Warningf("[import:ext-snapshot] Error closing BadgerDB: %v", err)
 		}
 	}()
 
 	// Send group ID as the first message in the stream
-	glog.Infof("Sending group ID [%d] to server", groupId)
+	glog.Infof("[import:ext-snapshot] Sending group ID [%d] to server", groupId)
 	groupReq := &apiv2.StreamExtSnapshotRequest{GroupId: groupId}
 	if err := out.Send(groupReq); err != nil {
 		return fmt.Errorf("failed to send group ID [%d]: %w", groupId, err)
 	}
 
 	// Configure and start the BadgerDB stream
-	glog.Infof("Starting BadgerDB stream for group [%d]", groupId)
-	// if err := RunBadgerStream(ctx, ps, out, groupId); err != nil {
-	// 	return fmt.Errorf("badger stream failed for group [%d]: %w", groupId, err)
-	// }
+	glog.Infof("[import:ext-snapshot] Starting BadgerDB stream for group [%d]", groupId)
 
 	if err := worker.RunBadgerStream(ctx, ps, out, groupId); err != nil {
 		return fmt.Errorf("badger stream failed for group [%d]: %w", groupId, err)
