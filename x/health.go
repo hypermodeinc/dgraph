@@ -21,7 +21,6 @@ var (
 
 	healthCheck     uint32
 	errHealth       = errors.New("Please retry again, server is not ready to accept requests")
-	errImportMode   = errors.New("Please retry again, server is not ready to accept requests")
 	errDrainingMode = errors.New("the server is in draining mode " +
 		"and client requests will only be allowed after exiting the mode " +
 		" by sending a GraphQL draining(enable: false) mutation to /admin")
