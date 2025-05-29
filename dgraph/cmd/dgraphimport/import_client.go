@@ -100,6 +100,15 @@ func sendPDir(ctx context.Context, dc apiv2.DgraphClient, baseDir string, groups
 	}
 
 	glog.Info("Completed streaming all pdirs")
+	req := &apiv2.UpdateExtSnapshotStreamingStateRequest{
+		Start:    false,
+		Finish:   true,
+		DropData: false,
+	}
+	if _, err := dc.UpdateExtSnapshotStreamingState(context.Background(), req); err != nil {
+		return fmt.Errorf("failed to disabled drain mode: %v", err)
+	}
+	glog.Infof("Completed streaming all pdirs")
 	return nil
 }
 

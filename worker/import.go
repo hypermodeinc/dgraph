@@ -357,7 +357,7 @@ func streamInGroup(stream apiv2.Dgraph_StreamExtSnapshotServer, forward bool) er
 
 	ps := &pubSub{}
 	eg, ctx := errgroup.WithContext(ctx)
-	// this we careated for to check the majority
+	// We created this to check the majority
 	successfulNodes := make(map[string]bool)
 
 	// Receive messages and publish to all subscribers
