@@ -2998,3 +2998,10 @@ func TestLargeStringIndex(t *testing.T) {
 	require.Contains(t, dqlSchema,
 		`{"predicate":"name_term","type":"string","index":true,"tokenizer":["term"]}`)
 }
+
+func TestStringWithQuote(t *testing.T) {
+	require.NoError(t, dropAll())
+	require.NoError(t, alterSchema(`name: string .`))
+	mu := `{ set { <0x01> <name> "\"problem\" is the quotes (json)" . } }`
+	require.NoError(t, runMutation(mu))
+}
