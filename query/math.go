@@ -6,6 +6,8 @@
 package query
 
 import (
+	"sync"
+
 	"github.com/golang/glog"
 	"github.com/pkg/errors"
 
@@ -16,7 +18,7 @@ type mathTree struct {
 	Fn    string
 	Var   string
 	Const types.Val // If its a const value node.
-	Val   map[uint64]types.Val
+	Val   *types.ShardedMap
 	Child []*mathTree
 }
 
@@ -36,7 +38,6 @@ var (
 // processBinary handles the binary operands like
 // +, -, *, /, %, max, min, logbase, dot
 func processBinary(mNode *mathTree) error {
-	destMap := make(map[uint64]types.Val)
 	aggName := mNode.Fn
 
 	mpl := mNode.Child[0].Val
@@ -44,16 +45,16 @@ func processBinary(mNode *mathTree) error {
 	cl := mNode.Child[0].Const
 	cr := mNode.Child[1].Const
 
-	f := func(k uint64) error {
+	f := func(k uint64, lshard, rshard, destMapi *map[uint64]types.Val) error {
 		ag := aggregator{
 			name: aggName,
 		}
-		lVal := mpl[k]
+		lVal := (*lshard)[k]
 		if cl.Value != nil {
 			// Use the constant value that was supplied.
 			lVal = cl
 		}
-		rVal := mpr[k]
+		rVal := (*rshard)[k]
 		if cr.Value != nil {
 			// Use the constant value that was supplied.
 			rVal = cr
@@ -66,7 +67,7 @@ func processBinary(mNode *mathTree) error {
 		if err != nil {
 			return err
 		}
-		destMap[k], err = ag.Value()
+		(*destMapi)[k], err = ag.Value()
 		if err != nil {
 			return err
 		}
@@ -75,12 +76,12 @@ func processBinary(mNode *mathTree) error {
 
 	// If mpl or mpr have 0 and just 0 in it, that means it's an output of aggregation somewhere.
 	// This value would need to be applied to all.
-	checkAggrResult := func(value map[uint64]types.Val) (types.Val, bool) {
-		if len(value) != 1 {
+	checkAggrResult := func(value *types.ShardedMap) (types.Val, bool) {
+		if value.Len() != 1 {
 			return types.Val{}, false
 		}
 
-		val, ok := value[0]
+		val, ok := value.Get(0)
 		return val, ok
 	}
 
@@ -92,21 +93,31 @@ func processBinary(mNode *mathTree) error {
 		mpr = nil
 	}
 
-	if len(mpl) != 0 || len(mpr) != 0 {
-		for k := range mpr {
-			if err := f(k); err != nil {
-				return err
-			}
+	if mpl.Len() != 0 || mpr.Len() != 0 {
+		var wg sync.WaitGroup
+		returnMap := types.NewShardedMap()
+
+		for i := range types.NumShards {
+			wg.Add(1)
+			mlps := mpl.GetShardOrNil(i)
+			mprs := mpr.GetShardOrNil(i)
+			destMapi := returnMap.GetShardOrNil(i)
+			go func(i int) {
+				defer wg.Done()
+				for k := range mlps {
+					f(k, &mlps, &mprs, &destMapi)
+				}
+				for k := range mprs {
+					if _, ok := mlps[k]; ok {
+						continue
+					}
+					f(k, &mlps, &mprs, &destMapi)
+				}
+			}(i)
 		}
-		for k := range mpl {
-			if _, ok := mpr[k]; ok {
-				continue
-			}
-			if err := f(k); err != nil {
-				return err
-			}
-		}
-		mNode.Val = destMap
+
+		wg.Wait()
+		mNode.Val = returnMap
 		return nil
 	}
 
@@ -132,8 +143,8 @@ func processBinary(mNode *mathTree) error {
 // processUnary handles the unary operands like
 // u-, log, exp, since, floor, ceil
 func processUnary(mNode *mathTree) error {
-	destMap := make(map[uint64]types.Val)
 	srcMap := mNode.Child[0].Val
+	destMap := types.NewShardedMap()
 	aggName := mNode.Fn
 	ch := mNode.Child[0]
 	ag := aggregator{
@@ -149,16 +160,21 @@ func processUnary(mNode *mathTree) error {
 		return err
 	}
 
-	for k, val := range srcMap {
+	srcMap.Iterate(func(k uint64, val types.Val) error {
 		err := ag.ApplyVal(val)
 		if err != nil {
 			return err
 		}
-		destMap[k], err = ag.Value()
+		value, err := ag.Value()
 		if err != nil {
 			return err
 		}
-	}
+		destMap.Set(k, types.Val{
+			Tid:   types.FloatID,
+			Value: value,
+		})
+		return nil
+	})
 	mNode.Val = destMap
 	return nil
 
@@ -168,14 +184,14 @@ func processUnary(mNode *mathTree) error {
 // return a boolean value.
 // All the inequality operators (<, >, <=, >=, !=, ==)
 func processBinaryBoolean(mNode *mathTree) error {
-	destMap := make(map[uint64]types.Val)
 	srcMap := mNode.Child[0].Val
+	destMap := types.NewShardedMap()
 	aggName := mNode.Fn
 
 	ch := mNode.Child[1]
 	curMap := ch.Val
-	for k, val := range srcMap {
-		curVal := curMap[k]
+	srcMap.Iterate(func(k uint64, val types.Val) error {
+		curVal, _ := curMap.Get(k)
 		if ch.Const.Value != nil {
 			// Use the constant value that was supplied.
 			curVal = ch.Const
@@ -184,28 +200,29 @@ func processBinaryBoolean(mNode *mathTree) error {
 		if err != nil {
 			return errors.Wrapf(err, "Wrong values in comparison function.")
 		}
-		destMap[k] = types.Val{
+		destMap.Set(k, types.Val{
 			Tid:   types.BoolID,
 			Value: res,
-		}
-	}
+		})
+		return nil
+	})
 	mNode.Val = destMap
 	return nil
 }
 
 // processTernary handles the ternary operand cond()
 func processTernary(mNode *mathTree) error {
-	destMap := make(map[uint64]types.Val)
+	destMap := types.NewShardedMap()
 	aggName := mNode.Fn
 	condMap := mNode.Child[0].Val
-	if len(condMap) == 0 {
+	if len(condMap.Shards) == 0 {
 		return errors.Errorf("Expected a value variable in %v but missing.", aggName)
 	}
 	varOne := mNode.Child[1].Val
 	varTwo := mNode.Child[2].Val
 	constOne := mNode.Child[1].Const
 	constTwo := mNode.Child[2].Const
-	for k, val := range condMap {
+	condMap.Iterate(func(k uint64, val types.Val) error {
 		var res types.Val
 		v, ok := val.Value.(bool)
 		if !ok {
@@ -216,18 +233,19 @@ func processTernary(mNode *mathTree) error {
 			if constOne.Value != nil {
 				res = constOne
 			} else {
-				res = varOne[k]
+				res, _ = varOne.Get(k)
 			}
 		} else {
 			// Pick the value of second map.
 			if constTwo.Value != nil {
 				res = constTwo
 			} else {
-				res = varTwo[k]
+				res, _ = varTwo.Get(k)
 			}
 		}
-		destMap[k] = res
-	}
+		destMap.Set(k, res)
+		return nil
+	})
 	mNode.Val = destMap
 	return nil
 }
@@ -237,7 +255,7 @@ func evalMathTree(mNode *mathTree) error {
 		return nil
 	}
 	if mNode.Var != "" {
-		if len(mNode.Val) == 0 {
+		if len(mNode.Val.Shards) == 0 {
 			glog.V(2).Infof("Variable %v not yet populated or missing.", mNode.Var)
 		}
 		// This is a leaf node whose value is already populated. So return.
@@ -246,13 +264,13 @@ func evalMathTree(mNode *mathTree) error {
 
 	for _, child := range mNode.Child {
 		// Process the child nodes first.
-		err := evalMathTree(child)
-		if err != nil {
+		if err := evalMathTree(child); err != nil {
 			return err
 		}
 	}
 
 	aggName := mNode.Fn
+
 	if isUnary(aggName) {
 		if len(mNode.Child) != 1 {
 			return errors.Errorf("Function %v expects 1 argument. But got: %v", aggName,

@@ -1039,7 +1039,7 @@ func (sg *SubGraph) addGroupby(enc *encoder, fj fastJsonNode,
 
 func (sg *SubGraph) addAggregations(enc *encoder, fj fastJsonNode) error {
 	for _, child := range sg.Children {
-		aggVal, ok := child.Params.UidToVal[0]
+		aggVal, ok := child.Params.UidToVal.Get(0)
 		if !ok {
 			if len(child.Params.NeedsVar) == 0 {
 				return errors.Errorf("Only aggregated variables allowed within empty block.")
@@ -1303,7 +1303,7 @@ func (sg *SubGraph) aggWithVarFieldName() string {
 }
 
 func (sg *SubGraph) addInternalNode(enc *encoder, uid uint64, dst fastJsonNode) error {
-	sv, ok := sg.Params.UidToVal[uid]
+	sv, ok := sg.Params.UidToVal.Get(uid)
 	if !ok || sv.Value == nil {
 		return nil
 	}

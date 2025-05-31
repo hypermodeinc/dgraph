@@ -49,7 +49,7 @@ type MathTree struct {
 	Fn    string
 	Var   string
 	Const types.Val // This will always be parsed as a float value
-	Val   map[uint64]types.Val
+	Val   *types.ShardedMap
 	Child []*MathTree
 }
 

@@ -8,6 +8,7 @@ package algo
 import (
 	"container/heap"
 	"sort"
+	"sync"
 
 	"github.com/hypermodeinc/dgraph/v25/codec"
 	"github.com/hypermodeinc/dgraph/v25/protos/pb"
@@ -360,8 +361,36 @@ func Difference(u, v *pb.List) *pb.List {
 	return &pb.List{Uids: out}
 }
 
-// MergeSorted merges sorted lists.
 func MergeSorted(lists []*pb.List) *pb.List {
+	numThreads := 10
+	if len(lists) > numThreads*numThreads {
+		k := numThreads
+		res := []*pb.List{}
+		var wg sync.WaitGroup
+		var mutex sync.Mutex
+		wg.Add(k)
+		for i := 0; i < k; i++ {
+			go func() {
+				defer wg.Done()
+				end := (i + 1) * len(lists) / k
+				if end > len(lists) {
+					end = len(lists)
+				}
+				result := MergeSorted(lists[i*len(lists)/k : end])
+				mutex.Lock()
+				res = append(res, result)
+				mutex.Unlock()
+			}()
+		}
+		wg.Wait()
+		return MergeSorted(res)
+	} else {
+		return internalMergeSort(lists)
+	}
+}
+
+// MergeSorted merges sorted lists.
+func internalMergeSort(lists []*pb.List) *pb.List {
 	if len(lists) == 0 {
 		return new(pb.List)
 	}

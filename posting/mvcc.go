@@ -605,8 +605,12 @@ func ReadPostingList(key []byte, it *badger.Iterator) (*List, error) {
 			}
 
 			l.minTs = item.Version()
+			if l.mutationMap == nil {
+				l.mutationMap = newMutableLayer()
+			}
 			// No need to do Next here. The outer loop can take care of skipping
 			// more versions of the same key.
+			l.calculateUids()
 			return l, nil
 		case BitDeltaPosting:
 			err := item.Value(func(val []byte) error {
@@ -637,6 +641,8 @@ func ReadPostingList(key []byte, it *badger.Iterator) (*List, error) {
 		}
 		it.Next()
 	}
+
+	l.calculateUids()
 	return l, nil
 }
 

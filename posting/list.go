@@ -100,6 +100,10 @@ type MutableLayer struct {
 
 	// We also cache some things required for us to update currentEntries faster
 	currentUids map[uint64]int // Stores the uid to index mapping in the currentEntries posting list
+
+	// Cache for calculated UIDS
+	isUidsCalculated bool
+	calculatedUids   []uint64
 }
 
 func newMutableLayer() *MutableLayer {
@@ -110,6 +114,8 @@ func newMutableLayer() *MutableLayer {
 		length:            math.MaxInt,
 		committedUids:     make(map[uint64]*pb.Posting),
 		committedUidsTime: math.MaxUint64,
+		isUidsCalculated:  false,
+		calculatedUids:    []uint64{},
 	}
 }
 
@@ -136,6 +142,8 @@ func (mm *MutableLayer) clone() *MutableLayer {
 		length:            mm.length,
 		lastEntry:         mm.lastEntry,
 		committedUidsTime: mm.committedUidsTime,
+		isUidsCalculated:  mm.isUidsCalculated,
+		calculatedUids:    mm.calculatedUids,
 	}
 }
 
@@ -1691,6 +1699,36 @@ func (l *List) ApproxLen() int {
 	return l.mutationMap.len() + codec.ApproxLen(l.plist.Pack)
 }
 
+func (l *List) calculateUids() error {
+	l.RLock()
+	if l.mutationMap == nil || l.mutationMap.isUidsCalculated {
+		l.RUnlock()
+		return nil
+	}
+	res := make([]uint64, 0, l.ApproxLen())
+
+	err := l.iterate(l.mutationMap.committedUidsTime, 0, func(p *pb.Posting) error {
+		if p.PostingType == pb.Posting_REF {
+			res = append(res, p.Uid)
+		}
+		return nil
+	})
+
+	l.RUnlock()
+
+	if err != nil {
+		return err
+	}
+
+	l.Lock()
+	defer l.Unlock()
+
+	l.mutationMap.calculatedUids = res
+	l.mutationMap.isUidsCalculated = true
+
+	return nil
+}
+
 // Uids returns the UIDs given some query params.
 // We have to apply the filtering before applying (offset, count).
 // WARNING: Calling this function just to get UIDs is expensive
@@ -1700,6 +1738,12 @@ func (l *List) Uids(opt ListOptions) (*pb.List, error) {
 	}
 
 	getUidList := func() (*pb.List, error, bool) {
+		if l.mutationMap != nil && l.mutationMap.isUidsCalculated {
+			l.RLock()
+			defer l.RUnlock()
+			out := &pb.List{Uids: l.mutationMap.calculatedUids}
+			return out, nil, opt.Intersect != nil
+		}
 		// Pre-assign length to make it faster.
 		l.RLock()
 		defer l.RUnlock()
