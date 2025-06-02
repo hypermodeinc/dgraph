@@ -23,13 +23,13 @@ require (
 	github.com/docker/go-connections v0.5.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/go-jose/go-jose/v4 v4.0.5
-	github.com/go-sql-driver/mysql v1.9.0
-	github.com/golang-jwt/jwt/v5 v5.2.1
-	github.com/golang/geo v0.0.0-20230421003525-6adc56603217
-	github.com/golang/glog v1.2.4
+	github.com/go-sql-driver/mysql v1.9.2
+	github.com/golang-jwt/jwt/v5 v5.2.2
+	github.com/golang/geo v0.0.0-20250516193853-92f93c4cb289
+	github.com/golang/glog v1.2.5
 	github.com/golang/snappy v0.0.4
 	github.com/google/codesearch v1.2.0
-	github.com/google/go-cmp v0.6.0
+	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/graph-gophers/graphql-go v1.5.0
@@ -45,10 +45,10 @@ require (
 	github.com/spf13/pflag v1.0.6
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
-	github.com/twpayne/go-geom v1.6.0
+	github.com/twpayne/go-geom v1.6.1
 	github.com/viterin/vek v0.4.2
 	github.com/xdg/scram v1.0.5
-	go.etcd.io/etcd/raft/v3 v3.5.18
+	go.etcd.io/etcd/raft/v3 v3.5.21
 	go.opencensus.io v0.24.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.33.0
@@ -61,7 +61,7 @@ require (
 	golang.org/x/text v0.22.0
 	golang.org/x/tools v0.29.0
 	google.golang.org/grpc v1.70.0
-	google.golang.org/protobuf v1.36.5
+	google.golang.org/protobuf v1.36.6
 	gopkg.in/yaml.v3 v3.0.1
 )
 
