@@ -268,6 +268,19 @@ func ExtractNamespace(ctx context.Context) (uint64, error) {
 	return namespace, nil
 }
 
+// ExtractNamespaceStr parses the namespace string value from the incoming gRPC context.
+func ExtractNamespaceStr(ctx context.Context) (string, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return "", errors.New("No metadata in the context")
+	}
+	ns := md.Get("namespace-str")
+	if len(ns) == 0 {
+		return "", errors.New("No namespace-str in the metadata of context")
+	}
+	return ns[0], nil
+}
+
 func IsRootNsOperation(ctx context.Context) bool {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
