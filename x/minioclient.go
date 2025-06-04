@@ -13,8 +13,8 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-	minio "github.com/minio/minio-go/v6"
-	"github.com/minio/minio-go/v6/pkg/credentials"
+	minio "github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/pkg/errors"
 
 	"github.com/hypermodeinc/dgraph/v25/protos/pb"

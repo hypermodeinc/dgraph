@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/minio/minio-go/v6"
+	"github.com/minio/minio-go/v7"
 
 	"github.com/hypermodeinc/dgraph/v25/chunker"
 	"github.com/hypermodeinc/dgraph/v25/x"

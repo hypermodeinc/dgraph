@@ -6,7 +6,7 @@
 package testutil
 
 import (
-	"github.com/minio/minio-go/v6"
+	"github.com/minio/minio-go/v7"
 )
 
 // NewMinioClient returns a minio client.
