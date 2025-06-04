@@ -8,6 +8,7 @@ package algo
 import (
 	"container/heap"
 	"sort"
+	"sync"
 
 	"github.com/hypermodeinc/dgraph/v25/codec"
 	"github.com/hypermodeinc/dgraph/v25/protos/pb"
@@ -360,8 +361,36 @@ func Difference(u, v *pb.List) *pb.List {
 	return &pb.List{Uids: out}
 }
 
+func MergeSortedMoreMem(lists []*pb.List) *pb.List {
+	numThreads := 10
+	if len(lists) > numThreads*numThreads {
+		k := numThreads
+		res := []*pb.List{}
+		var wg sync.WaitGroup
+		var mutex sync.Mutex
+		wg.Add(k)
+		for i := 0; i < k; i++ {
+			go func() {
+				defer wg.Done()
+				end := (i + 1) * len(lists) / k
+				if end > len(lists) {
+					end = len(lists)
+				}
+				result := MergeSortedMoreMem(lists[i*len(lists)/k : end])
+				mutex.Lock()
+				res = append(res, result)
+				mutex.Unlock()
+			}()
+		}
+		wg.Wait()
+		return MergeSortedMoreMem(res)
+	} else {
+		return internalMergeSort(lists)
+	}
+}
+
 // MergeSorted merges sorted lists.
-func MergeSorted(lists []*pb.List) *pb.List {
+func internalMergeSort(lists []*pb.List) *pb.List {
 	if len(lists) == 0 {
 		return new(pb.List)
 	}
@@ -407,6 +436,136 @@ func MergeSorted(lists []*pb.List) *pb.List {
 			heap.Fix(h, 0) // Faster than Pop() followed by Push().
 		}
 	}
+	return &pb.List{Uids: output}
+}
+
+func MergeSorted(lists []*pb.List) *pb.List {
+	// Calculate total capacity needed
+	totalCap := 0
+	for _, l := range lists {
+		if l != nil {
+			totalCap += len(l.Uids)
+		}
+	}
+
+	// Pre-allocate one big buffer
+	bigBuffer := make([]uint64, totalCap)
+
+	result := mergeSortedWithBuffer(lists, bigBuffer)
+	return result
+}
+
+func mergeSortedWithBuffer(lists []*pb.List, buffer []uint64) *pb.List {
+	numThreads := 10
+	if len(lists) > numThreads*numThreads {
+		// Calculate how much buffer each goroutine needs
+		chunkSizes := make([]int, numThreads)
+		totalNeeded := 0
+
+		for i := 0; i < numThreads; i++ {
+			start := i * len(lists) / numThreads
+			end := (i + 1) * len(lists) / numThreads
+			if end > len(lists) {
+				end = len(lists)
+			}
+
+			chunkCap := 0
+			for j := start; j < end; j++ {
+				if lists[j] != nil {
+					chunkCap += len(lists[j].Uids)
+				}
+			}
+			chunkSizes[i] = chunkCap
+			totalNeeded += chunkCap
+		}
+
+		// Calculate buffer offsets for each goroutine
+		bufferOffsets := make([]int, numThreads)
+		bufferOffsets[0] = 0
+		for i := 1; i < numThreads; i++ {
+			bufferOffsets[i] = bufferOffsets[i-1] + chunkSizes[i-1]
+		}
+
+		// Distribute buffer slices to each goroutine
+		intermediateResults := make([]*pb.List, numThreads)
+		var wg sync.WaitGroup
+
+		wg.Add(numThreads)
+		for i := 0; i < numThreads; i++ {
+			go func(idx int) {
+				defer wg.Done()
+				start := idx * len(lists) / numThreads
+				end := (idx + 1) * len(lists) / numThreads
+				if end > len(lists) {
+					end = len(lists)
+				}
+
+				// Give this goroutine its slice of the big buffer
+				bufferStart := bufferOffsets[idx]
+				bufferEnd := bufferStart + chunkSizes[idx]
+				goroutineBuffer := buffer[bufferStart:bufferEnd:bufferEnd][:0]
+				result := internalMergeSortWithBuffer(lists[start:end], goroutineBuffer)
+				intermediateResults[idx] = result
+			}(i)
+		}
+		wg.Wait()
+
+		// Filter out nil results
+		validResults := make([]*pb.List, 0, numThreads)
+		for _, result := range intermediateResults {
+			if result != nil && len(result.Uids) > 0 {
+				validResults = append(validResults, result)
+			}
+		}
+
+		// Use the remaining part of buffer for final merge
+		finalBuffer := buffer[totalNeeded:][:0]
+		return internalMergeSortWithBuffer(validResults, finalBuffer)
+	} else {
+		return internalMergeSortWithBuffer(lists, buffer)
+	}
+}
+
+func internalMergeSortWithBuffer(lists []*pb.List, buffer []uint64) *pb.List {
+	if len(lists) == 0 {
+		return &pb.List{Uids: buffer[:0]}
+	}
+
+	h := &uint64Heap{}
+	heap.Init(h)
+
+	for i, l := range lists {
+		if l == nil || len(l.Uids) == 0 {
+			continue
+		}
+		heap.Push(h, elem{
+			val:     l.Uids[0],
+			listIdx: i,
+		})
+	}
+
+	// Use the provided buffer
+	output := buffer[:0]
+	idx := make([]int, len(lists))
+	var last uint64
+
+	for h.Len() > 0 {
+		me := (*h)[0]
+		if len(output) == 0 || me.val != last {
+			output = append(output, me.val)
+			last = me.val
+		}
+		l := lists[me.listIdx]
+		if idx[me.listIdx] >= len(l.Uids)-1 {
+			heap.Pop(h)
+		} else {
+			idx[me.listIdx]++
+			val := l.Uids[idx[me.listIdx]]
+			(*h)[0].val = val
+			heap.Fix(h, 0)
+		}
+	}
+
 	return &pb.List{Uids: output}
 }
 
