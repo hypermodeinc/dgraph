@@ -1740,8 +1740,8 @@ func addQueryIfUnique(qctx context.Context, qc *queryContext) error {
 			// in the mutation, then we reject the mutation.
 
 			if !strings.HasPrefix(pred.ObjectId, "val(") {
-				query := fmt.Sprintf(`%v as var(func: eq(%v,"%v"))`, queryVar, predicateName,
-					dql.TypeValFrom(pred.ObjectValue).Value)
+				val := strconv.Quote(dql.TypeValFrom(pred.ObjectValue).Value.(string))
+				query := fmt.Sprintf(`%v as var(func: eq(%v,"%v"))`, queryVar, predicateName, val[1:len(val)-1])
 				if _, err := buildQuery.WriteString(query); err != nil {
 					return errors.Wrapf(err, "error while writing string")
 				}
