@@ -1194,7 +1194,21 @@ func (s *Server) Query(ctx context.Context, req *api.Request) (*api.Response, er
 
 // Query handles queries or mutations
 func (s *Server) QueryNoGrpc(ctx context.Context, req *api.Request) (*api.Response, error) {
-	ctx = x.AttachJWTNamespace(ctx)
+	// if the `namespace-str` is present in the metadata, use it to attach the namespace
+	// otherwise, use the namespace from the JWT.
+	nsStr, err := x.ExtractNamespaceStr(ctx)
+	if err == nil {
+		ns, err := getNamespaceIDFromName(x.AttachNamespace(ctx, x.RootNamespace), nsStr)
+		if err == nil {
+			ctx = x.AttachNamespace(ctx, ns)
+		} else {
+			ctx = x.AttachJWTNamespace(ctx)
+		}
+	} else {
+		ctx = x.AttachJWTNamespace(ctx)
+	}
+	// if acl is enabled, then the namespace from the JWT will be applied in the test below
+	// overriding any namespace from the metadata obtained from the `namespace-str` above.
 	if x.WorkerConfig.AclEnabled && req.GetStartTs() != 0 {
 		// A fresh StartTs is assigned if it is 0.
 		ns, err := x.ExtractNamespace(ctx)
