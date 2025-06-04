@@ -828,7 +828,7 @@ func (qs *queryState) handleUidPostings(
 			}
 
 			// Get or create the posting list for an entity, attribute combination.
-			pl, err := qs.cache.Get(key)
+			pl, err := qs.cache.GetUids(key)
 			if err != nil {
 				return err
 			}
@@ -2464,7 +2464,7 @@ func (qs *queryState) evaluate(cp countParams, out *pb.Result) error {
 
 	countKey := x.CountKey(cp.attr, uint32(countl), cp.reverse)
 	if cp.fn == "eq" {
-		pl, err := qs.cache.Get(countKey)
+		pl, err := qs.cache.GetUids(countKey)
 		if err != nil {
 			return err
 		}
@@ -2510,7 +2510,7 @@ func (qs *queryState) evaluate(cp countParams, out *pb.Result) error {
 			break
 		}
 
-		pl, err := qs.cache.Get(item.KeyCopy(key))
+		pl, err := qs.cache.GetUids(item.KeyCopy(key))
 		if err != nil {
 			return err
 		}

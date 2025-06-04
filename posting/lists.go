@@ -57,7 +57,7 @@ func Cleanup() {
 // GetNoStore returns the list stored in the key or creates a new one if it doesn't exist.
 // It does not store the list in any cache.
 func GetNoStore(key []byte, readTs uint64) (rlist *List, err error) {
-	return getNew(key, pstore, readTs)
+	return getNew(key, pstore, readTs, false)
 }
 
 // LocalCache stores a cache of posting lists and deltas.
@@ -258,13 +258,13 @@ func (lc *LocalCache) SetIfAbsent(key string, updated *List) *List {
 	return updated
 }
 
-func (lc *LocalCache) getInternal(key []byte, readFromDisk bool) (*List, error) {
+func (lc *LocalCache) getInternal(key []byte, readFromDisk, readUids bool) (*List, error) {
 	skey := string(key)
 	getNewPlistNil := func() (*List, error) {
 		lc.RLock()
 		defer lc.RUnlock()
 		if lc.plists == nil {
-			return getNew(key, pstore, lc.startTs)
+			return getNew(key, pstore, lc.startTs, readUids)
 		}
 		if l, ok := lc.plists[skey]; ok {
 			return l, nil
@@ -279,7 +279,7 @@ func (lc *LocalCache) getInternal(key []byte, readFromDisk bool) (*List, error) 
 	var pl *List
 	if readFromDisk {
 		var err error
-		pl, err = getNew(key, pstore, lc.startTs)
+		pl, err = getNew(key, pstore, lc.startTs, readUids)
 		if err != nil {
 			return nil, err
 		}
@@ -390,14 +390,18 @@ func (lc *LocalCache) GetSinglePosting(key []byte) (*pb.PostingList, error) {
 
 // Get retrieves the cached version of the list associated with the given key.
 func (lc *LocalCache) Get(key []byte) (*List, error) {
-	return lc.getInternal(key, true)
+	return lc.getInternal(key, true, false)
+}
+
+func (lc *LocalCache) GetUids(key []byte) (*List, error) {
+	return lc.getInternal(key, true, true)
 }
 
 // GetFromDelta gets the cached version of the list without reading from disk
 // and only applies the existing deltas. This is used in situations where the
 // posting list will only be modified and not read (e.g adding index mutations).
 func (lc *LocalCache) GetFromDelta(key []byte) (*List, error) {
-	return lc.getInternal(key, false)
+	return lc.getInternal(key, false, false)
 }
 
 // UpdateDeltasAndDiscardLists updates the delta cache before removing the stored posting lists.

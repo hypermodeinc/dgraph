@@ -100,6 +100,10 @@ type MutableLayer struct {
 
 	// We also cache some things required for us to update currentEntries faster
 	currentUids map[uint64]int // Stores the uid to index mapping in the currentEntries posting list
+
+	// Cache for calculated UIDS
+	isUidsCalculated bool
+	calculatedUids   []uint64
 }
 
 func newMutableLayer() *MutableLayer {
@@ -110,6 +114,8 @@ func newMutableLayer() *MutableLayer {
 		length:            math.MaxInt,
 		committedUids:     make(map[uint64]*pb.Posting),
 		committedUidsTime: math.MaxUint64,
+		isUidsCalculated:  false,
+		calculatedUids:    []uint64{},
 	}
 }
 
@@ -136,6 +142,8 @@ func (mm *MutableLayer) clone() *MutableLayer {
 		length:            mm.length,
 		lastEntry:         mm.lastEntry,
 		committedUidsTime: mm.committedUidsTime,
+		isUidsCalculated:  mm.isUidsCalculated,
+		calculatedUids:    mm.calculatedUids,
 	}
 }
 
@@ -153,6 +161,8 @@ func (mm *MutableLayer) setCurrentEntries(ts uint64, pl *pb.PostingList) {
 	mm.readTs = ts
 	mm.currentEntries = pl
 	clear(mm.currentUids)
+	mm.isUidsCalculated = false
+	mm.calculatedUids = nil
 	mm.deleteAllMarker = math.MaxUint64
 	mm.populateUidMap(pl)
 }
@@ -770,6 +780,9 @@ func (l *List) updateMutationLayer(mpost *pb.Posting, singleUidUpdate, hasCountI
 		l.mutationMap.currentEntries = &pb.PostingList{}
 	}
 
+	l.mutationMap.isUidsCalculated = false
+	l.mutationMap.calculatedUids = nil
+
 	if singleUidUpdate {
 		// This handles the special case when adding a value to predicates of type uid.
 		// The current value should be deleted in favor of this value. This needs to
@@ -1010,6 +1023,8 @@ func (l *List) setMutationAfterCommit(startTs, commitTs uint64, pl *pb.PostingLi
 	l.mutationMap.currentEntries = nil
 	l.mutationMap.readTs = 0
 	l.mutationMap.currentUids = nil
+	l.mutationMap.isUidsCalculated = false
+	l.mutationMap.calculatedUids = nil
 
 	if pl.CommitTs != 0 {
 		l.maxTs = x.Max(l.maxTs, pl.CommitTs)
@@ -1691,6 +1706,43 @@ func (l *List) ApproxLen() int {
 	return l.mutationMap.len() + codec.ApproxLen(l.plist.Pack)
 }
 
+func (l *List) calculateUids() error {
+	l.RLock()
+	if l.mutationMap == nil || l.mutationMap.isUidsCalculated {
+		l.RUnlock()
+		return nil
+	}
+	res := make([]uint64, 0, l.ApproxLen())
+
+	err := l.iterate(l.mutationMap.committedUidsTime, 0, func(p *pb.Posting) error {
+		if p.PostingType == pb.Posting_REF {
+			res = append(res, p.Uid)
+		}
+		return nil
+	})
+
+	l.RUnlock()
+
+	if err != nil {
+		return err
+	}
+
+	l.Lock()
+	defer l.Unlock()
+
+	l.mutationMap.calculatedUids = res
+	l.mutationMap.isUidsCalculated = true
+
+	return nil
+}
+
+func (l *List) canUseCalculatedUids() bool {
+	if l.mutationMap == nil {
+		return false
+	}
+	return l.mutationMap.isUidsCalculated && l.mutationMap.currentEntries == nil
+}
+
 // Uids returns the UIDs given some query params.
 // We have to apply the filtering before applying (offset, count).
 // WARNING: Calling this function just to get UIDs is expensive
@@ -1700,6 +1752,30 @@ func (l *List) Uids(opt ListOptions) (*pb.List, error) {
 	}
 
 	getUidList := func() (*pb.List, error, bool) {
+		if l.canUseCalculatedUids() {
+			l.RLock()
+
+			afterIdx := 0
+
+			if opt.AfterUid != 0 {
+				after := sort.Search(len(l.mutationMap.calculatedUids), func(i int) bool {
+					return l.mutationMap.calculatedUids[i] > opt.AfterUid
+				})
+				if after >= len(l.mutationMap.calculatedUids) {
+					l.RUnlock()
+					return &pb.List{}, nil, false
+				}
+
+				afterIdx = after
+			}
+
+			copyArr := make([]uint64, len(l.mutationMap.calculatedUids)-afterIdx)
+			copy(copyArr, l.mutationMap.calculatedUids[afterIdx:])
+			out := &pb.List{Uids: copyArr}
+			l.RUnlock()
+
+			return out, nil, opt.Intersect != nil
+		}
 		// Pre-assign length to make it faster.
 		l.RLock()
 		defer l.RUnlock()
@@ -1752,13 +1828,7 @@ func (l *List) Uids(opt ListOptions) (*pb.List, error) {
 				}
 				res = append(res, p.Uid)
 
-				if opt.First < 0 {
-					// We need the last N.
-					// TODO: This could be optimized by only considering some of the last UidBlocks.
-					if len(res) > -opt.First {
-						res = res[1:]
-					}
-				} else if len(res) > opt.First {
+				if opt.First != 0 && len(res) > opt.First {
 					return ErrStopIteration
 				}
 			}
@@ -1774,19 +1844,22 @@ func (l *List) Uids(opt ListOptions) (*pb.List, error) {
 
 	// Do The intersection here as it's optimized.
 	out, err, applyIntersectWith := getUidList()
-	if err != nil || !applyIntersectWith {
+	if err != nil || !applyIntersectWith || opt.First == 0 {
 		return out, err
 	}
 
-	lenBefore := len(out.Uids)
-	if opt.Intersect != nil {
+	if opt.Intersect != nil && applyIntersectWith {
 		algo.IntersectWith(out, opt.Intersect, out)
 	}
-	lenAfter := len(out.Uids)
-	if lenBefore-lenAfter > 0 {
-		// If we see this log, that means that iterate is going over too many elements that it doesn't need to
-		glog.V(3).Infof("Retrieved a list. length before intersection: %d, length after: %d, extra"+
-			" elements: %d", lenBefore, lenAfter, lenBefore-lenAfter)
+
+	if opt.First != 0 {
+		if opt.First < 0 {
+			if len(out.Uids) > -opt.First {
+				out.Uids = out.Uids[(len(out.Uids) + opt.First):]
+			}
+		} else if len(out.Uids) > opt.First {
+			out.Uids = out.Uids[:opt.First]
+		}
 	}
 	return out, nil
 }

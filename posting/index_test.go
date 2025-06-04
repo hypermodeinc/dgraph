@@ -172,7 +172,7 @@ func TestTokensTable(t *testing.T) {
 
 	attr := x.AttrInRootNamespace("name")
 	key := x.DataKey(attr, 1)
-	l, err := getNew(key, ps, math.MaxUint64)
+	l, err := getNew(key, ps, math.MaxUint64, false)
 	require.NoError(t, err)
 
 	edge := &pb.DirectedEdge{

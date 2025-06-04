@@ -637,6 +637,7 @@ func ReadPostingList(key []byte, it *badger.Iterator) (*List, error) {
 		}
 		it.Next()
 	}
+
 	return l, nil
 }
 
@@ -672,7 +673,7 @@ func (ml *MemoryLayer) readFromCache(key []byte, readTs uint64) *List {
 	return nil
 }
 
-func (ml *MemoryLayer) readFromDisk(key []byte, pstore *badger.DB, readTs uint64) (*List, error) {
+func (ml *MemoryLayer) readFromDisk(key []byte, pstore *badger.DB, readTs uint64, readUids bool) (*List, error) {
 	txn := pstore.NewTransactionAt(readTs, false)
 	defer txn.Discard()
 
@@ -688,6 +689,14 @@ func (ml *MemoryLayer) readFromDisk(key []byte, pstore *badger.DB, readTs uint64
 	if err != nil {
 		return l, err
 	}
+	if readUids {
+		if l.mutationMap == nil {
+			l.mutationMap = newMutableLayer()
+		}
+		if err := l.calculateUids(); err != nil {
+			return nil, err
+		}
+	}
 	return l, nil
 }
 
@@ -701,7 +710,7 @@ func (ml *MemoryLayer) saveInCache(key []byte, l *List) {
 	ml.cache.set(key, cacheItem)
 }
 
-func (ml *MemoryLayer) ReadData(key []byte, pstore *badger.DB, readTs uint64) (*List, error) {
+func (ml *MemoryLayer) ReadData(key []byte, pstore *badger.DB, readTs uint64, readUids bool) (*List, error) {
 	// We first try to read the data from cache, if it is present. If it's not present, then we would read the
 	// latest data from the disk. This would get stored in the cache. If this read has a minTs > readTs then
 	// we would have to read the correct timestamp from the disk.
@@ -710,7 +719,7 @@ func (ml *MemoryLayer) ReadData(key []byte, pstore *badger.DB, readTs uint64) (*
 		l.mutationMap.setTs(readTs)
 		return l, nil
 	}
-	l, err := ml.readFromDisk(key, pstore, math.MaxUint64)
+	l, err := ml.readFromDisk(key, pstore, math.MaxUint64, readUids)
 	if err != nil {
 		return nil, err
 	}
@@ -720,7 +729,7 @@ func (ml *MemoryLayer) ReadData(key []byte, pstore *badger.DB, readTs uint64) (*
 		return l, nil
 	}
 
-	l, err = ml.readFromDisk(key, pstore, readTs)
+	l, err = ml.readFromDisk(key, pstore, readTs, readUids)
 	if err != nil {
 		return nil, err
 	}
@@ -729,16 +738,16 @@ func (ml *MemoryLayer) ReadData(key []byte, pstore *badger.DB, readTs uint64) (*
 	return l, nil
 }
 
-func GetNew(key []byte, pstore *badger.DB, readTs uint64) (*List, error) {
-	return getNew(key, pstore, readTs)
+func GetNew(key []byte, pstore *badger.DB, readTs uint64, readUids bool) (*List, error) {
+	return getNew(key, pstore, readTs, readUids)
 }
 
-func getNew(key []byte, pstore *badger.DB, readTs uint64) (*List, error) {
+func getNew(key []byte, pstore *badger.DB, readTs uint64, readUids bool) (*List, error) {
 	if pstore.IsClosed() {
 		return nil, badger.ErrDBClosed
 	}
 
-	l, err := memoryLayer.ReadData(key, pstore, readTs)
+	l, err := memoryLayer.ReadData(key, pstore, readTs, readUids)
 	if err != nil {
 		return l, err
 	}

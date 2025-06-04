@@ -135,7 +135,7 @@ func BenchmarkTestCache(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			key := keys[rand.Intn(NInt-1)]
-			_, err = getNew(key, pstore, math.MaxUint64)
+			_, err = getNew(key, pstore, math.MaxUint64, false)
 			if err != nil {
 				panic(err)
 			}
@@ -168,7 +168,7 @@ func TestRollupTimestamp(t *testing.T) {
 	l.mutationMap.setTs(9)
 	addMutation(t, l, edge, Del, 9, 10, false)
 
-	nl, err := getNew(key, pstore, math.MaxUint64)
+	nl, err := getNew(key, pstore, math.MaxUint64, false)
 	require.NoError(t, err)
 
 	uidList, err = nl.Uids(ListOptions{ReadTs: 11})
@@ -187,7 +187,7 @@ func TestPostingListRead(t *testing.T) {
 	key := x.DataKey(attr, 1)
 
 	assertLength := func(readTs, sz int) {
-		nl, err := getNew(key, pstore, math.MaxUint64)
+		nl, err := getNew(key, pstore, math.MaxUint64, false)
 		require.NoError(t, err)
 		uidList, err := nl.Uids(ListOptions{ReadTs: uint64(readTs)})
 		require.NoError(t, err)

@@ -603,7 +603,7 @@ func printKeys(db *badger.DB) {
 		}
 
 		var sz, deltaCount int64
-		pl, err := posting.GetNew(key, db, opt.readTs)
+		pl, err := posting.GetNew(key, db, opt.readTs, false)
 		if err == nil {
 			pl.RLock()
 			c := pl.GetLength(math.MaxUint64)
