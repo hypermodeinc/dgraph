@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/minio/minio-go/v6"
+	"github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dgraph-io/dgo/v250/protos/api"
