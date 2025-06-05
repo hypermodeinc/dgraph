@@ -65,6 +65,8 @@ var (
 	ErrConflict = errors.New("Transaction conflict")
 	// ErrHashMismatch is returned when the hash does not matches the startTs
 	ErrHashMismatch = errors.New("hash mismatch the claimed startTs|namespace")
+	// ErrNamespaceNotFound is returned when a namespace is not found.
+	ErrNamespaceNotFound = errors.New("namespace not found")
 )
 
 const (
