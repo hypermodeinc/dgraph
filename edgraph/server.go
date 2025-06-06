@@ -834,7 +834,7 @@ func findMutationVars(qc *queryContext) []string {
 // If val(variable) exists in a query, but the values are not there for the variable,
 // it will ignore the mutation silently.
 func updateValInNQuads(nquads []*api.NQuad, qc *queryContext, isSet bool) []*api.NQuad {
-	getNewVals := func(s string) (map[uint64]types.Val, bool) {
+	getNewVals := func(s string) (*types.ShardedMap, bool) {
 		if strings.HasPrefix(s, "val(") {
 			varName := s[4 : len(s)-1]
 			if v, ok := qc.valRes[varName]; ok && v != nil {
@@ -845,15 +845,15 @@ func updateValInNQuads(nquads []*api.NQuad, qc *queryContext, isSet bool) []*api
 		return nil, false
 	}
 
-	getValue := func(key uint64, uidToVal map[uint64]types.Val) (types.Val, bool) {
-		val, ok := uidToVal[key]
+	getValue := func(key uint64, uidToVal *types.ShardedMap) (types.Val, bool) {
+		val, ok := uidToVal.Get(key)
 		if ok {
 			return val, true
 		}
 
 		// Check if the variable is aggregate variable
 		// Only 0 key would exist for aggregate variable
-		val, ok = uidToVal[0]
+		val, ok = uidToVal.Get(0)
 		return val, ok
 	}
 
@@ -1026,7 +1026,7 @@ type queryContext struct {
 	uidRes map[string][]string
 	// valRes stores mapping from variable names to values for value
 	// variables used in the mutation block of incoming request.
-	valRes map[string]map[uint64]types.Val
+	valRes map[string]*types.ShardedMap
 	// l stores latency numbers
 	latency *query.Latency
 	// span stores a opencensus span used throughout the query processing
@@ -1494,10 +1494,11 @@ func processQuery(ctx context.Context, qc *queryContext) (*api.Response, error) 
 		if v.Uids != nil && len(v.Uids.Uids) > 0 {
 			uidList = v.Uids.Uids
 		} else {
-			uidList = make([]uint64, 0, len(v.Vals))
-			for uid := range v.Vals {
+			uidList = make([]uint64, 0, v.Vals.Len())
+			v.Vals.Iterate(func(uid uint64, val types.Val) error {
 				uidList = append(uidList, uid)
-			}
+				return nil
+			})
 		}
 		if len(uidList) == 0 {
 			continue
@@ -1565,7 +1566,7 @@ func parseRequest(ctx context.Context, qc *queryContext) error {
 		}
 
 		qc.uidRes = make(map[string][]string)
-		qc.valRes = make(map[string]map[uint64]types.Val)
+		qc.valRes = make(map[string]*types.ShardedMap)
 		upsertQuery = buildUpsertQuery(qc)
 		needVars = findMutationVars(qc)
 		if upsertQuery == "" {
@@ -1627,19 +1628,24 @@ func verifyUnique(qc *queryContext, qr query.Request) error {
 		var predValue interface{}
 		if strings.HasPrefix(pred.ObjectId, "val(") {
 			varName := qr.Vars[pred.ObjectId[4:len(pred.ObjectId)-1]]
-			val, ok := varName.Vals[0]
+			val, ok := varName.Vals.Get(0)
 			if !ok {
-				_, isValueGoingtoSet := varName.Vals[subjectUid]
+				_, isValueGoingtoSet := varName.Vals.Get(subjectUid)
 				if !isValueGoingtoSet {
 					continue
 				}
 
 				results := qr.Vars[queryVar.valVar]
-				for uidOfv, v := range results.Vals {
-					if v.Value == varName.Vals[subjectUid].Value && uidOfv != subjectUid {
+				err := results.Vals.Iterate(func(uidOfv uint64, v types.Val) error {
+					varNameVal, _ := varName.Vals.Get(subjectUid)
+					if v.Value == varNameVal.Value && uidOfv != subjectUid {
 						return errors.Errorf("could not insert duplicate value [%v] for predicate [%v]",
 							v.Value, pred.Predicate)
 					}
+					return nil
+				})
+				if err != nil {
+					return err
 				}
 				continue
 			} else {

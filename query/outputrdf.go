@@ -89,7 +89,7 @@ func (b *rdfBuilder) rdfForSubgraph(sg *SubGraph) error {
 			}
 			// Check if we have val for the given uid. If you got uid then populate
 			// the rdf.
-			val, ok := sg.Params.UidToVal[uid]
+			val, ok := sg.Params.UidToVal.Get(uid)
 			if !ok && val.Value == nil {
 				continue
 			}

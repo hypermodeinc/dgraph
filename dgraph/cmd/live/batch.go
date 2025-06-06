@@ -450,11 +450,14 @@ loop:
 		}
 
 		drain()
-		time.Sleep(100 * time.Millisecond)
 	}
+
+	for len(buffer) != 0 {
+		drain()
+	}
+
 	fmt.Printf("Looped %d times over buffered requests.\n", loops)
 
-	drain()
 }
 
 func (l *loader) printCounters() {

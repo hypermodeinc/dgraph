@@ -500,7 +500,7 @@ func TestReadSingleValue(t *testing.T) {
 	// and GetSingeValueForKey works without an issue.
 
 	key := x.DataKey(x.AttrInRootNamespace("value"), 1240)
-	ol, err := getNew(key, ps, math.MaxUint64)
+	ol, err := getNew(key, ps, math.MaxUint64, false)
 	require.NoError(t, err)
 	N := uint64(10000)
 	for i := uint64(2); i <= N; i += 2 {
@@ -525,7 +525,7 @@ func TestReadSingleValue(t *testing.T) {
 			require.NoError(t, writePostingListToDisk(kvs))
 			// Delete item from global cache before reading, as we are not updating the cache in the test
 			memoryLayer.del(key)
-			ol, err = getNew(key, ps, math.MaxUint64)
+			ol, err = getNew(key, ps, math.MaxUint64, false)
 			require.NoError(t, err)
 		}
 

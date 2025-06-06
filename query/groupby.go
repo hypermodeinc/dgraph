@@ -334,7 +334,7 @@ func (sg *SubGraph) fillGroupedVars(doneVars map[string]varValue, path []*SubGra
 		}
 		chVar := child.Params.Var
 
-		tempMap := make(map[uint64]types.Val)
+		tempMap := types.NewShardedMap()
 		for _, grp := range res.group {
 			if len(grp.keys) == 0 {
 				continue
@@ -349,7 +349,7 @@ func (sg *SubGraph) fillGroupedVars(doneVars map[string]varValue, path []*SubGra
 			}
 			// grp.aggregates could be empty if schema conversion failed during aggregation
 			if len(grp.aggregates) > 0 {
-				tempMap[uid] = grp.aggregates[len(grp.aggregates)-1].key
+				tempMap.Set(uid, grp.aggregates[len(grp.aggregates)-1].key)
 			}
 		}
 		doneVars[chVar] = varValue{

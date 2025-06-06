@@ -16,6 +16,36 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/types"
 )
 
+func BenchmarkProcessBinaryLargeMap(b *testing.B) {
+	shardMap1 := types.NewShardedMap()
+	shardMap2 := types.NewShardedMap()
+
+	for i := 0; i < 10000000; i++ {
+		shardMap1.Set(uint64(i), types.Val{Tid: types.IntID, Value: int64(i)})
+		shardMap2.Set(uint64(i), types.Val{Tid: types.IntID, Value: int64(i)})
+	}
+
+	tree := &mathTree{
+		Fn: "+",
+		Child: []*mathTree{
+			{Var: "v1", Val: shardMap1},
+			{Var: "v2", Val: shardMap2},
+		},
+	}
+
+	b.Run("ProcessBinary", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			processBinary(tree)
+		}
+	})
+}
+
+func createShardedMap(id uint64, val types.Val) *types.ShardedMap {
+	k := types.NewShardedMap()
+	k.Set(id, val)
+	return k
+}
+
 func TestVector(t *testing.T) {
 	tree := &mathTree{
 		Fn: "sqrt",
@@ -27,15 +57,11 @@ func TestVector(t *testing.T) {
 					Child: []*mathTree{
 						{
 							Var: "v1",
-							Val: map[uint64]types.Val{
-								0: {Tid: 12, Value: []float32{1.0, 2.0}},
-							},
+							Val: createShardedMap(0, types.Val{Tid: types.VFloatID, Value: []float32{1.0, 2.0}}),
 						},
 						{
 							Var: "v2",
-							Val: map[uint64]types.Val{
-								123: {Tid: 12, Value: []float32{1.0, 2.0}},
-							},
+							Val: createShardedMap(123, types.Val{Tid: types.VFloatID, Value: []float32{1.0, 2.0}}),
 						},
 					},
 				},
@@ -44,15 +70,11 @@ func TestVector(t *testing.T) {
 					Child: []*mathTree{
 						{
 							Var: "v1",
-							Val: map[uint64]types.Val{
-								0: {Tid: 12, Value: []float32{1.0, 2.0}},
-							},
+							Val: createShardedMap(0, types.Val{Tid: types.VFloatID, Value: []float32{1.0, 2.0}}),
 						},
 						{
 							Var: "v2",
-							Val: map[uint64]types.Val{
-								123: {Tid: 12, Value: []float32{1.0, 2.0}},
-							},
+							Val: createShardedMap(123, types.Val{Tid: types.VFloatID, Value: []float32{1.0, 2.0}}),
 						},
 					},
 				},
@@ -828,8 +850,7 @@ func TestProcessBinaryBoolean(t *testing.T) {
 		{in: &mathTree{
 			Fn: "<",
 			Child: []*mathTree{
-				{Val: map[uint64]types.Val{
-					0: {Tid: types.IntID, Value: int64(1)}}},
+				{Val: createShardedMap(0, types.Val{Tid: types.IntID, Value: int64(1)})},
 				{Const: types.Val{Tid: types.IntID, Value: int64(2)}},
 			}},
 			out: types.Val{Tid: types.BoolID, Value: true},
@@ -837,8 +858,7 @@ func TestProcessBinaryBoolean(t *testing.T) {
 		{in: &mathTree{
 			Fn: ">",
 			Child: []*mathTree{
-				{Val: map[uint64]types.Val{
-					0: {Tid: types.IntID, Value: int64(1)}}},
+				{Val: createShardedMap(0, types.Val{Tid: types.IntID, Value: int64(1)})},
 				{Const: types.Val{Tid: types.IntID, Value: int64(2)}},
 			}},
 			out: types.Val{Tid: types.BoolID, Value: false},
@@ -846,8 +866,7 @@ func TestProcessBinaryBoolean(t *testing.T) {
 		{in: &mathTree{
 			Fn: "<=",
 			Child: []*mathTree{
-				{Val: map[uint64]types.Val{
-					0: {Tid: types.IntID, Value: int64(1)}}},
+				{Val: createShardedMap(0, types.Val{Tid: types.IntID, Value: int64(1)})},
 				{Const: types.Val{Tid: types.IntID, Value: int64(2)}},
 			}},
 			out: types.Val{Tid: types.BoolID, Value: true},
@@ -855,8 +874,7 @@ func TestProcessBinaryBoolean(t *testing.T) {
 		{in: &mathTree{
 			Fn: ">=",
 			Child: []*mathTree{
-				{Val: map[uint64]types.Val{
-					0: {Tid: types.IntID, Value: int64(1)}}},
+				{Val: createShardedMap(0, types.Val{Tid: types.IntID, Value: int64(1)})},
 				{Const: types.Val{Tid: types.IntID, Value: int64(2)}},
 			}},
 			out: types.Val{Tid: types.BoolID, Value: false},
@@ -864,8 +882,7 @@ func TestProcessBinaryBoolean(t *testing.T) {
 		{in: &mathTree{
 			Fn: "==",
 			Child: []*mathTree{
-				{Val: map[uint64]types.Val{
-					0: {Tid: types.IntID, Value: int64(1)}}},
+				{Val: createShardedMap(0, types.Val{Tid: types.IntID, Value: int64(1)})},
 				{Const: types.Val{Tid: types.IntID, Value: int64(2)}},
 			}},
 			out: types.Val{Tid: types.BoolID, Value: false},
@@ -873,8 +890,7 @@ func TestProcessBinaryBoolean(t *testing.T) {
 		{in: &mathTree{
 			Fn: "!=",
 			Child: []*mathTree{
-				{Val: map[uint64]types.Val{
-					0: {Tid: types.IntID, Value: int64(1)}}},
+				{Val: createShardedMap(0, types.Val{Tid: types.IntID, Value: int64(1)})},
 				{Const: types.Val{Tid: types.IntID, Value: int64(2)}},
 			}},
 			out: types.Val{Tid: types.BoolID, Value: true},
@@ -883,7 +899,9 @@ func TestProcessBinaryBoolean(t *testing.T) {
 	for _, tc := range tests {
 		t.Logf("Test %s", tc.in.Fn)
 		require.NoError(t, processBinaryBoolean(tc.in))
-		require.EqualValues(t, tc.out, tc.in.Val[0])
+		val, ok := tc.in.Val.Get(0)
+		require.Equal(t, true, ok)
+		require.EqualValues(t, tc.out, val)
 	}
 }
 
@@ -895,8 +913,7 @@ func TestBigFloatMathsBoolean(t *testing.T) {
 		{in: &mathTree{
 			Fn: "==",
 			Child: []*mathTree{
-				{Val: map[uint64]types.Val{
-					0: {Tid: types.BigFloatID, Value: *big.NewFloat(2.123)}}},
+				{Val: createShardedMap(0, types.Val{Tid: types.BigFloatID, Value: *big.NewFloat(2.123)})},
 				{Const: types.Val{Tid: types.BigFloatID, Value: *big.NewFloat(2.123)}},
 			}},
 			out: types.Val{Tid: types.BoolID, Value: true},
@@ -904,8 +921,7 @@ func TestBigFloatMathsBoolean(t *testing.T) {
 		{in: &mathTree{
 			Fn: "!=",
 			Child: []*mathTree{
-				{Val: map[uint64]types.Val{
-					0: {Tid: types.BigFloatID, Value: *big.NewFloat(2.4623)}}},
+				{Val: createShardedMap(0, types.Val{Tid: types.BigFloatID, Value: *big.NewFloat(2.4623)})},
 				{Const: types.Val{Tid: types.BigFloatID, Value: *big.NewFloat(3.623)}},
 			}},
 			out: types.Val{Tid: types.BoolID, Value: true},
@@ -913,18 +929,15 @@ func TestBigFloatMathsBoolean(t *testing.T) {
 		{in: &mathTree{
 			Fn: ">=",
 			Child: []*mathTree{
-				{Val: map[uint64]types.Val{
-					0: {Tid: types.BigFloatID, Value: *big.NewFloat(2.123)}}},
-				{Val: map[uint64]types.Val{
-					0: {Tid: types.BigFloatID, Value: *big.NewFloat(4.123)}}},
+				{Val: createShardedMap(0, types.Val{Tid: types.BigFloatID, Value: *big.NewFloat(2.123)})},
+				{Val: createShardedMap(0, types.Val{Tid: types.BigFloatID, Value: *big.NewFloat(4.123)})},
 			}},
 			out: types.Val{Tid: types.BoolID, Value: false},
 		},
 		{in: &mathTree{
 			Fn: "<=",
 			Child: []*mathTree{
-				{Val: map[uint64]types.Val{
-					0: {Tid: types.BigFloatID, Value: *big.NewFloat(2.123)}}},
+				{Val: createShardedMap(0, types.Val{Tid: types.BigFloatID, Value: *big.NewFloat(2.123)})},
 				{Const: types.Val{Tid: types.BigFloatID, Value: *big.NewFloat(3.992)}},
 			}},
 			out: types.Val{Tid: types.BoolID, Value: true},
@@ -932,8 +945,7 @@ func TestBigFloatMathsBoolean(t *testing.T) {
 		{in: &mathTree{
 			Fn: ">",
 			Child: []*mathTree{
-				{Val: map[uint64]types.Val{
-					0: {Tid: types.BigFloatID, Value: *big.NewFloat(2.45)}}},
+				{Val: createShardedMap(0, types.Val{Tid: types.BigFloatID, Value: *big.NewFloat(2.45)})},
 				{Const: types.Val{Tid: types.BigFloatID, Value: *big.NewFloat(3.43)}},
 			}},
 			out: types.Val{Tid: types.BoolID, Value: false},
@@ -941,8 +953,7 @@ func TestBigFloatMathsBoolean(t *testing.T) {
 		{in: &mathTree{
 			Fn: "<",
 			Child: []*mathTree{
-				{Val: map[uint64]types.Val{
-					0: {Tid: types.BigFloatID, Value: *big.NewFloat(2.1213)}}},
+				{Val: createShardedMap(0, types.Val{Tid: types.BigFloatID, Value: *big.NewFloat(2.1213)})},
 				{Const: types.Val{Tid: types.BigFloatID, Value: *big.NewFloat(2.1232)}},
 			}},
 			out: types.Val{Tid: types.BoolID, Value: true},
@@ -951,7 +962,9 @@ func TestBigFloatMathsBoolean(t *testing.T) {
 	for _, tc := range tests {
 		t.Logf("Test %s", tc.in.Fn)
 		require.NoError(t, processBinaryBoolean(tc.in))
-		require.EqualValues(t, tc.out, tc.in.Val[0])
+		val, ok := tc.in.Val.Get(0)
+		require.Equal(t, true, ok)
+		require.EqualValues(t, tc.out, val)
 	}
 }
 
@@ -963,7 +976,7 @@ func TestProcessTernary(t *testing.T) {
 		{in: &mathTree{
 			Fn: "cond",
 			Child: []*mathTree{
-				{Val: map[uint64]types.Val{0: {Tid: types.BoolID, Value: true}}},
+				{Val: createShardedMap(0, types.Val{Tid: types.BoolID, Value: true})},
 				{Const: types.Val{Tid: types.IntID, Value: int64(1)}},
 				{Const: types.Val{Tid: types.IntID, Value: int64(2)}},
 			}},
@@ -972,7 +985,7 @@ func TestProcessTernary(t *testing.T) {
 		{in: &mathTree{
 			Fn: "cond",
 			Child: []*mathTree{
-				{Val: map[uint64]types.Val{0: {Tid: types.BoolID, Value: false}}},
+				{Val: createShardedMap(0, types.Val{Tid: types.BoolID, Value: false})},
 				{Const: types.Val{Tid: types.FloatID, Value: 1.0}},
 				{Const: types.Val{Tid: types.FloatID, Value: 2.0}},
 			}},
@@ -981,7 +994,7 @@ func TestProcessTernary(t *testing.T) {
 		{in: &mathTree{
 			Fn: "cond",
 			Child: []*mathTree{
-				{Val: map[uint64]types.Val{0: {Tid: types.BoolID, Value: false}}},
+				{Val: createShardedMap(0, types.Val{Tid: types.BoolID, Value: false})},
 				{Const: types.Val{Tid: types.BigFloatID, Value: *big.NewFloat(1.456)}},
 				{Const: types.Val{Tid: types.BigFloatID, Value: *big.NewFloat(2.123)}},
 			}},
@@ -992,6 +1005,8 @@ func TestProcessTernary(t *testing.T) {
 		t.Logf("Test: %s", tc.in.Fn)
 		err := processTernary(tc.in)
 		require.NoError(t, err)
-		require.EqualValues(t, tc.out, tc.in.Val[0])
+		val, ok := tc.in.Val.Get(0)
+		require.Equal(t, true, ok)
+		require.EqualValues(t, tc.out, val)
 	}
 }
