@@ -1604,6 +1604,10 @@ func TestGeoValidWkbData(t *testing.T) {
 	require.Contains(t, string(resp.Json), `{"type":"Point","coordinates":[1,2]}`)
 }
 
+// This test verifies that conditionally pruned json mutations do not cause a panic.
+// This test is based on panics occurring during testing of the dgman package which
+// uses complex conditional logic for mutations. For reference:
+// https://github.com/dolan-in/dgman/blob/e9a34974ae96ee55beed293971725765f6404d6c/mutate_test.go#L307
 func TestPanicWithConditionallyPrunedJsonMutations(t *testing.T) {
 	schema := `
 	email: string @index(term,hash) @upsert @unique .
@@ -1654,12 +1658,12 @@ func TestPanicWithConditionallyPrunedJsonMutations(t *testing.T) {
 	}
 	req1 := &api.Request{Query: query1, Mutations: mutations1, CommitNow: true}
 	resp1, err1 := dg.NewTxn().Do(ctx, req1)
-	require.NoError(t, err1, "Request 1 failed")
+	require.NoError(t, err1, "First Request unexpectedly failed")
 	require.NotNil(t, resp1)
-	require.NotEmpty(t, resp1.Uids["loc_pass1"], "Request 1: UID for loc_pass1 missing")
-	require.NotEmpty(t, resp1.Uids["school_pass1"], "Request 1: UID for school_pass1 missing")
-	require.NotEmpty(t, resp1.Uids["user_pass1"], "Request 1: UID for user_pass1 missing")
-	t.Logf("Request 1 completed. Initial entities created.")
+	require.NotEmpty(t, resp1.Uids["loc_pass1"], "First Request: UID for loc_pass1 missing")
+	require.NotEmpty(t, resp1.Uids["school_pass1"], "First Request: UID for school_pass1 missing")
+	require.NotEmpty(t, resp1.Uids["user_pass1"], "First Request: UID for user_pass1 missing")
+	t.Logf("First Request completed. Initial entities created.")
 
 	// --- Request 2: Loop 1 KEPT SetJson, then 2 PRUNED SetJson mutations to try and force panic ---
 	maxRetries := 10
