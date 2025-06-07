@@ -1604,6 +1604,123 @@ func TestGeoValidWkbData(t *testing.T) {
 	require.Contains(t, string(resp.Json), `{"type":"Point","coordinates":[1,2]}`)
 }
 
+func TestPanicWithConditionallyPrunedJsonMutations(t *testing.T) {
+	schema := `
+	email: string @index(term,hash) @upsert @unique .
+	identifier: string @index(term,hash) @upsert @unique .
+	location: uid .
+	school: uid .
+	username: string @index(term,hash) @upsert @unique .
+	locationId: string @index(term,hash) @upsert @unique .
+
+	type User {
+		username
+		email
+		school
+	}
+	type TestSchool {
+		identifier
+		location
+	}
+	type Location {
+		locationId
+	}
+	`
+	require.NoError(t, alterSchemaWithRetry(schema))
+	ctx := context.Background()
+	require.NotNil(t, dg)
+
+	// --- Request 1: Create initial set of entities ---
+	t.Logf("Executing Request 1: Initial entity creation")
+	query1 := `query {
+		q_loc1_check(func: eq(locationId, "loc_id_pass1")) { v_loc1 as uid }
+		q_school1_check(func: eq(identifier, "school_id_pass1")) { v_school1 as uid }
+		q_user1_check_un(func: eq(username, "user_pass1")) { v_user1_un as uid }
+		q_user1_check_em(func: eq(email, "user_pass1@example.com")) { v_user1_em as uid }
+	}`
+	mutations1 := []*api.Mutation{
+		{
+			SetJson: []byte(`{"dgraph.type":["Location"],"locationId":"loc_id_pass1","uid":"_:loc_pass1"}`),
+			Cond:    "@if(eq(len(v_loc1), 0))", // TRUE
+		},
+		{
+			SetJson: []byte(`{"dgraph.type":["TestSchool"],"identifier":"school_id_pass1", "location":{"uid":"_:loc_pass1"},"uid":"_:school_pass1"}`),
+			Cond:    "@if(eq(len(v_school1), 0))", // TRUE
+		},
+		{
+			SetJson: []byte(`{"dgraph.type":["User"],"username":"user_pass1","email":"user_pass1@example.com", "school":{"uid":"_:school_pass1"},"uid":"_:user_pass1"}`),
+			Cond:    "@if(eq(len(v_user1_un), 0) AND eq(len(v_user1_em), 0))", // TRUE
+		},
+	}
+	req1 := &api.Request{Query: query1, Mutations: mutations1, CommitNow: true}
+	resp1, err1 := dg.NewTxn().Do(ctx, req1)
+	require.NoError(t, err1, "Request 1 failed")
+	require.NotNil(t, resp1)
+	require.NotEmpty(t, resp1.Uids["loc_pass1"], "Request 1: UID for loc_pass1 missing")
+	require.NotEmpty(t, resp1.Uids["school_pass1"], "Request 1: UID for school_pass1 missing")
+	require.NotEmpty(t, resp1.Uids["user_pass1"], "Request 1: UID for user_pass1 missing")
+	t.Logf("Request 1 completed. Initial entities created.")
+
+	// --- Request 2: Loop 1 KEPT SetJson, then 2 PRUNED SetJson mutations to try and force panic ---
+	maxRetries := 10
+	t.Logf("Looping Request 2 up to %d times (1 KEPT SetJson then 2 PRUNED SetJson), hoping for panic...", maxRetries)
+
+	for i := 0; i < maxRetries; i++ {
+		t.Logf("Executing Request 2, Attempt %d/%d", i+1, maxRetries)
+		query2 := `query {
+			# For linking in KEPT SetJson and pruning conditions for other SetJson mutations
+			q_school1_exists(func: eq(identifier, "school_id_pass1")) { v_school1_exists as uid }
+			q_user1_exists_un(func: eq(username, "user_pass1")) { v_user1_exists_un as uid }
+			q_user1_exists_em(func: eq(email, "user_pass1@example.com")) { v_user1_exists_em as uid }
+
+			# For KEPT SetJson condition (new user)
+			q_user2_new_json_un(func: eq(username, "user_pass2_new_json")) { v_user2_new_json_un as uid }
+			q_user2_new_json_em(func: eq(email, "user_pass2_new_json@example.com")) { v_user2_new_json_em as uid }
+		}`
+
+		mutations2 := []*api.Mutation{
+			{ // Mutation 0: Create NEW User (KEPT SetJson) - links to existing school from Pass 1
+				SetJson: []byte(`{"dgraph.type":["User"],"username":"user_pass2_new_json","email":"user_pass2_new_json@example.com", "school":{"uid":"uid(v_school1_exists)"},"uid":"_:user_pass2_new_json"}`),
+				Cond:    "@if(eq(len(v_user2_new_json_un), 0) AND eq(len(v_user2_new_json_em), 0) AND eq(len(v_school1_exists), 1))", // TRUE (new user, school1 must exist)
+			},
+			// --- PRUNED SetJson MUTATIONS ---
+			{ // Mutation 1: Attempt to re-create User from Req1 (PRUNED SetJson)
+				SetJson: []byte(`{"dgraph.type":["User"],"username":"user_pass1","email":"user_pass1@example.com", "school":{"uid":"uid(v_school1_exists)"},"uid":"_:user_pass1_dup_json"}`),
+				Cond:    "@if(eq(len(v_user1_exists_un), 0) AND eq(len(v_user1_exists_em), 0))", // FALSE (user1 already exists)
+			},
+			{ // Mutation 2: Attempt to re-create School from Req1 (PRUNED SetJson)
+				SetJson: []byte(`{"dgraph.type":["TestSchool"],"identifier":"school_id_pass1", "uid":"_:school_pass1_dup_json"}`),
+				Cond:    "@if(eq(len(v_school1_exists), 0))", // FALSE (school1 already exists)
+			},
+		}
+		req2 := &api.Request{Query: query2, Mutations: mutations2, CommitNow: true}
+
+		// This is the call expected to trigger the panic in one of the retries.
+		resp2, err2 := dg.NewTxn().Do(ctx, req2)
+
+		if err2 != nil {
+			// If an error occurs, assume it's the panic we're trying to reproduce.
+			// Fail the test immediately.
+			require.FailNow(t, fmt.Sprintf("Panic likely reproduced on attempt %d/%d of Request 2: %v", i+1, maxRetries, err2))
+		}
+
+		// If no error, Request 2 completed for this attempt. Check assertions.
+		require.NotNil(t, resp2, "Request 2, Attempt %d/%d: Response was nil without error or panic", i+1, maxRetries)
+		require.NotEmpty(t, resp2.Uids["user_pass2_new_json"], "Request 2, Attempt %d/%d: UID for user_pass2_new_json (from SetJson) should not be empty", i+1, maxRetries)
+
+		createdNodeCountReq2 := 0
+		for key, uid := range resp2.Uids {
+			if uid != "" && key == "user_pass2_new_json" {
+				createdNodeCountReq2++
+			}
+		}
+		require.Equal(t, 1, createdNodeCountReq2, "Request 2, Attempt %d/%d: Expected 1 UID from the kept SetJson mutation (no panic occurred)", i+1, maxRetries)
+		t.Logf("Request 2, Attempt %d/%d completed successfully without panic.", i+1, maxRetries)
+	}
+
+	t.Logf("Test completed %d attempts of Request 2 (initial create, then 1 KEPT Json / 2 PRUNED Json) without reproducing the panic.", maxRetries)
+}
+
 type Token struct {
 	token *dgraphapi.HttpToken
 	sync.RWMutex
