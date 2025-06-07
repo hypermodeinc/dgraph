@@ -172,7 +172,7 @@ func copyBinary(fromDir, toDir, version string) error {
 	fromPath := filepath.Join(fromDir, binaryName)
 	toPath := filepath.Join(toDir, "dgraph")
 	if err := copy(fromPath, toPath); err != nil {
-		return errors.Wrap(err, "error while copying binary into tempBinDir")
+		return errors.Wrapf(err, "error while copying binary into tempBinDir [%v], from [%v]", toPath, fromPath)
 	}
 	return nil
 }
