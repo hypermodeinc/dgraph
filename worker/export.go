@@ -540,7 +540,6 @@ func (r *remoteExportStorage) OpenFile(fileName string) (*ExportWriter, error) {
 }
 
 func (r *remoteExportStorage) FinishWriting(w *Writers) (ExportedFiles, error) {
-
 	defer func() {
 		glog.Infof("Deleting temporary export directory %s\n", r.les.destination)
 		if err := os.RemoveAll(r.les.destination); err != nil {
@@ -563,7 +562,7 @@ func (r *remoteExportStorage) FinishWriting(w *Writers) (ExportedFiles, error) {
 		filePath := filepath.Join(r.les.destination, f)
 		// FIXME: tejas [06/2020] - We could probably stream these results, but it's easier to copy for now
 		glog.Infof("Uploading from %s to %s\n", filePath, d)
-		_, err := r.mc.FPutObject(r.bucket, d, filePath, minio.PutObjectOptions{
+		_, err := r.mc.FPutObject(context.Background(), r.bucket, d, filePath, minio.PutObjectOptions{
 			ContentType: "application/gzip",
 		})
 		if err != nil {

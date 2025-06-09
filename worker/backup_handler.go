@@ -7,6 +7,7 @@ package worker
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/url"
@@ -263,7 +264,7 @@ func (h *s3Handler) DirExists(path string) bool  { return true }
 
 func (h *s3Handler) FileExists(path string) bool {
 	objectPath := h.getObjectPath(path)
-	_, err := h.mc.StatObject(h.bucketName, objectPath, minio.StatObjectOptions{})
+	_, err := h.mc.StatObject(context.Background(), h.bucketName, objectPath, minio.StatObjectOptions{})
 	if err == nil {
 		return true
 	}
@@ -282,7 +283,7 @@ func (h *s3Handler) Read(path string) ([]byte, error) {
 	objectPath := h.getObjectPath(path)
 	var buf bytes.Buffer
 
-	reader, err := h.mc.GetObject(h.bucketName, objectPath, minio.GetObjectOptions{})
+	reader, err := h.mc.GetObject(context.Background(), h.bucketName, objectPath, minio.GetObjectOptions{})
 	if err != nil {
 		return buf.Bytes(), errors.Wrap(err, "Failed to read s3 object")
 	}
@@ -296,7 +297,7 @@ func (h *s3Handler) Read(path string) ([]byte, error) {
 
 func (h *s3Handler) Stream(path string) (io.ReadCloser, error) {
 	objectPath := h.getObjectPath(path)
-	reader, err := h.mc.GetObject(h.bucketName, objectPath, minio.GetObjectOptions{})
+	reader, err := h.mc.GetObject(context.Background(), h.bucketName, objectPath, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -305,10 +306,9 @@ func (h *s3Handler) Stream(path string) (io.ReadCloser, error) {
 
 func (h *s3Handler) ListPaths(path string) []string {
 	var paths []string
-	done := make(chan struct{})
-	defer close(done)
 	path = h.getObjectPath(path)
-	for object := range h.mc.ListObjects(h.bucketName, path, true, done) {
+	for object := range h.mc.ListObjects(context.Background(), h.bucketName,
+		minio.ListObjectsOptions{Prefix: path, Recursive: true}) {
 		paths = append(paths, object.Key)
 	}
 	return paths
@@ -345,7 +345,7 @@ func (sw *s3Writer) upload(mc *x.MinioClient, object string) {
 		// need to track the progress of read. By definition, it must be the same.
 		//
 		// PutObject would block until sw.preader returns EOF.
-		n, err := mc.PutObject(sw.bucketName, object, sw.preader, -1, minio.PutObjectOptions{})
+		n, err := mc.PutObject(context.Background(), sw.bucketName, object, sw.preader, -1, minio.PutObjectOptions{})
 		glog.V(2).Infof("Backup sent %d bytes. Time elapsed: %s",
 			n, time.Since(start).Round(time.Second))
 
@@ -380,14 +380,11 @@ func (h *s3Handler) CreateFile(path string) (io.WriteCloser, error) {
 func (h *s3Handler) Rename(srcPath, dstPath string) error {
 	srcPath = h.getObjectPath(srcPath)
 	dstPath = h.getObjectPath(dstPath)
-	src := minio.NewSourceInfo(h.bucketName, srcPath, nil)
-	dst, err := minio.NewDestinationInfo(h.bucketName, dstPath, nil, nil)
-	if err != nil {
-		return errors.Wrap(err, "Rename failed to create dstInfo")
-	}
+	src := minio.CopySrcOptions{Bucket: h.bucketName, Object: srcPath}
+	dst := minio.CopyDestOptions{Bucket: h.bucketName, Object: dstPath}
 	// We try copying 100 times, if it still fails, then the user should manually rename.
-	err = x.RetryUntilSuccess(100, time.Second, func() error {
-		if err := h.mc.CopyObject(dst, src); err != nil {
+	err := x.RetryUntilSuccess(100, time.Second, func() error {
+		if _, err := h.mc.CopyObject(context.Background(), dst, src); err != nil {
 			return errors.Wrapf(err, "While renaming object in s3, copy failed")
 		}
 		return nil
@@ -396,7 +393,7 @@ func (h *s3Handler) Rename(srcPath, dstPath string) error {
 		return err
 	}
 
-	err = h.mc.RemoveObject(h.bucketName, srcPath)
+	err = h.mc.RemoveObject(context.Background(), h.bucketName, srcPath, minio.RemoveObjectOptions{})
 	return errors.Wrap(err, "Rename failed to remove temporary file")
 }
 

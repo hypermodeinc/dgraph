@@ -68,15 +68,15 @@ func newSuiteInternal(t *testing.T, opts suiteOpts) *bsuite {
 
 		mc, err := testutil.NewMinioClient()
 		require.NoError(t, err)
-		if ok, err := mc.BucketExists(rootBucket); !ok {
+		if ok, err := mc.BucketExists(t.Context(), rootBucket); !ok {
 			require.NoError(t, err)
-			require.NoError(t, mc.MakeBucket(rootBucket, ""))
+			require.NoError(t, mc.MakeBucket(t.Context(), rootBucket, minio.MakeBucketOptions{}))
 		}
-		_, err = mc.FPutObject(rootBucket, "rdfs.rdf", rdfFile, minio.PutObjectOptions{})
+		_, err = mc.FPutObject(t.Context(), rootBucket, "rdfs.rdf", rdfFile, minio.PutObjectOptions{})
 		require.NoError(t, err)
-		_, err = mc.FPutObject(rootBucket, "schema.txt", schemaFile, minio.PutObjectOptions{})
+		_, err = mc.FPutObject(t.Context(), rootBucket, "schema.txt", schemaFile, minio.PutObjectOptions{})
 		require.NoError(t, err)
-		_, err = mc.FPutObject(rootBucket, "gql_schema.txt", gqlSchemaFile, minio.PutObjectOptions{})
+		_, err = mc.FPutObject(t.Context(), rootBucket, "gql_schema.txt", gqlSchemaFile, minio.PutObjectOptions{})
 		require.NoError(t, err)
 	}
 
