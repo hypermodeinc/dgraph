@@ -1380,6 +1380,7 @@ func (vc *vectorCentroids) findCentroid(input []float32) int {
 	minDist := math.MaxFloat32
 	for i, centroid := range vc.centroids {
 		dist := vek32.Distance(centroid, input)
+		fmt.Println(centroid, input, dist, minDist)
 		if float64(dist) < minDist {
 			minDist = float64(dist)
 			minIdx = i
