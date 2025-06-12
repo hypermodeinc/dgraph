@@ -8,6 +8,7 @@ package x
 import (
 	"sync/atomic"
 
+	"github.com/golang/glog"
 	"github.com/pkg/errors"
 )
 
@@ -15,7 +16,8 @@ var (
 	// the drainingMode variable should be accessed through the atomic.Store and atomic.Load
 	// functions. The value 0 means the draining-mode is disabled, and the value 1 means the
 	// mode is enabled
-	drainingMode uint32
+	drainingMode              uint32
+	extSnapshotStreamingState uint32
 
 	healthCheck     uint32
 	errHealth       = errors.New("Please retry again, server is not ready to accept requests")
@@ -32,6 +34,18 @@ func UpdateHealthStatus(ok bool) {
 // UpdateDrainingMode updates the server's draining mode
 func UpdateDrainingMode(enable bool) {
 	setStatus(&drainingMode, enable)
+}
+
+// ExtSnapshotStreamingState updates the server's import mode
+func ExtSnapshotStreamingState(enable bool) {
+	glog.Info("[import] Updating import mode to ", enable)
+	setStatus(&extSnapshotStreamingState, enable)
+	setStatus(&drainingMode, enable)
+}
+
+// IsExtSnapshotStreamingStateTrue returns whether the server is in import mode or not
+func IsExtSnapshotStreamingStateTrue() bool {
+	return atomic.LoadUint32(&extSnapshotStreamingState) == 1
 }
 
 // HealthCheck returns whether the server is ready to accept requests or not
