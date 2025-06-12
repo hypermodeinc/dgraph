@@ -1493,6 +1493,7 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 		if err != nil {
 			return err
 		}
+		vc.mutexs[i] = &sync.Mutex{}
 		indexers[i] = indexers_i
 	}
 
@@ -1507,6 +1508,8 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 
 		inVec := types.BytesAsFloatArray(val.Value.([]byte))
 		idx := vc.findCentroid(inVec)
+		vc.mutexs[idx].Lock()
+		defer vc.mutexs[idx].Unlock()
 		edges, err := indexers[idx].Insert(ctx, tcs[idx], uid, inVec)
 		if err != nil {
 			return []*pb.DirectedEdge{}, err
