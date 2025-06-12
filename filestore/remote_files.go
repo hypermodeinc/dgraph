@@ -7,11 +7,12 @@ package filestore
 
 import (
 	"bufio"
+	"context"
 	"io"
 	"net/url"
 	"strings"
 
-	"github.com/minio/minio-go/v6"
+	"github.com/minio/minio-go/v7"
 
 	"github.com/hypermodeinc/dgraph/v25/chunker"
 	"github.com/hypermodeinc/dgraph/v25/x"
@@ -28,7 +29,7 @@ func (rf *remoteFiles) Open(path string) (io.ReadCloser, error) {
 	}
 
 	bucket, prefix := rf.mc.ParseBucketAndPrefix(url.Path)
-	obj, err := rf.mc.GetObject(bucket, prefix, minio.GetObjectOptions{})
+	obj, err := rf.mc.GetObject(context.Background(), bucket, prefix, minio.GetObjectOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +59,9 @@ func (rf *remoteFiles) FindDataFiles(str string, ext []string) (paths []string) 
 		defer close(c)
 
 		bucket, prefix := rf.mc.ParseBucketAndPrefix(url.Path)
-		for obj := range rf.mc.ListObjectsV2(bucket, prefix, true, c) {
+		objs := rf.mc.ListObjects(context.Background(), bucket,
+			minio.ListObjectsOptions{Prefix: prefix, Recursive: true})
+		for obj := range objs {
 			if hasAnySuffix(obj.Key, ext) {
 				paths = append(paths, bucket+"/"+obj.Key)
 			}
@@ -73,7 +76,7 @@ func (rf *remoteFiles) ChunkReader(file string, key x.Sensitive) (*bufio.Reader,
 
 	bucket, prefix := rf.mc.ParseBucketAndPrefix(url.Path)
 
-	obj, err := rf.mc.GetObject(bucket, prefix, minio.GetObjectOptions{})
+	obj, err := rf.mc.GetObject(context.Background(), bucket, prefix, minio.GetObjectOptions{})
 	x.Check(err)
 
 	return chunker.StreamReader(url.Path, key, obj)

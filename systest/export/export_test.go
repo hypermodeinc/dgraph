@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	minio "github.com/minio/minio-go/v6"
+	minio "github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -41,7 +41,7 @@ var (
 func TestExportSchemaToMinio(t *testing.T) {
 	mc, err := testutil.NewMinioClient()
 	require.NoError(t, err)
-	require.NoError(t, mc.MakeBucket(bucketName, ""))
+	require.NoError(t, mc.MakeBucket(context.Background(), bucketName, minio.MakeBucketOptions{}))
 
 	setupDgraph(t, moviesData, movieSchema)
 	requestExport(t, minioDest, "rdf")
@@ -49,14 +49,15 @@ func TestExportSchemaToMinio(t *testing.T) {
 	schemaFile := ""
 	doneCh := make(chan struct{})
 	defer close(doneCh)
-	for obj := range mc.ListObjectsV2(bucketName, "dgraph.", true, doneCh) {
+	for obj := range mc.ListObjects(context.Background(), bucketName,
+		minio.ListObjectsOptions{Prefix: "", Recursive: false}) {
 		if strings.Contains(obj.Key, ".schema.gz") {
 			schemaFile = obj.Key
 		}
 	}
 	require.NotEmpty(t, schemaFile)
 
-	object, err := mc.GetObject(bucketName, schemaFile, minio.GetObjectOptions{})
+	object, err := mc.GetObject(context.Background(), bucketName, schemaFile, minio.GetObjectOptions{})
 	require.NoError(t, err)
 	defer object.Close()
 

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	minio "github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dgraph-io/dgo/v250/protos/api"
@@ -150,7 +151,7 @@ func TestEnvironmentAccess(t *testing.T) {
 	bucketname := "dgraph-export"
 	mc, err := testutil.NewMinioClient()
 	require.NoError(t, err)
-	require.NoError(t, mc.MakeBucket(bucketname, ""))
+	require.NoError(t, mc.MakeBucket(context.Background(), bucketname, minio.MakeBucketOptions{}))
 	minioDest := "minio://minio:9001/dgraph-export?secure=false"
 
 	// Export without the minio creds should fail for non-galaxy.
@@ -165,5 +166,4 @@ func TestEnvironmentAccess(t *testing.T) {
 	// Galaxy guardian should provide the credentials as well.
 	resp = testutil.Export(t, galaxyToken, minioDest, "accesskey", "secretkey")
 	require.Zero(t, len(resp.Errors))
-
 }
