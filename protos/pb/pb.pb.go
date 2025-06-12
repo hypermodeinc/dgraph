@@ -726,6 +726,7 @@ type Query struct {
 	First        int32        `protobuf:"varint,15,opt,name=first,proto3" json:"first,omitempty"` // used to limit the number of result. Typically, the count is value of first
 	// field. Now, It's been used only for has query.
 	Offset int32 `protobuf:"varint,16,opt,name=offset,proto3" json:"offset,omitempty"` // offset helps in fetching lesser results for the has query when there is
+	Order  *SortMessage `protobuf:"bytes,17,opt,name=order,proto3" json:"order,omitempty"` // order helps in sorting the results
 }
 
 func (x *Query) Reset() {
