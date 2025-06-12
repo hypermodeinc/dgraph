@@ -1403,6 +1403,7 @@ func (vc *vectorCentroids) updateCentroids() {
 		for j := 0; j < vc.dimension; j++ {
 			vc.centroids[i][j] = vc.weights[i][j] / float32(vc.counts[i])
 		}
+		fmt.Println(vc.counts[i])
 	}
 }
 
