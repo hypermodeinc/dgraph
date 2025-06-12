@@ -1413,7 +1413,7 @@ func (vc *vectorCentroids) updateCentroids() {
 func (vc *vectorCentroids) randomVector() []float32 {
 	vec := make([]float32, vc.dimension)
 	for i := 0; i < vc.dimension; i++ {
-		vec[i] = float32(rand.Float64()) / math.MaxFloat32
+		vec[i] = float32(rand.Float64())
 	}
 	return vec
 }
