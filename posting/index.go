@@ -35,6 +35,7 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/schema"
 	"github.com/hypermodeinc/dgraph/v25/tok"
 	"github.com/hypermodeinc/dgraph/v25/tok/hnsw"
+	"github.com/hypermodeinc/dgraph/v25/tok/index"
 	"github.com/hypermodeinc/dgraph/v25/types"
 	"github.com/hypermodeinc/dgraph/v25/x"
 
@@ -1390,7 +1391,6 @@ func (vc *vectorCentroids) findCentroid(input []float32) int {
 
 func (vc *vectorCentroids) addVector(vec []float32) {
 	idx := vc.findCentroid(vec)
-	fmt.Println("Add vector", idx)
 	vc.mutexs[idx].Lock()
 	defer vc.mutexs[idx].Unlock()
 	for i := 0; i < vc.dimension; i++ {
@@ -1482,6 +1482,50 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 
 		vc.updateCentroids()
 	}
+
+	tcs := make([]*hnsw.TxnCache, vc.numCenters)
+	txns := make([]*Txn, vc.numCenters)
+	indexers := make([]index.VectorIndex[float32], vc.numCenters)
+	for i := 0; i < vc.numCenters; i++ {
+		txns[i] = NewTxn(rb.StartTs)
+		tcs[i] = hnsw.NewTxnCache(NewViTxn(txns[i]), rb.StartTs)
+		indexers_i, err := factorySpecs[0].CreateIndex(pk.Attr)
+		if err != nil {
+			return err
+		}
+		indexers[i] = indexers_i
+	}
+
+	edgesCreated := 0
+
+	builder := rebuilder{attr: rb.Attr, prefix: pk.DataPrefix(), startTs: rb.StartTs}
+	builder.fn = func(uid uint64, pl *List, txn *Txn) ([]*pb.DirectedEdge, error) {
+		val, err := pl.Value(txn.StartTs)
+		if err != nil {
+			return []*pb.DirectedEdge{}, err
+		}
+
+		inVec := types.BytesAsFloatArray(val.Value.([]byte))
+		idx := vc.findCentroid(inVec)
+		edges, err := indexers[idx].Insert(ctx, tcs[idx], uid, inVec)
+		if err != nil {
+			return []*pb.DirectedEdge{}, err
+		}
+		pbEdges := []*pb.DirectedEdge{}
+		for _, e := range edges {
+			pbe := indexEdgeToPbEdge(e)
+			pbEdges = append(pbEdges, pbe)
+		}
+		edgesCreated += len(pbEdges)
+		return pbEdges, nil
+	}
+
+	err := builder.RunWithoutTemp(ctx)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Created %d edges\n", edgesCreated)
 
 	return nil
 }
