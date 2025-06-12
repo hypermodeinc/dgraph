@@ -1368,23 +1368,23 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 		edge := pb.DirectedEdge{Attr: rb.Attr, Entity: uid}
 		edges := []*pb.DirectedEdge{}
 
-		processAddIndexMutation := func(edge *pb.DirectedEdge, val types.Val) ([]*pb.DirectedEdge, error) {
-			for {
-				newEdges, err := txn.addIndexMutations(ctx, &indexMutationInfo{
-					tokenizers:   nil,
-					factorySpecs: factorySpecs,
-					edge:         edge,
-					val:          val,
-					op:           pb.DirectedEdge_SET,
-				})
-				switch err {
-				case ErrRetry:
-					time.Sleep(10 * time.Millisecond)
-				default:
-					return newEdges, err
-				}
-			}
-		}
+		// processAddIndexMutation := func(edge *pb.DirectedEdge, val types.Val) ([]*pb.DirectedEdge, error) {
+		// 	for {
+		// 		newEdges, err := txn.addIndexMutations(ctx, &indexMutationInfo{
+		// 			tokenizers:   nil,
+		// 			factorySpecs: factorySpecs,
+		// 			edge:         edge,
+		// 			val:          val,
+		// 			op:           pb.DirectedEdge_SET,
+		// 		})
+		// 		switch err {
+		// 		case ErrRetry:
+		// 			time.Sleep(10 * time.Millisecond)
+		// 		default:
+		// 			return newEdges, err
+		// 		}
+		// 	}
+		// }
 
 		// There are two cases to consider here:
 		// 1. This can be a schema mutation where the user adds a index on existing vectors.
