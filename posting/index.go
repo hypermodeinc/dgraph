@@ -1021,7 +1021,7 @@ func (r *rebuilder) Run(ctx context.Context) error {
 			return nil, err
 		}
 
-		memoryLayer.del(key)
+		MemLayerInstance.del(key)
 		return &bpb.KVList{Kv: kvs}, nil
 	}
 	tmpStream.Send = func(buf *z.Buffer) error {
