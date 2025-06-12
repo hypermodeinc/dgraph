@@ -1361,6 +1361,78 @@ func (rb *indexRebuildInfo) prefixesForTokIndexes() ([][]byte, error) {
 	return prefixes, nil
 }
 
+func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSpec, rb *IndexRebuild) error {
+	pk := x.ParsedKey{Attr: rb.Attr}
+	builder := rebuilder{attr: rb.Attr, prefix: pk.DataPrefix(), startTs: rb.StartTs}
+	builder.fn = func(uid uint64, pl *List, txn *Txn) ([]*pb.DirectedEdge, error) {
+		edge := pb.DirectedEdge{Attr: rb.Attr, Entity: uid}
+		edges := []*pb.DirectedEdge{}
+
+		processAddIndexMutation := func(edge *pb.DirectedEdge, val types.Val) ([]*pb.DirectedEdge, error) {
+			for {
+				newEdges, err := txn.addIndexMutations(ctx, &indexMutationInfo{
+					tokenizers:   nil,
+					factorySpecs: factorySpecs,
+					edge:         edge,
+					val:          val,
+					op:           pb.DirectedEdge_SET,
+				})
+				switch err {
+				case ErrRetry:
+					time.Sleep(10 * time.Millisecond)
+				default:
+					return newEdges, err
+				}
+			}
+		}
+
+		// There are two cases to consider here:
+		// 1. This can be a schema mutation where the user adds a index on existing vectors.
+		// 2. This can be a vector mutation where the user adds vectors to the DB on a
+		// predicate that is already indexed.
+		val, err := pl.Value(txn.StartTs)
+		if err != nil {
+			return []*pb.DirectedEdge{}, err
+		}
+
+		// In the first case, val.Tid is default, so we need to convert the
+		// vector into the vfloat type and re-add it to the DB.
+		if val.Tid != types.VFloatID {
+			// Here, we convert the defaultID type vector into vfloat.
+			sv, err := types.Convert(val, types.VFloatID)
+			if err != nil {
+				return []*pb.DirectedEdge{}, err
+			}
+			b := types.ValueForType(types.BinaryID)
+			if err = types.Marshal(sv, &b); err != nil {
+				return []*pb.DirectedEdge{}, err
+			}
+			edge.Value = b.Value.([]byte)
+			edge.ValueType = types.VFloatID.Enum()
+
+			inKey := x.DataKey(edge.Attr, uid)
+			p, err := txn.Get(inKey)
+			if err != nil {
+				return []*pb.DirectedEdge{}, err
+			}
+
+			if err := p.addMutation(ctx, txn, &edge); err != nil {
+				return []*pb.DirectedEdge{}, err
+			}
+		}
+		// In the second case, we don't need to convert the vector as it is already
+		// in the vfloat type. We just need to process it further.
+		// _, err = processAddIndexMutation(&edge, val)
+		// if err != nil {
+		// 	return []*pb.DirectedEdge{}, err
+		// }
+
+		return edges, nil
+	}
+
+	return builder.RunWithoutTemp(ctx)
+}
+
 // rebuildTokIndex rebuilds index for a given attribute.
 // We commit mutations with startTs and ignore the errors.
 func rebuildTokIndex(ctx context.Context, rb *IndexRebuild) error {
@@ -1392,6 +1464,9 @@ func rebuildTokIndex(ctx context.Context, rb *IndexRebuild) error {
 	}
 
 	runForVectors := (len(factorySpecs) != 0)
+	if runForVectors {
+		return rebuildVectorIndex(ctx, factorySpecs, rb)
+	}
 
 	pk := x.ParsedKey{Attr: rb.Attr}
 	builder := rebuilder{attr: rb.Attr, prefix: pk.DataPrefix(), startTs: rb.StartTs}
