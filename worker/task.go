@@ -6,7 +6,6 @@
 package worker
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"math"
@@ -2523,6 +2522,68 @@ func (qs *queryState) evaluate(cp countParams, out *pb.Result) error {
 	return nil
 }
 
+func (qs *queryState) handleHasWithOrderFunction(ctx context.Context, q *pb.Query, out *pb.Result,
+	rev bool, offset, first int) error {
+	initKey := x.ParsedKey{
+		Attr: q.Attr,
+	}
+
+	startKey := x.IndexKey(q.Attr, "")
+	if rev {
+		startKey = x.IndexKey(q.Attr, "zzzzzzzzzzzzzzzzzzzzzzzzzzz")
+	}
+
+	prefix := initKey.IndexPrefix()
+
+	result := &pb.List{}
+
+	// This function checks if we should include uid in result or not when has is queried with
+	// @lang(eg: has(name@en)). We need to do this inside this function to return correct result
+	// for first.
+	checkInclusion := func(uid uint64) error {
+		return nil
+	}
+
+	cnt := int32(0)
+
+	iteratorFunc := &posting.IterateDiskFunc{
+		Prefix:         prefix,
+		ReadTs:         q.ReadTs,
+		AllVersions:    false,
+		Reverse:        rev,
+		CheckInclusion: checkInclusion,
+		Function: func(l *posting.List, pk x.ParsedKey) error {
+			fmt.Println(pk, q.Offset, q.First, len(result.Uids))
+
+			pl, err := l.Uids(posting.ListOptions{ReadTs: q.ReadTs})
+			if err != nil {
+				return err
+			}
+
+			if cnt < q.Offset {
+				cnt++
+				return nil
+			}
+
+			result.Uids = append(result.Uids, pl.Uids...)
+
+			// We'll stop fetching if we fetch the required count.
+			if len(result.Uids) >= int(q.First) || len(result.Uids) >= (first+offset) {
+				return posting.ErrStopIteration
+			}
+			return nil
+		},
+		StartKey: startKey,
+	}
+
+	err := posting.MemLayerInstance.IterateDisk(ctx, *iteratorFunc)
+	if err != nil {
+		return err
+	}
+	out.UidMatrix = append(out.UidMatrix, result)
+	return nil
+}
+
 func (qs *queryState) handleHasFunction(ctx context.Context, q *pb.Query, out *pb.Result,
 	srcFn *functionContext) error {
 	span := trace.SpanFromContext(ctx)
@@ -2532,8 +2593,21 @@ func (qs *queryState) handleHasFunction(ctx context.Context, q *pb.Query, out *p
 		glog.Infof("handleHasFunction query: %+v\n", q)
 	}
 
-	txn := pstore.NewTransactionAt(q.ReadTs, false)
-	defer txn.Discard()
+	if len(q.Order.Order) > 0 {
+		isIndexed := schema.State().IsIndexed(ctx, q.Attr)
+		if isIndexed {
+			var order *pb.Order
+			for _, i := range q.Order.Order {
+				if i.Attr == q.Attr {
+					order = i
+					break
+				}
+			}
+			if order != nil {
+				return qs.handleHasWithOrderFunction(ctx, q, out, order.Desc, int(q.Order.Offset), int(q.Order.Count))
+			}
+		}
+	}
 
 	initKey := x.ParsedKey{
 		Attr: q.Attr,
@@ -2548,13 +2622,6 @@ func (qs *queryState) handleHasFunction(ctx context.Context, q *pb.Query, out *p
 	}
 
 	result := &pb.List{}
-	var prevKey []byte
-	itOpt := badger.DefaultIteratorOptions
-	itOpt.PrefetchValues = false
-	itOpt.AllVersions = true
-	itOpt.Prefix = prefix
-	it := txn.NewIterator(itOpt)
-	defer it.Close()
 
 	lang := langForFunc(q.Langs)
 	needFiltering := needsStringFiltering(srcFn, q.Langs, q.Attr)
@@ -2572,98 +2639,32 @@ func (qs *queryState) handleHasFunction(ctx context.Context, q *pb.Query, out *p
 	}
 
 	cnt := int32(0)
-loop:
-	// This function could be switched to the stream.Lists framework, but after the change to use
-	// BitCompletePosting, the speed here is already pretty fast. The slowdown for @lang predicates
-	// occurs in filterStringFunction (like has(name) queries).
-	for it.Seek(startKey); it.Valid(); {
-		item := it.Item()
-		if bytes.Equal(item.Key(), prevKey) {
-			it.Next()
-			continue
-		}
-		prevKey = append(prevKey[:0], item.Key()...)
 
-		// Parse the key upfront, otherwise ReadPostingList would advance the
-		// iterator.
-		pk, err := x.Parse(item.Key())
-		if err != nil {
-			return err
-		}
-
-		if pk.HasStartUid {
-			// The keys holding parts of a split key should not be accessed here because
-			// they have a different prefix. However, the check is being added to guard
-			// against future bugs.
-			continue
-		}
-
-		// The following optimization speeds up this iteration considerably, because it avoids
-		// the need to run ReadPostingList.
-		if item.UserMeta()&posting.BitEmptyPosting > 0 {
-			// This is an empty posting list. So, it should not be included.
-			continue
-		}
-		if item.UserMeta()&posting.BitCompletePosting > 0 {
-			// This bit would only be set if there are valid uids in UidPack.
-			err := checkInclusion(pk.Uid)
-			switch {
-			case err == posting.ErrNoValue:
-				continue
-			case err != nil:
-				return err
-			}
-			// skip entries upto Offset and do not store in the result.
+	iteratorFunc := &posting.IterateDiskFunc{
+		Prefix:         prefix,
+		ReadTs:         q.ReadTs,
+		Reverse:        false,
+		AllVersions:    true,
+		CheckInclusion: checkInclusion,
+		Function: func(l *posting.List, pk x.ParsedKey) error {
 			if cnt < q.Offset {
 				cnt++
-				continue
+				return nil
 			}
 			result.Uids = append(result.Uids, pk.Uid)
 
 			// We'll stop fetching if we fetch the required count.
 			if len(result.Uids) >= int(q.First) {
-				break
+				return posting.ErrStopIteration
 			}
-			continue
-		}
+			return nil
+		},
+		StartKey: startKey,
+	}
 
-		// We do need to copy over the key for ReadPostingList.
-		l, err := posting.ReadPostingList(item.KeyCopy(nil), it)
-		if err != nil {
-			return err
-		}
-		empty, err := l.IsEmpty(q.ReadTs, 0)
-		switch {
-		case err != nil:
-			return err
-		case !empty:
-			err := checkInclusion(pk.Uid)
-			switch {
-			case err == posting.ErrNoValue:
-				continue
-			case err != nil:
-				return err
-			}
-			// skip entries upto Offset and do not store in the result.
-			if cnt < q.Offset {
-				cnt++
-				continue
-			}
-			result.Uids = append(result.Uids, pk.Uid)
-
-			// We'll stop fetching if we fetch the required count.
-			if len(result.Uids) >= int(q.First) {
-				break loop
-			}
-		}
-
-		if len(result.Uids)%100000 == 0 {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-			}
-		}
+	err := posting.MemLayerInstance.IterateDisk(ctx, *iteratorFunc)
+	if err != nil {
+		return err
 	}
 	span.AddEvent("handleHasFunction result", trace.WithAttributes(
 		attribute.Int("uid_count", len(result.Uids))))

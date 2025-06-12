@@ -261,7 +261,7 @@ func addEdgeToUID(t *testing.T, attr string, src uint64,
 
 func TestCountReverseIndexWithData(t *testing.T) {
 	require.NoError(t, pstore.DropAll())
-	memoryLayer.clear()
+	MemLayerInstance.clear()
 	indexNameCountVal := "testcount: [uid] @count @reverse ."
 
 	attr := x.AttrInRootNamespace("testcount")
@@ -296,7 +296,7 @@ func TestCountReverseIndexWithData(t *testing.T) {
 
 func TestCountReverseIndexEmptyPosting(t *testing.T) {
 	require.NoError(t, pstore.DropAll())
-	memoryLayer.clear()
+	MemLayerInstance.clear()
 	indexNameCountVal := "testcount: [uid] @count @reverse ."
 
 	attr := x.AttrInRootNamespace("testcount")

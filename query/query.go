@@ -944,6 +944,18 @@ func createTaskQuery(ctx context.Context, sg *SubGraph) (*pb.Query, error) {
 
 	// first is to limit how many results we want.
 	first, offset := calculatePaginationParams(sg)
+	ns, err := x.ExtractNamespace(ctx)
+	if err != nil {
+		return nil, errors.Wrapf(err, "While ordering and paginating")
+	}
+	orderParams := sg.createOrderForTask(ns)
+	sortMsg := &pb.SortMessage{
+		Order:     orderParams,
+		UidMatrix: sg.uidMatrix,
+		Offset:    int32(sg.Params.Offset),
+		Count:     int32(sg.Params.Count),
+		ReadTs:    sg.ReadTs,
+	}
 
 	out := &pb.Query{
 		ReadTs:       sg.ReadTs,
@@ -959,6 +971,7 @@ func createTaskQuery(ctx context.Context, sg *SubGraph) (*pb.Query, error) {
 		ExpandAll:    sg.Params.ExpandAll,
 		First:        first,
 		Offset:       offset,
+		Order:        sortMsg,
 	}
 
 	if sg.SrcUIDs != nil {
