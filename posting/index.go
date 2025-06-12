@@ -1468,7 +1468,6 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 			}
 
 			inVec := types.BytesAsFloatArray(val.Value.([]byte))
-			fmt.Println(inVec)
 			vc.addVector(inVec)
 			return edges, nil
 		}
