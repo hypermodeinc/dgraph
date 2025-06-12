@@ -1403,7 +1403,6 @@ func (vc *vectorCentroids) updateCentroids() {
 		for j := 0; j < vc.dimension; j++ {
 			vc.centroids[i][j] = vc.weights[i][j] / float32(vc.counts[i])
 		}
-		fmt.Println("i: ", i, "count: ", vc.counts[i])
 	}
 }
 
@@ -1469,6 +1468,7 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 			}
 
 			inVec := types.BytesAsFloatArray(val.Value.([]byte))
+			fmt.Println(inVec)
 			vc.addVector(inVec)
 			return edges, nil
 		}
