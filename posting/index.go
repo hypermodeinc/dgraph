@@ -1399,9 +1399,11 @@ func (vc *vectorCentroids) addVector(vec []float32) {
 }
 
 func (vc *vectorCentroids) updateCentroids() {
-	for i := 0; i < vc.dimension; i++ {
-		fmt.Println(i, vc.counts[i])
-		vc.centroids[i][i] = vc.weights[i][i] / float32(vc.counts[i])
+	for i := 0; i < vc.numCenters; i++ {
+		for j := 0; j < vc.dimension; j++ {
+			vc.centroids[i][j] = vc.weights[i][j] / float32(vc.counts[i])
+		}
+		fmt.Println("i: ", i, "count: ", vc.counts[i])
 	}
 }
 
