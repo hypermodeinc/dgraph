@@ -13,8 +13,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -35,6 +37,8 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/tok/hnsw"
 	"github.com/hypermodeinc/dgraph/v25/types"
 	"github.com/hypermodeinc/dgraph/v25/x"
+
+	"github.com/viterin/vek/vek32"
 )
 
 var emptyCountParams countParams
@@ -1361,76 +1365,121 @@ func (rb *indexRebuildInfo) prefixesForTokIndexes() ([][]byte, error) {
 	return prefixes, nil
 }
 
+type vectorCentroids struct {
+	dimension  int
+	numCenters int
+
+	centroids [][]float32
+	counts    []int64
+	weights   [][]float32
+	mutexs    []*sync.Mutex
+}
+
+func (vc *vectorCentroids) findCentroid(input []float32) int {
+	minIdx := 0
+	minDist := math.MaxFloat32
+	for i, centroid := range vc.centroids {
+		dist := vek32.Distance(centroid, input)
+		if float64(dist) < minDist {
+			minDist = float64(dist)
+			minIdx = i
+		}
+	}
+	return minIdx
+}
+
+func (vc *vectorCentroids) addVector(vec []float32) {
+	idx := vc.findCentroid(vec)
+	vc.mutexs[idx].Lock()
+	defer vc.mutexs[idx].Unlock()
+	for i := 0; i < vc.dimension; i++ {
+		vc.weights[idx][i] += vec[i]
+	}
+	vc.counts[idx]++
+}
+
+func (vc *vectorCentroids) updateCentroids() {
+	for i := 0; i < vc.dimension; i++ {
+		fmt.Println(i, vc.counts[i])
+		vc.centroids[i][i] = vc.weights[i][i] / float32(vc.counts[i])
+	}
+}
+
+func (vc *vectorCentroids) randomVector() []float32 {
+	vec := make([]float32, vc.dimension)
+	for i := 0; i < vc.dimension; i++ {
+		vec[i] = float32(rand.Float64()) / math.MaxFloat32
+	}
+	return vec
+}
+
+func (vc *vectorCentroids) randomInit() {
+	vc.dimension = 256
+	vc.numCenters = 100
+	vc.centroids = make([][]float32, vc.numCenters)
+	vc.counts = make([]int64, vc.numCenters)
+	vc.weights = make([][]float32, vc.numCenters)
+	vc.mutexs = make([]*sync.Mutex, vc.numCenters)
+	for i := 0; i < vc.numCenters; i++ {
+		vc.centroids[i] = vc.randomVector()
+		vc.weights[i] = make([]float32, vc.dimension)
+		vc.counts[i] = 0
+		vc.mutexs[i] = &sync.Mutex{}
+	}
+}
+
 func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSpec, rb *IndexRebuild) error {
 	pk := x.ParsedKey{Attr: rb.Attr}
-	builder := rebuilder{attr: rb.Attr, prefix: pk.DataPrefix(), startTs: rb.StartTs}
-	builder.fn = func(uid uint64, pl *List, txn *Txn) ([]*pb.DirectedEdge, error) {
-		edge := pb.DirectedEdge{Attr: rb.Attr, Entity: uid}
-		edges := []*pb.DirectedEdge{}
+	vc := &vectorCentroids{}
+	vc.randomInit()
 
-		// processAddIndexMutation := func(edge *pb.DirectedEdge, val types.Val) ([]*pb.DirectedEdge, error) {
-		// 	for {
-		// 		newEdges, err := txn.addIndexMutations(ctx, &indexMutationInfo{
-		// 			tokenizers:   nil,
-		// 			factorySpecs: factorySpecs,
-		// 			edge:         edge,
-		// 			val:          val,
-		// 			op:           pb.DirectedEdge_SET,
-		// 		})
-		// 		switch err {
-		// 		case ErrRetry:
-		// 			time.Sleep(10 * time.Millisecond)
-		// 		default:
-		// 			return newEdges, err
-		// 		}
-		// 	}
-		// }
+	for itr := range 5 {
+		fmt.Println(itr)
+		builder := rebuilder{attr: rb.Attr, prefix: pk.DataPrefix(), startTs: rb.StartTs}
+		builder.fn = func(uid uint64, pl *List, txn *Txn) ([]*pb.DirectedEdge, error) {
+			edges := []*pb.DirectedEdge{}
 
-		// There are two cases to consider here:
-		// 1. This can be a schema mutation where the user adds a index on existing vectors.
-		// 2. This can be a vector mutation where the user adds vectors to the DB on a
-		// predicate that is already indexed.
-		val, err := pl.Value(txn.StartTs)
+			// processAddIndexMutation := func(edge *pb.DirectedEdge, val types.Val) ([]*pb.DirectedEdge, error) {
+			// 	for {
+			// 		newEdges, err := txn.addIndexMutations(ctx, &indexMutationInfo{
+			// 			tokenizers:   nil,
+			// 			factorySpecs: factorySpecs,
+			// 			edge:         edge,
+			// 			val:          val,
+			// 			op:           pb.DirectedEdge_SET,
+			// 		})
+			// 		switch err {
+			// 		case ErrRetry:
+			// 			time.Sleep(10 * time.Millisecond)
+			// 		default:
+			// 			return newEdges, err
+			// 		}
+			// 	}
+			// }
+
+			// There are two cases to consider here:
+			// 1. This can be a schema mutation where the user adds a index on existing vectors.
+			// 2. This can be a vector mutation where the user adds vectors to the DB on a
+			// predicate that is already indexed.
+			val, err := pl.Value(txn.StartTs)
+			if err != nil {
+				return []*pb.DirectedEdge{}, err
+			}
+
+			inVec := types.BytesAsFloatArray(val.Value.([]byte))
+			vc.addVector(inVec)
+			return edges, nil
+		}
+
+		err := builder.RunWithoutTemp(ctx)
 		if err != nil {
-			return []*pb.DirectedEdge{}, err
+			return err
 		}
 
-		// In the first case, val.Tid is default, so we need to convert the
-		// vector into the vfloat type and re-add it to the DB.
-		if val.Tid != types.VFloatID {
-			// Here, we convert the defaultID type vector into vfloat.
-			sv, err := types.Convert(val, types.VFloatID)
-			if err != nil {
-				return []*pb.DirectedEdge{}, err
-			}
-			b := types.ValueForType(types.BinaryID)
-			if err = types.Marshal(sv, &b); err != nil {
-				return []*pb.DirectedEdge{}, err
-			}
-			edge.Value = b.Value.([]byte)
-			edge.ValueType = types.VFloatID.Enum()
-
-			inKey := x.DataKey(edge.Attr, uid)
-			p, err := txn.Get(inKey)
-			if err != nil {
-				return []*pb.DirectedEdge{}, err
-			}
-
-			if err := p.addMutation(ctx, txn, &edge); err != nil {
-				return []*pb.DirectedEdge{}, err
-			}
-		}
-		// In the second case, we don't need to convert the vector as it is already
-		// in the vfloat type. We just need to process it further.
-		// _, err = processAddIndexMutation(&edge, val)
-		// if err != nil {
-		// 	return []*pb.DirectedEdge{}, err
-		// }
-
-		return edges, nil
+		vc.updateCentroids()
 	}
 
-	return builder.RunWithoutTemp(ctx)
+	return nil
 }
 
 // rebuildTokIndex rebuilds index for a given attribute.
