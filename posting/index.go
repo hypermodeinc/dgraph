@@ -1419,7 +1419,7 @@ func (vc *vectorCentroids) randomVector() []float32 {
 
 func (vc *vectorCentroids) randomInit() {
 	vc.dimension = 256
-	vc.numCenters = 100
+	vc.numCenters = 5000
 	vc.centroids = make([][]float32, vc.numCenters)
 	vc.counts = make([]int64, vc.numCenters)
 	vc.weights = make([][]float32, vc.numCenters)
@@ -1520,6 +1520,11 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 			pbEdges = append(pbEdges, pbe)
 		}
 		edgesCreated += len(pbEdges)
+		vc.counts[idx]--
+		fmt.Println("IDX completed", idx)
+		if vc.counts[idx] == 0 {
+			txns[idx].cache.plists = nil
+		}
 		return pbEdges, nil
 	}
 
