@@ -1390,6 +1390,7 @@ func (vc *vectorCentroids) findCentroid(input []float32) int {
 
 func (vc *vectorCentroids) addVector(vec []float32) {
 	idx := vc.findCentroid(vec)
+	fmt.Println("Add vector", idx)
 	vc.mutexs[idx].Lock()
 	defer vc.mutexs[idx].Unlock()
 	for i := 0; i < vc.dimension; i++ {
@@ -1403,8 +1404,9 @@ func (vc *vectorCentroids) updateCentroids() {
 		for j := 0; j < vc.dimension; j++ {
 			vc.centroids[i][j] = vc.weights[i][j] / float32(vc.counts[i])
 		}
-		fmt.Println(vc.counts[i])
+		fmt.Printf("%d, ", vc.counts[i])
 	}
+	fmt.Println()
 }
 
 func (vc *vectorCentroids) randomVector() []float32 {
