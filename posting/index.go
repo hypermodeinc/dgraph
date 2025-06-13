@@ -1499,44 +1499,51 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 
 	edgesCreated := 0
 
-	builder := rebuilder{attr: rb.Attr, prefix: pk.DataPrefix(), startTs: rb.StartTs}
-	builder.fn = func(uid uint64, pl *List, txn *Txn) ([]*pb.DirectedEdge, error) {
-		val, err := pl.Value(txn.StartTs)
+	numPasses := vc.numCenters
+	for pass_idx := range numPasses {
+		builder := rebuilder{attr: rb.Attr, prefix: pk.DataPrefix(), startTs: rb.StartTs}
+		builder.fn = func(uid uint64, pl *List, txn *Txn) ([]*pb.DirectedEdge, error) {
+			val, err := pl.Value(txn.StartTs)
+			if err != nil {
+				return []*pb.DirectedEdge{}, err
+			}
+
+			inVec := types.BytesAsFloatArray(val.Value.([]byte))
+			idx := vc.findCentroid(inVec)
+			if idx%numPasses != pass_idx {
+				return []*pb.DirectedEdge{}, nil
+			}
+			vc.mutexs[idx].Lock()
+			defer vc.mutexs[idx].Unlock()
+			edges, err := indexers[idx].Insert(ctx, tcs[idx], uid, inVec)
+			if err != nil {
+				return []*pb.DirectedEdge{}, err
+			}
+			pbEdges := []*pb.DirectedEdge{}
+			for _, e := range edges {
+				pbe := indexEdgeToPbEdge(e)
+				pbEdges = append(pbEdges, pbe)
+			}
+
+			edgesCreated += len(pbEdges)
+			vc.counts[idx]--
+			if vc.counts[idx] == 0 {
+				fmt.Println("IDX completed", idx)
+				txns[idx].cache.plists = nil
+				txns[idx] = nil
+				tcs[idx] = nil
+				indexers[idx] = nil
+			}
+			return pbEdges, nil
+		}
+
+		err := builder.RunWithoutTemp(ctx)
 		if err != nil {
-			return []*pb.DirectedEdge{}, err
+			return err
 		}
 
-		inVec := types.BytesAsFloatArray(val.Value.([]byte))
-		idx := vc.findCentroid(inVec)
-		vc.mutexs[idx].Lock()
-		defer vc.mutexs[idx].Unlock()
-		edges, err := indexers[idx].Insert(ctx, tcs[idx], uid, inVec)
-		if err != nil {
-			return []*pb.DirectedEdge{}, err
-		}
-		pbEdges := []*pb.DirectedEdge{}
-		for _, e := range edges {
-			pbe := indexEdgeToPbEdge(e)
-			pbEdges = append(pbEdges, pbe)
-		}
-		edgesCreated += len(pbEdges)
-		vc.counts[idx]--
-		if vc.counts[idx] == 0 {
-			fmt.Println("IDX completed", idx)
-			txns[idx].cache.plists = nil
-			txns[idx] = nil
-			tcs[idx] = nil
-			indexers[idx] = nil
-		}
-		return pbEdges, nil
+		fmt.Printf("Created %d edges\n", edgesCreated)
 	}
-
-	err := builder.RunWithoutTemp(ctx)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Created %d edges\n", edgesCreated)
 
 	return nil
 }
