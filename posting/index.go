@@ -1542,6 +1542,19 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 			return err
 		}
 
+		for idx := range vc.counts {
+			if idx%numPasses != pass_idx {
+				continue
+			}
+			fmt.Printf("%d,", vc.counts[idx])
+			fmt.Println("IDX completed", idx)
+			txns[idx].cache.plists = nil
+			txns[idx] = nil
+			tcs[idx] = nil
+			indexers[idx] = nil
+		}
+		fmt.Println()
+
 		fmt.Printf("Created %d edges in pass %d out of %d\n", edgesCreated, pass_idx, numPasses)
 	}
 
