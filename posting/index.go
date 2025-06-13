@@ -1497,9 +1497,9 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 		indexers[i] = indexers_i
 	}
 
-	edgesCreated := 0
+	var edgesCreated atomic.Int64
 
-	numPasses := vc.numCenters / 10
+	numPasses := vc.numCenters / 100
 	for pass_idx := range numPasses {
 		builder := rebuilder{attr: rb.Attr, prefix: pk.DataPrefix(), startTs: rb.StartTs}
 		builder.fn = func(uid uint64, pl *List, txn *Txn) ([]*pb.DirectedEdge, error) {
@@ -1525,7 +1525,7 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 				pbEdges = append(pbEdges, pbe)
 			}
 
-			edgesCreated += len(pbEdges)
+			edgesCreated.Add(int64(1))
 			vc.counts[idx]--
 			if vc.counts[idx] == 0 {
 				fmt.Println("IDX completed", idx)
@@ -1547,7 +1547,6 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 				continue
 			}
 			fmt.Printf("%d,", vc.counts[idx])
-			fmt.Println("IDX completed", idx)
 			txns[idx].cache.plists = nil
 			txns[idx] = nil
 			tcs[idx] = nil
@@ -1555,7 +1554,7 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 		}
 		fmt.Println()
 
-		fmt.Printf("Created %d edges in pass %d out of %d\n", edgesCreated, pass_idx, numPasses)
+		fmt.Printf("Created %d edges in pass %d out of %d\n", edgesCreated.Load(), pass_idx, numPasses)
 	}
 
 	return nil
