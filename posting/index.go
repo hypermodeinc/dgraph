@@ -1499,7 +1499,7 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 
 	edgesCreated := 0
 
-	numPasses := vc.numCenters
+	numPasses := vc.numCenters / 10
 	for pass_idx := range numPasses {
 		builder := rebuilder{attr: rb.Attr, prefix: pk.DataPrefix(), startTs: rb.StartTs}
 		builder.fn = func(uid uint64, pl *List, txn *Txn) ([]*pb.DirectedEdge, error) {
@@ -1542,7 +1542,7 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 			return err
 		}
 
-		fmt.Printf("Created %d edges\n", edgesCreated)
+		fmt.Printf("Created %d edges in pass %d out of %d\n", edgesCreated, pass_idx, numPasses)
 	}
 
 	return nil
