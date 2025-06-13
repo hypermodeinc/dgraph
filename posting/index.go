@@ -1521,8 +1521,8 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 		}
 		edgesCreated += len(pbEdges)
 		vc.counts[idx]--
-		fmt.Println("IDX completed", idx)
 		if vc.counts[idx] == 0 {
+			fmt.Println("IDX completed", idx)
 			txns[idx].cache.plists = nil
 			txns[idx] = nil
 			tcs[idx] = nil
