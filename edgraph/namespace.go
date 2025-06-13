@@ -310,7 +310,7 @@ func getNamespaceIDFromName(ctx context.Context, nsName string) (uint64, error) 
 		return 0, err
 	}
 	if len(data.Namespaces) == 0 {
-		return 0, errors.Errorf("namespace %q not found", nsName)
+		return 0, errors.Wrapf(x.ErrNamespaceNotFound, "namespace %q not found", nsName)
 	}
 
 	glog.Infof("Found namespace [%v] with id [%d]", nsName, data.Namespaces[0].ID)

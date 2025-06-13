@@ -65,6 +65,8 @@ var (
 	ErrConflict = errors.New("Transaction conflict")
 	// ErrHashMismatch is returned when the hash does not matches the startTs
 	ErrHashMismatch = errors.New("hash mismatch the claimed startTs|namespace")
+	// ErrNamespaceNotFound is returned when a namespace is not found.
+	ErrNamespaceNotFound = errors.New("namespace not found")
 )
 
 const (
@@ -266,6 +268,19 @@ func ExtractNamespace(ctx context.Context) (uint64, error) {
 		return 0, errors.Wrapf(err, "Error while parsing namespace from metadata")
 	}
 	return namespace, nil
+}
+
+// ExtractNamespaceStr parses the namespace string value from the incoming gRPC context.
+func ExtractNamespaceStr(ctx context.Context) (string, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return "", errors.New("No metadata in the context")
+	}
+	ns := md.Get("namespace-str")
+	if len(ns) == 0 {
+		return "", errors.New("No namespace-str in the metadata of context")
+	}
+	return ns[0], nil
 }
 
 func IsRootNsOperation(ctx context.Context) bool {
