@@ -6,6 +6,7 @@
 package x
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"os"
@@ -13,8 +14,8 @@ import (
 	"strings"
 
 	"github.com/golang/glog"
-	minio "github.com/minio/minio-go/v6"
-	"github.com/minio/minio-go/v6/pkg/credentials"
+	minio "github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/pkg/errors"
 
 	"github.com/hypermodeinc/dgraph/v25/protos/pb"
@@ -105,7 +106,7 @@ func NewMinioClient(uri *url.URL, creds *MinioCredentials) (*MinioClient, error)
 	secure := uri.Query().Get("secure") != "false" // secure by default
 
 	if creds.isAnonymous() {
-		mc, err := minio.New(uri.Host, "", "", secure)
+		mc, err := minio.New(uri.Host, &minio.Options{Secure: secure})
 		if err != nil {
 			return nil, err
 		}
@@ -119,8 +120,10 @@ func NewMinioClient(uri *url.URL, creds *MinioCredentials) (*MinioClient, error)
 		credsProvider = credentials.New(MinioCredentialsProvider(uri.Scheme, requestCreds(creds)))
 	}
 
-	mc, err := minio.NewWithCredentials(uri.Host, credsProvider, secure, "")
-
+	mc, err := minio.New(uri.Host, &minio.Options{
+		Creds:  credsProvider,
+		Secure: secure,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +162,7 @@ func (mc *MinioClient) ValidateBucket(uri *url.URL) (string, string, error) {
 	bucketName, objectPrefix := mc.ParseBucketAndPrefix(uri.Path)
 
 	// verify the requested bucket exists.
-	found, err := mc.BucketExists(bucketName)
+	found, err := mc.BucketExists(context.Background(), bucketName)
 	if err != nil {
 		return "", "", errors.Wrapf(err, "while looking for bucket %s at host %s", bucketName, uri.Host)
 	}

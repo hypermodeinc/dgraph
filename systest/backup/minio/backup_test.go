@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	minio "github.com/minio/minio-go/v6"
+	minio "github.com/minio/minio-go/v7"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -56,7 +56,7 @@ func TestBackupMinio(t *testing.T) {
 
 	mc, err = testutil.NewMinioClient()
 	require.NoError(t, err)
-	require.NoError(t, mc.MakeBucket(bucketName, ""))
+	require.NoError(t, mc.MakeBucket(context.Background(), bucketName, minio.MakeBucketOptions{}))
 
 	ctx := context.Background()
 	require.NoError(t, dg.Alter(ctx, &api.Operation{DropAll: true}))
@@ -386,7 +386,8 @@ func copyToLocalFs(t *testing.T) {
 	// List all the folders in the bucket.
 	lsCh1 := make(chan struct{})
 	defer close(lsCh1)
-	objectCh1 := mc.ListObjectsV2(bucketName, "", false, lsCh1)
+	objectCh1 := mc.ListObjects(context.Background(), bucketName,
+		minio.ListObjectsOptions{Prefix: "", Recursive: false})
 	for object := range objectCh1 {
 		require.NoError(t, object.Err)
 		if object.Key != "manifest.json" {
@@ -396,11 +397,13 @@ func copyToLocalFs(t *testing.T) {
 
 		// Get all the files in that folder and copy them to the local filesystem.
 		lsCh2 := make(chan struct{})
-		objectCh2 := mc.ListObjectsV2(bucketName, "", true, lsCh2)
+		objectCh2 := mc.ListObjects(context.Background(), bucketName,
+			minio.ListObjectsOptions{Prefix: "", Recursive: true})
 		for object := range objectCh2 {
 			require.NoError(t, object.Err)
 			dstFile := backupDir + "/" + object.Key
-			require.NoError(t, mc.FGetObject(bucketName, object.Key, dstFile, minio.GetObjectOptions{}))
+			require.NoError(t, mc.FGetObject(context.Background(),
+				bucketName, object.Key, dstFile, minio.GetObjectOptions{}))
 		}
 		close(lsCh2)
 	}
