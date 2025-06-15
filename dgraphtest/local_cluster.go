@@ -837,6 +837,15 @@ func (c *LocalCluster) HTTPClient() (*dgraphapi.HTTPClient, error) {
 	return dgraphapi.GetHttpClient(alphaUrl, zeroUrl)
 }
 
+func (c *LocalCluster) GetAlphaHttpClient(alphaID int) (*dgraphapi.HTTPClient, error) {
+	pubPort, err := publicPort(c.dcli, c.alphas[alphaID], alphaHttpPort)
+	if err != nil {
+		return nil, err
+	}
+	url := "0.0.0.0:" + pubPort
+	return dgraphapi.GetHttpClient(url, "")
+}
+
 // serverURL returns url to the 'server' 'endpoint'
 func (c *LocalCluster) serverURL(server, endpoint string) (string, error) {
 	pubPort, err := publicPort(c.dcli, c.alphas[0], alphaHttpPort)

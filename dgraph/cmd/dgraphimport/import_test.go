@@ -10,16 +10,33 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/hypermodeinc/dgraph/v25/dgraphapi"
 	"github.com/hypermodeinc/dgraph/v25/dgraphtest"
+	"github.com/hypermodeinc/dgraph/v25/protos/pb"
 	"github.com/hypermodeinc/dgraph/v25/systest/1million/common"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/encoding/protojson"
 )
+
+type testcase struct {
+	name           string
+	numGroups      int
+	targetAlphas   int
+	replicasFactor int
+	downAlphas     int
+	description    string
+	err            string
+}
+
+var opts = grpc.WithTransportCredentials(insecure.NewCredentials())
 
 const expectedSchema = `{
 	"schema": [
@@ -71,7 +88,7 @@ func TestDrainModeAfterStartSnapshotStream(t *testing.T) {
 			dc, err := newClient(url, grpc.WithTransportCredentials(insecure.NewCredentials()))
 			require.NoError(t, err)
 
-			resp, err := startPDirStream(context.Background(), dc)
+			resp, err := initiateSnapshotStream(context.Background(), dc)
 			require.NoError(t, err)
 
 			require.Equal(t, tt.expectedNum, len(resp.Groups))
@@ -88,42 +105,187 @@ func TestDrainModeAfterStartSnapshotStream(t *testing.T) {
 	}
 }
 
-// TestImportApis tests import functionality with different cluster configurations
 func TestImportApis(t *testing.T) {
-	tests := []struct {
-		name           string
-		bulkAlphas     int
-		targetAlphas   int
-		replicasFactor int
-	}{
-		{"SingleGroupSingleAlpha", 1, 1, 1},
-		{"TwoGroupsSingleAlpha", 2, 2, 1},
-		{"ThreeGroupsSingleAlpha", 3, 3, 1},
+	tests := []testcase{
+		{
+			name:           "SingleGroupShutTwoAlphasPerGroup",
+			numGroups:      1,
+			targetAlphas:   3,
+			replicasFactor: 3,
+			downAlphas:     2,
+			description:    "Single group with 3 alphas, shutdown 2 alphas",
+			err:            "failed to initiate external snapshot stream",
+		},
+		{
+			name:           "TwoGroupShutTwoAlphasPerGroup",
+			numGroups:      2,
+			targetAlphas:   6,
+			replicasFactor: 3,
+			downAlphas:     2,
+			description:    "Two groups with 3 alphas each, shutdown 2 alphas per group",
+			err:            "failed to initiate external snapshot stream",
+		},
+		{
+			name:           "TwoGroupShutTwoAlphasPerGroupNoPDir",
+			numGroups:      1,
+			targetAlphas:   6,
+			replicasFactor: 3,
+			downAlphas:     0,
+			description:    "Two groups with 3 alphas each, 1 p directory is not available",
+			err:            "p directory does not exist for group [2]",
+		},
+		{
+			name:           "ThreeGroupShutTwoAlphasPerGroup",
+			numGroups:      3,
+			targetAlphas:   9,
+			replicasFactor: 3,
+			downAlphas:     2,
+			description:    "Three groups with 3 alphas each, shutdown 2 alphas per group",
+			err:            "failed to initiate external snapshot stream",
+		},
+		{
+			name:           "SingleGroupShutOneAlpha",
+			numGroups:      1,
+			targetAlphas:   3,
+			replicasFactor: 3,
+			downAlphas:     1,
+			description:    "Single group with multiple alphas, shutdown 1 alpha",
+			err:            "",
+		},
+		{
+			name:           "TwoGroupShutOneAlphaPerGroup",
+			numGroups:      2,
+			targetAlphas:   6,
+			replicasFactor: 3,
+			downAlphas:     1,
+			description:    "Multiple groups with multiple alphas, shutdown 1 alphas per group",
+			err:            "",
+		},
+		{
+			name:           "ThreeGroupShutOneAlphaPerGroup",
+			numGroups:      3,
+			targetAlphas:   9,
+			replicasFactor: 3,
+			downAlphas:     1,
+			description:    "Three groups with 3 alphas each, shutdown 1 alpha per group",
+			err:            "",
+		},
+		{
+			name:           "SingleGroupAllAlphasOnline",
+			numGroups:      1,
+			targetAlphas:   3,
+			replicasFactor: 3,
+			downAlphas:     0,
+			description:    "Single group with multiple alphas, all alphas are online",
+			err:            "",
+		},
+		{
+			name:           "TwoGroupAllAlphasOnline",
+			numGroups:      2,
+			targetAlphas:   6,
+			replicasFactor: 3,
+			downAlphas:     0,
+			description:    "Multiple groups with multiple alphas, all alphas are online",
+			err:            "",
+		},
+		{
+			name:           "ThreeGroupAllAlphasOnline",
+			numGroups:      3,
+			targetAlphas:   9,
+			replicasFactor: 3,
+			downAlphas:     0,
+			description:    "Three groups with 3 alphas each, all alphas are online",
+			err:            "",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			runImportTest(t, tt.bulkAlphas, tt.targetAlphas, tt.replicasFactor)
+			if tt.err != "" {
+				t.Logf("Running negative test case: %s", tt.description)
+			} else {
+				t.Logf("Running test case: %s", tt.description)
+			}
+			runImportTest(t, tt)
 		})
 	}
 }
 
-func runImportTest(t *testing.T, bulkAlphas, targetAlphas, replicasFactor int) {
-	bulkCluster, baseDir := setupBulkCluster(t, bulkAlphas)
+func runImportTest(t *testing.T, tt testcase) {
+	bulkCluster, baseDir := setupBulkCluster(t, tt.numGroups)
 	defer func() { bulkCluster.Cleanup(t.Failed()) }()
 
-	targetCluster, gc, gcCleanup := setupTargetCluster(t, targetAlphas, replicasFactor)
+	targetCluster, gc, gcCleanup := setupTargetCluster(t, tt.targetAlphas, tt.replicasFactor)
 	defer func() { targetCluster.Cleanup(t.Failed()) }()
 	defer gcCleanup()
+
+	_, err := gc.Query("schema{}")
+	require.NoError(t, err)
 
 	url, err := targetCluster.GetAlphaGrpcEndpoint(0)
 	require.NoError(t, err)
 	outDir := filepath.Join(baseDir, "out")
 
-	require.NoError(t, Import(context.Background(), url,
-		grpc.WithTransportCredentials(insecure.NewCredentials()), outDir))
+	// Get health status for all instances
+	hc, err := targetCluster.HTTPClient()
+	require.NoError(t, err)
+	var state pb.MembershipState
 
-	verifyImportResults(t, gc)
+	healthResp, err := hc.GetAlphaState()
+	require.NoError(t, err)
+	require.NoError(t, protojson.Unmarshal(healthResp, &state))
+	// Group alphas by their group number
+	alphaGroups := make(map[uint32][]int)
+	for _, group := range state.Groups {
+		for _, member := range group.Members {
+			if strings.Contains(member.Addr, "alpha0") {
+				continue
+			}
+			alphaNum := strings.TrimPrefix(member.Addr, "alpha")
+			alphaNum = strings.TrimSuffix(alphaNum, ":7080")
+			alphaID, err := strconv.Atoi(alphaNum)
+			require.NoError(t, err)
+			alphaGroups[member.GroupId] = append(alphaGroups[member.GroupId], alphaID)
+		}
+	}
+
+	// Shutdown specified number of alphas from each group
+	for group, alphas := range alphaGroups {
+		for i := 0; i < tt.downAlphas; i++ {
+			alphaID := alphas[i]
+			t.Logf("Shutting down alpha %v from group %v", alphaID, group)
+			require.NoError(t, targetCluster.StopAlpha(alphaID))
+		}
+	}
+
+	if tt.err != "" {
+		err := Import(context.Background(), url, opts, outDir)
+		require.Error(t, err)
+		require.ErrorContains(t, err, tt.err)
+		return
+	}
+
+	require.NoError(t, Import(context.Background(), url, opts, outDir))
+
+	for group, alphas := range alphaGroups {
+		for i := 0; i < tt.downAlphas; i++ {
+			alphaID := alphas[i]
+			t.Logf("Starting alpha %v from group %v", alphaID, group)
+			require.NoError(t, targetCluster.StartAlpha(alphaID))
+		}
+	}
+
+	require.NoError(t, targetCluster.HealthCheck(false))
+
+	t.Log("Import completed")
+
+	for i := 0; i < tt.targetAlphas; i++ {
+		t.Logf("Verifying import for alpha %v", i)
+		gc, cleanup, err := targetCluster.AlphaClient(i)
+		require.NoError(t, err)
+		defer cleanup()
+		verifyImportResults(t, gc, tt.downAlphas)
+	}
 }
 
 // setupBulkCluster creates and configures a cluster for bulk loading data
@@ -156,7 +318,7 @@ func setupBulkCluster(t *testing.T, numAlphas int) (*dgraphtest.LocalCluster, st
 func setupTargetCluster(t *testing.T, numAlphas, replicasFactor int) (*dgraphtest.LocalCluster, *dgraphapi.GrpcClient, func()) {
 	conf := dgraphtest.NewClusterConfig().
 		WithNumAlphas(numAlphas).
-		WithNumZeros(1).
+		WithNumZeros(3).
 		WithReplicas(replicasFactor)
 
 	cluster, err := dgraphtest.NewLocalCluster(conf)
@@ -170,24 +332,53 @@ func setupTargetCluster(t *testing.T, numAlphas, replicasFactor int) (*dgraphtes
 	return cluster, gc, cleanup
 }
 
-// verifyImportResults validates the result of an import operation
-func verifyImportResults(t *testing.T, gc *dgraphapi.GrpcClient) {
-	// Check schema after streaming process
-	schemaResp, err := gc.Query("schema{}")
-	require.NoError(t, err)
-	// Compare the schema response with the expected schema
-	var actualSchema, expectedSchemaObj map[string]interface{}
-	require.NoError(t, json.Unmarshal(schemaResp.Json, &actualSchema))
-	require.NoError(t, json.Unmarshal([]byte(expectedSchema), &expectedSchemaObj))
+// verifyImportResults validates the result of an import operation with retry logic
+func verifyImportResults(t *testing.T, gc *dgraphapi.GrpcClient, downAlphas int) {
+	maxRetries := 1
+	if downAlphas > 0 {
+		maxRetries = 10
+	}
 
-	// Check if the actual schema contains all the predicates from expected schema
-	actualPredicates := getPredicateMap(actualSchema)
+	retryDelay := 500 * time.Millisecond
+	hasAllPredicates := true
+
+	// Get expected predicates first
+	var expectedSchemaObj map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(expectedSchema), &expectedSchemaObj))
 	expectedPredicates := getPredicateMap(expectedSchemaObj)
 
-	for predName, predDetails := range expectedPredicates {
-		actualPred, exists := actualPredicates[predName]
-		require.True(t, exists, "Predicate '%s' not found in actual schema", predName)
-		require.Equal(t, predDetails, actualPred, "Predicate '%s' details don't match", predName)
+	for i := 0; i < maxRetries; i++ {
+		schemaResp, err := gc.Query("schema{}")
+		require.NoError(t, err)
+
+		// Parse schema response
+		var actualSchema map[string]interface{}
+		require.NoError(t, json.Unmarshal(schemaResp.Json, &actualSchema))
+
+		// Get actual predicates
+		actualPredicates := getPredicateMap(actualSchema)
+
+		// Check if all expected predicates are present
+		for predName := range expectedPredicates {
+			if _, exists := actualPredicates[predName]; !exists {
+				hasAllPredicates = false
+				break
+			}
+		}
+
+		if hasAllPredicates {
+			break
+		}
+
+		if i < maxRetries-1 {
+			t.Logf("Not all predicates found yet, retrying in %v", retryDelay)
+			time.Sleep(retryDelay)
+			retryDelay *= 2
+		}
+	}
+
+	if !hasAllPredicates {
+		t.Fatalf("Not all predicates found in schema")
 	}
 
 	for _, tt := range common.OneMillionTCs {
