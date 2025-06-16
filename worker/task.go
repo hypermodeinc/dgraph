@@ -2553,8 +2553,6 @@ func (qs *queryState) handleHasWithOrderFunction(ctx context.Context, q *pb.Quer
 		Reverse:        rev,
 		CheckInclusion: checkInclusion,
 		Function: func(l *posting.List, pk x.ParsedKey) error {
-			fmt.Println(pk, q.Offset, q.First, len(result.Uids))
-
 			pl, err := l.Uids(posting.ListOptions{ReadTs: q.ReadTs})
 			if err != nil {
 				return err
@@ -2580,6 +2578,9 @@ func (qs *queryState) handleHasWithOrderFunction(ctx context.Context, q *pb.Quer
 	if err != nil {
 		return err
 	}
+	sort.Slice(result.Uids, func(i, j int) bool {
+		return result.Uids[i] < result.Uids[j]
+	})
 	out.UidMatrix = append(out.UidMatrix, result)
 	return nil
 }
