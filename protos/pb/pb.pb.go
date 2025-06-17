@@ -19,9 +19,9 @@ import (
 	pb "github.com/dgraph-io/badger/v4/pb"
 	api "github.com/dgraph-io/dgo/v250/protos/api"
 	api_v2 "github.com/dgraph-io/dgo/v250/protos/api.v2"
-	_ "github.com/golang/protobuf/protoc-gen-go/descriptor"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	_ "google.golang.org/protobuf/types/descriptorpb"
 	reflect "reflect"
 	sync "sync"
 )
