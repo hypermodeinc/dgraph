@@ -2594,7 +2594,7 @@ func (qs *queryState) handleHasFunction(ctx context.Context, q *pb.Query, out *p
 		glog.Infof("handleHasFunction query: %+v\n", q)
 	}
 
-	if len(q.Order.Order) > 0 {
+	if q.Order != nil && len(q.Order.Order) > 0 {
 		isIndexed := schema.State().IsIndexed(ctx, q.Attr)
 		if isIndexed {
 			var order *pb.Order
