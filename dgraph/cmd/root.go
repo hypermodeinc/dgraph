@@ -32,6 +32,7 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/dgraph/cmd/debug"
 	"github.com/hypermodeinc/dgraph/v25/dgraph/cmd/debuginfo"
 	"github.com/hypermodeinc/dgraph/v25/dgraph/cmd/decrypt"
+	dgraphimport "github.com/hypermodeinc/dgraph/v25/dgraph/cmd/dgraphimport"
 	"github.com/hypermodeinc/dgraph/v25/dgraph/cmd/increment"
 	"github.com/hypermodeinc/dgraph/v25/dgraph/cmd/live"
 	"github.com/hypermodeinc/dgraph/v25/dgraph/cmd/mcp"
@@ -79,7 +80,7 @@ var subcommands = []*x.SubCommand{
 	&bulk.Bulk, &cert.Cert, &conv.Conv, &live.Live, &alpha.Alpha, &zero.Zero, &version.Version,
 	&debug.Debug, &migrate.Migrate, &debuginfo.DebugInfo, &upgrade.Upgrade, &decrypt.Decrypt, &increment.Increment,
 	&checkupgrade.CheckUpgrade, &backup.Restore, &backup.LsBackup, &backup.ExportBackup, &acl.CmdAcl,
-	&audit.CmdAudit, &mcp.Mcp,
+	&audit.CmdAudit, &mcp.Mcp, &dgraphimport.Import,
 }
 
 func initCmds() {

@@ -120,8 +120,8 @@ func runImportTest(t *testing.T, bulkAlphas, targetAlphas, replicasFactor int) {
 	require.NoError(t, err)
 	outDir := filepath.Join(baseDir, "out")
 
-	require.NoError(t, Import(context.Background(), url,
-		grpc.WithTransportCredentials(insecure.NewCredentials()), outDir))
+	require.NoError(t, ImportData(context.Background(), url, outDir,
+		grpc.WithTransportCredentials(insecure.NewCredentials())))
 
 	verifyImportResults(t, gc)
 }
