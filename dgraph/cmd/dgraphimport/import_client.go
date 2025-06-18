@@ -34,7 +34,7 @@ func newClient(endpoint string, opts grpc.DialOption) (apiv2.DgraphClient, error
 	return apiv2.NewDgraphClient(conn), nil
 }
 
-func Import(ctx context.Context, endpoint string, opts grpc.DialOption, bulkOutDir string) error {
+func ImportData(ctx context.Context, endpoint string, bulkOutDir string, opts ...grpc.DialOption) error {
 	dg, err := newClient(endpoint, opts)
 	if err != nil {
 		return err

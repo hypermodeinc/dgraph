@@ -21,7 +21,7 @@ const (
 	bufferDir      = "buffer"
 )
 
-func mergeMapShardsIntoReduceShards(opt *options) {
+func mergeMapShardsIntoReduceShards(opt *BulkOptions) {
 	if opt == nil {
 		fmt.Printf("Nil options passed to merge shards phase.\n")
 		os.Exit(1)

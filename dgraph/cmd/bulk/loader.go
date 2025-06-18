@@ -38,7 +38,7 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/xidmap"
 )
 
-type options struct {
+type BulkOptions struct {
 	DataFiles        string
 	DataFormat       string
 	SchemaFile       string
@@ -78,7 +78,7 @@ type options struct {
 }
 
 type state struct {
-	opt           *options
+	opt           *BulkOptions
 	prog          *progress
 	xids          *xidmap.XidMap
 	schema        *schemaStore
@@ -97,7 +97,7 @@ type loader struct {
 	zero    *grpc.ClientConn
 }
 
-func newLoader(opt *options) *loader {
+func newLoader(opt *BulkOptions) *loader {
 	if opt == nil {
 		log.Fatalf("Cannot create loader with nil options.")
 	}
@@ -180,7 +180,7 @@ func (ld *loader) leaseNamespaces() {
 	}
 }
 
-func readSchema(opt *options) *schema.ParsedSchema {
+func readSchema(opt *BulkOptions) *schema.ParsedSchema {
 	if opt.SchemaFile == "" {
 		return genDQLSchema(opt)
 	}
@@ -212,7 +212,7 @@ func readSchema(opt *options) *schema.ParsedSchema {
 	return result
 }
 
-func genDQLSchema(opt *options) *schema.ParsedSchema {
+func genDQLSchema(opt *BulkOptions) *schema.ParsedSchema {
 	gqlSchBytes := readGqlSchema(opt)
 	nsToSchemas := parseGqlSchema(string(gqlSchBytes))
 
@@ -348,7 +348,7 @@ func parseGqlSchema(s string) map[uint64]string {
 	return schemaMap
 }
 
-func readGqlSchema(opt *options) []byte {
+func readGqlSchema(opt *BulkOptions) []byte {
 	f, err := filestore.Open(opt.GqlSchemaFile)
 	x.Check(err)
 	defer func() {
@@ -400,9 +400,11 @@ func (ld *loader) processGqlSchema(loadType chunker.InputFormat) {
 		schema = strconv.Quote(schema)
 		switch loadType {
 		case chunker.RdfFormat:
-			x.Check2(gqlBuf.Write([]byte(fmt.Sprintf(rdfSchema, ns, ns, schema, ns))))
+			_, err := fmt.Fprintf(gqlBuf, rdfSchema, ns, ns, schema, ns)
+			x.Check(err)
 		case chunker.JsonFormat:
-			x.Check2(gqlBuf.Write([]byte(fmt.Sprintf(jsonSchema, ns, schema))))
+			_, err := fmt.Fprintf(gqlBuf, jsonSchema, ns, schema)
+			x.Check(err)
 		}
 		ld.readerChunkCh <- gqlBuf
 	}

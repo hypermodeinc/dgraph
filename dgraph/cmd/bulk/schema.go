@@ -28,7 +28,7 @@ type schemaStore struct {
 	*state
 }
 
-func newSchemaStore(initial *schema.ParsedSchema, opt *options, state *state) *schemaStore {
+func newSchemaStore(initial *schema.ParsedSchema, opt *BulkOptions, state *state) *schemaStore {
 	if opt == nil {
 		log.Fatalf("Cannot create schema store with nil options.")
 	}

@@ -52,7 +52,7 @@ type shardState struct {
 	mu   sync.Mutex // Allow only 1 write per shard at a time.
 }
 
-func newMapperBuffer(opt *options) *z.Buffer {
+func newMapperBuffer(opt *BulkOptions) *z.Buffer {
 	sz := float64(opt.MapBufSize) * 1.1
 	tmpDir := filepath.Join(opt.TmpDir, bufferDir)
 	buf, err := z.NewBufferTmp(tmpDir, int(sz))
