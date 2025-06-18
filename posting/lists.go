@@ -39,7 +39,7 @@ func Init(ps *badger.DB, cacheSize int64, removeOnUpdate bool) {
 	closer = z.NewCloser(1)
 	go x.MonitorMemoryMetrics(closer)
 
-	memoryLayer = initMemoryLayer(cacheSize, removeOnUpdate)
+	MemLayerInstance = initMemoryLayer(cacheSize, removeOnUpdate)
 }
 
 func SetEnabledDetailedMetrics(enableMetrics bool) {

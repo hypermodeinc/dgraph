@@ -72,7 +72,7 @@ var (
 	}
 )
 
-var memoryLayer *MemoryLayer
+var MemLayerInstance *MemoryLayer
 
 func init() {
 	x.AssertTrue(len(IncrRollup.priorityKeys) == 2)
@@ -325,12 +325,12 @@ func (txn *Txn) CommitToDisk(writer *TxnWriter, commitTs uint64) error {
 }
 
 func ResetCache() {
-	memoryLayer.clear()
+	MemLayerInstance.clear()
 }
 
 // RemoveCacheFor will delete the list corresponding to the given key.
 func RemoveCacheFor(key []byte) {
-	memoryLayer.del(key)
+	MemLayerInstance.del(key)
 }
 
 type Cache struct {
@@ -405,8 +405,104 @@ func (ml *MemoryLayer) del(key []byte) {
 	ml.cache.del(key)
 }
 
+type IterateDiskFunc struct {
+	Prefix         []byte
+	Prefetch       bool
+	AllVersions    bool
+	ReadTs         uint64
+	Reverse        bool
+	CheckInclusion func(uint64) error
+	Function       func(l *List, pk x.ParsedKey) error
+
+	StartKey []byte
+}
+
+func (ml *MemoryLayer) IterateDisk(ctx context.Context, f IterateDiskFunc) error {
+	txn := pstore.NewTransactionAt(f.ReadTs, false)
+	defer txn.Discard()
+
+	itOpt := badger.DefaultIteratorOptions
+	itOpt.PrefetchValues = f.Prefetch
+	itOpt.AllVersions = f.AllVersions
+	itOpt.Reverse = f.Reverse
+	itOpt.Prefix = f.Prefix
+	it := txn.NewIterator(itOpt)
+	defer it.Close()
+
+	var prevKey []byte
+
+	count := 0
+
+	for it.Seek(f.StartKey); it.Valid(); {
+		item := it.Item()
+		if bytes.Equal(item.Key(), prevKey) {
+			it.Next()
+			continue
+		}
+		prevKey = append(prevKey[:0], item.Key()...)
+
+		// Parse the key upfront, otherwise ReadPostingList would advance the
+		// iterator.
+		pk, err := x.Parse(item.Key())
+		if err != nil {
+			return err
+		}
+
+		if pk.HasStartUid {
+			// The keys holding parts of a split key should not be accessed here because
+			// they have a different prefix. However, the check is being added to guard
+			// against future bugs.
+			continue
+		}
+
+		if item.UserMeta()&BitEmptyPosting > 0 {
+			// This is an empty posting list. So, it should not be included.
+			continue
+		}
+
+		err = f.CheckInclusion(pk.Uid)
+		switch {
+		case err == ErrNoValue:
+			continue
+		case err != nil:
+			return err
+		}
+
+		count++
+
+		if count%100000 == 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+		}
+
+		l, err := ReadPostingList(item.KeyCopy(nil), it)
+		if err != nil {
+			return err
+		}
+		empty, err := l.IsEmpty(f.ReadTs, 0)
+		switch {
+		case err != nil:
+			return err
+		case !empty:
+			err = f.Function(l, pk)
+			if err != nil && err != ErrStopIteration {
+				return err
+			}
+			if err == ErrStopIteration {
+				return nil
+			}
+		}
+
+		it.Next()
+	}
+	return nil
+}
+
 func GetStatsHolder() *StatsHolder {
-	return memoryLayer.statsHolder
+	return MemLayerInstance.statsHolder
 }
 
 func initMemoryLayer(cacheSize int64, removeOnUpdate bool) *MemoryLayer {
@@ -510,9 +606,9 @@ func (txn *Txn) UpdateCachedKeys(commitTs uint64) {
 		return
 	}
 
-	memoryLayer.wait()
+	MemLayerInstance.wait()
 	for key, delta := range txn.cache.deltas {
-		memoryLayer.updateItemInCache(key, delta, txn.StartTs, commitTs)
+		MemLayerInstance.updateItemInCache(key, delta, txn.StartTs, commitTs)
 	}
 }
 
@@ -746,7 +842,7 @@ func getNew(key []byte, pstore *badger.DB, readTs uint64, readUids bool) (*List,
 		return nil, badger.ErrDBClosed
 	}
 
-	l, err := memoryLayer.ReadData(key, pstore, readTs, readUids)
+	l, err := MemLayerInstance.ReadData(key, pstore, readTs, readUids)
 	if err != nil {
 		return l, err
 	}
