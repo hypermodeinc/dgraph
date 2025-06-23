@@ -2152,10 +2152,7 @@ func verifyUniqueWithinMutation(qc *queryContext) error {
 	for i := range qc.uniqueVars {
 		gmuIndex, rdfIndex := decodeIndex(i)
 		// handles cases where the mutation was pruned in updateMutations
-		//if gmuIndex >= uint32(len(qc.gmuList)) || qc.gmuList[gmuIndex] == nil || rdfIndex >= uint32(len(qc.gmuList[gmuIndex].Set)) {
-		//	continue
-		//
-		if qc.gmuList[gmuIndex].Set == nil {
+		if gmuIndex >= uint32(len(qc.gmuList)) || qc.gmuList[gmuIndex] == nil || rdfIndex >= uint32(len(qc.gmuList[gmuIndex].Set)) {
 			continue
 		}
 		pred1 := qc.gmuList[gmuIndex].Set[rdfIndex]
@@ -2165,11 +2162,8 @@ func verifyUniqueWithinMutation(qc *queryContext) error {
 				continue
 			}
 			gmuIndex2, rdfIndex2 := decodeIndex(j)
-			// bounds check for the second predicate, which could also have been pruned
-			//if gmuIndex2 >= uint32(len(qc.gmuList)) || qc.gmuList[gmuIndex2] == nil || rdfIndex2 >= uint32(len(qc.gmuList[gmuIndex2].Set)) {
-			//	continue
-			//}
-			if qc.gmuList[gmuIndex2].Set == nil {
+			// check for the second predicate, which could also have been pruned
+			if gmuIndex2 >= uint32(len(qc.gmuList)) || qc.gmuList[gmuIndex2] == nil || rdfIndex2 >= uint32(len(qc.gmuList[gmuIndex2].Set)) {
 				continue
 			}
 			pred2 := qc.gmuList[gmuIndex2].Set[rdfIndex2]
