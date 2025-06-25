@@ -138,6 +138,7 @@ func streamSnapshotForGroup(ctx context.Context, dc apiv2.DgraphClient, pdir str
 
 	// Open the BadgerDB instance at the specified directory
 	opt := badger.DefaultOptions(pdir)
+	opt.ReadOnly = true
 	ps, err := badger.OpenManaged(opt)
 	if err != nil {
 		glog.Errorf("failed to open BadgerDB at [%s]: %v", pdir, err)
@@ -180,6 +181,7 @@ func streamBadger(ctx context.Context, ps *badger.DB, out apiv2.Dgraph_StreamExt
 		if err := out.Send(&apiv2.StreamExtSnapshotRequest{Pkt: p}); err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("failed to send data chunk: %w", err)
 		}
+		// TODO: receive a response from the server to confirm the receive
 		return nil
 	}
 
@@ -195,6 +197,8 @@ func streamBadger(ctx context.Context, ps *badger.DB, out apiv2.Dgraph_StreamExt
 	if err := out.Send(&apiv2.StreamExtSnapshotRequest{Pkt: done}); err != nil && !errors.Is(err, io.EOF) {
 		return fmt.Errorf("failed to send 'done' signal for group [%d]: %w", groupId, err)
 	}
+
+	// TODO: receive a response from the server to confirm the completion
 
 	return nil
 }
