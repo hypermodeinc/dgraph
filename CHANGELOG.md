@@ -8,13 +8,11 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 ## Unreleased
 
 - **Fixed**
-
   - fix(core): fix panic in verifyUniqueWithinMutation when mutation is conditionally pruned (#9450)
 
 ## [v24.X.X] - YYYY-MM-DD
 
 - **GraphQL**
-
   - feat(graphql): adds translated DQL to extensions response when the "--graphql debug" super flag
     is set to true (#9280)
 
@@ -27,7 +25,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 - **Fixed**
 
 - **Core**
-
   - fix(core): fix duplicate mutation entries for count index (#9208)
 
 - **Chore**
@@ -40,12 +37,10 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 - **Fixed**
 
 - **Vector**
-
   - fix(vector): fixed euclidean spelling and a bug in parameters (#9165)
   - fix(vector): fix index rebuild when options change (#9149)
 
 - **Core**
-
   - fix(core): update latest badger (#9169)
   - fix(core): Update error msg for txn too old to give more context(#9170)
   - fix(core): fix sampling rate of jaeger #9147 (#9147)
@@ -57,7 +52,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
   - feat(core): Expose APIs that can be used outside Dgraph (#9176)
 
 - **GraphQL**
-
   - feat(graphql): adds @default directive to graphql (#8017)(#8837)
 
 - **Chore**
@@ -91,14 +85,12 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 [v24.0.2]: https://github.com/hypermodeinc/dgraph/compare/v24.0.1...v24.0.2
 
 - **Fixed**
-
   - fix(core): Fix namespace used by unique query https://github.com/hypermodeinc/dgraph/pull/9119
   - fix(core): Fix regression in computing cond variables
     https://github.com/hypermodeinc/dgraph/pull/9126
     - fix(live): Fix derigster while retrying https://github.com/hypermodeinc/dgraph/pull/9121
 
 - **Chore**
-
   - chore(deps): bump certifi from 2023.7.22 to 2024.7.4 in /contrib/config/marketplace/aws/tests
     https://github.com/hypermodeinc/dgraph/pull/9110
   - chore(deps): bump idna from 2.9 to 3.7 in /contrib/config/marketplace/aws/tests
@@ -117,14 +109,12 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 > changed.
 
 - **Fixed**
-
   - fix(core): Fix regression in parsing json empty string #9108
   - fix(upgrade): fix failing upgrade tests #9042
   - fix(ci): fixing health endpoint issue #9116
   - Fix(graphql): issue with local variable squashing intended JWK index by @matthewmcneely in #9114
 
 - **Chore**
-
   - chore(deps): bump urllib3 from 1.26.18 to 1.26.19 /contrib/config/marketplace/aws/tests #9103
   - chore(deps): bump requests from 2.31.0 to 2.32.0 /contrib/config/marketplace/aws/tests #9090
 
@@ -143,7 +133,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 **Added**
 
 - **Vector**
-
   - feat(graphql): Add vector support to graphql (#9074)
   - feat(vector): add vector to schema in #9060
   - feat(vector): Added similar_to in vector in #9062
@@ -154,7 +143,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
   - fix(vector): Update query_rewriter to fix dotproduct and cosine query conversion in #9083
 
 - **Core**
-
   - feat(core): Add cache to dgraph.type predicate in #9068
   - [BREAKING]feat(core): add unique constraint support in schema for new predicates in #8827
   - feat(debug): add parse_key to debug tool in #7640
@@ -168,7 +156,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 **Fixed**
 
 - **Core**
-
   - Fix(debug): Close file correctly before exiting on error in #9076
   - fix(restore): fix incr restore and normal restore for vector predicates in #9078
   - Fix(core): Fix deadlock in runMutation and error handling in #9085
@@ -188,7 +175,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
   - fix(restore): do not retry restore proposal (#8058) in #9017
 
 - **Perf**
-
   - perf(core): Fix performance issue in type filter (#9065) in #9089
   - perf(core): Update postinglistCountAndLength function to improve performance in #9088
   - perf(query): use quickselect instead of sorting while pagination by in #8995
@@ -213,7 +199,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 - **Fixed**
 
 - **Core Dgraph**
-
   - perf(core): Fix performance issue in type filter (#9065)
 
 - **CI & Testing**
@@ -226,7 +211,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 - **Added**
 
 - **Core Dgraph**
-
   - perf(query): Improve IntersectCompressedWithBin for UID Pack (#8941)
   - feat(query): add feature flag normalize-compatibility-mode (#8845) (#8929)
   - feat(alpha): support RDF response via http query request (#8004) (#8639)
@@ -240,7 +224,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 **Fixed**
 
 - **Core Dgraph**
-
   - docs(zero): add comments in zero and clarify naming (#8945)
   - fix(cdc): skip bad events in CDC (#8076)
   - fix(bulk): enable running bulk loader with only gql schema (#8903)
@@ -254,7 +237,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
   - chore(raft): better logging message for cleaning banned ns pred (#7886)
 
 - **Security**
-
   - sec(acl): convert x.Sensitive to string type for auth hash (#8931)
   - chore(deps): bump google.golang.org/grpc from 1.52.0 to 1.53.0 (#8900)
   - chore(deps): bump certifi from 2022.12.7 to 2023.7.22 in /contrib/config/marketplace/aws/tests
@@ -287,7 +269,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 - **Fixed**
 
 - **Core Dgraph**
-
   - chore(restore): add log message when restore fails (#8893)
   - fix(zero): fix zero's health endpoint to return json response (#8858)
   - chore(zero): improve error message while unmarshalling WAL (#8882)
@@ -297,7 +278,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
   - upgrade dgo to v230.0.1 (#8785)
 
 - **CI**
-
   - ci(dql): add workflow for fuzz testing (#8874)
   - chore(ci): add workflow for OSS build + unit tests (#8834)
 
@@ -316,7 +296,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 - **Added**
 
 - **GraphQL**
-
   - fix(GraphQL): pass on HTTP request headers for subscriptions
     (https://github.com/hypermodeinc/dgraph/pull/8574)
 
@@ -337,12 +316,10 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 **Fixed**
 
 - **GraphQL**
-
   - fix(GraphQL): nested Auth Rules not working properly
     (https://github.com/hypermodeinc/dgraph/pull/8571)
 
 - **Core Dgraph**
-
   - Fix wal replay issue during rollup (https://github.com/hypermodeinc/dgraph/pull/8774)
   - security(logging): fix aes implementation in audit logging
     (https://github.com/hypermodeinc/dgraph/pull/8323)
@@ -385,7 +362,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
     (https://github.com/hypermodeinc/dgraph/pull/8638)
 
 - **Test**
-
   - chore(tests): add upgrade tests in query package
     (https://github.com/hypermodeinc/dgraph/pull/8750)
   - simplify test setup in query package (https://github.com/hypermodeinc/dgraph/pull/8782)
@@ -432,7 +408,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
     (https://github.com/hypermodeinc/dgraph/pull/8617)
 
 - **CD**
-
   - fix(build): update dockerfile to use cache busting and reduce image size
     (https://github.com/hypermodeinc/dgraph/pull/8652)
   - chore(deps): update min go build version (https://github.com/hypermodeinc/dgraph/pull/8423)
@@ -440,7 +415,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
     (https://github.com/hypermodeinc/dgraph/pull/8790)
 
 - **Security**
-
   - chore(deps): bump certifi from 2020.4.5.1 to 2022.12.7 in /contrib/config/marketplace/aws/tests
     (https://github.com/hypermodeinc/dgraph/pull/8496)
   - chore(deps): bump github.com/docker/distribution from 2.7.1+incompatible to 2.8.0+incompatible
@@ -453,7 +427,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 
   - <details>
      <summary>CVE Fixes (31 total)</summary>
-
     - CVE-2013-4235
     - CVE-2016-20013
     - CVE-2016-2781
@@ -490,7 +463,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 **Changed**
 
 - **Core Dgraph**
-
   - upgrade badger to v4.1.0 (https://github.com/hypermodeinc/dgraph/pull/8783)
     (https://github.com/hypermodeinc/dgraph/pull/8709)
   - fix(multitenancy) store namespace in predicate as a hex separated by a hyphen to prevent json
@@ -524,7 +496,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 - **Added**
 
 - **GraphQL**
-
   - fix(GraphQL): pass on HTTP request headers for subscriptions
     (https://github.com/hypermodeinc/dgraph/pull/8574)
 
@@ -545,12 +516,10 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 **Fixed**
 
 - **GragphQL**
-
   - fix(GraphQL): nested Auth Rules not working properly
     (https://github.com/hypermodeinc/dgraph/pull/8571)
 
 - **Core Dgraph**
-
   - Fix wal replay issue during rollup (https://github.com/hypermodeinc/dgraph/pull/8774)
   - security(logging): fix aes implementation in audit logging
     (https://github.com/hypermodeinc/dgraph/pull/8323)
@@ -593,7 +562,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
     (https://github.com/hypermodeinc/dgraph/pull/8638)
 
 - **Test**
-
   - chore(tests): add upgrade tests in query package
     (https://github.com/hypermodeinc/dgraph/pull/8750)
   - simplify test setup in query package (https://github.com/hypermodeinc/dgraph/pull/8782)
@@ -640,7 +608,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
     (https://github.com/hypermodeinc/dgraph/pull/8617)
 
 - **CD**
-
   - fix(build): update dockerfile to use cache busting and reduce image size
     (https://github.com/hypermodeinc/dgraph/pull/8652)
   - chore(deps): update min go build version (https://github.com/hypermodeinc/dgraph/pull/8423)
@@ -661,7 +628,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 **Changed**
 
 - **Core Dgraph**
-
   - upgrade badger to v4.1.0 (https://github.com/hypermodeinc/dgraph/pull/8783)
     (https://github.com/hypermodeinc/dgraph/pull/8709)
   - fix(multitenancy) store namespace in predicate as a hex separated by a hyphen to prevent json
@@ -695,7 +661,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 - **Added**
 
 - **GraphQL**
-
   - fix(GraphQL): pass on HTTP request headers for subscriptions
     (https://github.com/hypermodeinc/dgraph/pull/8574)
 
@@ -714,12 +679,10 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 **Fixed**
 
 - **GragphQL**
-
   - fix(GraphQL): nested Auth Rules not working properly
     (https://github.com/hypermodeinc/dgraph/pull/8571)
 
 - **Core Dgraph**
-
   - chore(logs): add logs to track dropped proposals
     (https://github.com/hypermodeinc/dgraph/pull/8568)
   - fix(debug): check length of wal entry before parsing
@@ -753,7 +716,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
     (https://github.com/hypermodeinc/dgraph/pull/8638)
 
 - **Test**
-
   - fix(test): avoid host volume mount in minio container
     (https://github.com/hypermodeinc/dgraph/pull/8569)
   - chore(test): add tests for lex/iri.go,chunker/chunk.go
@@ -771,7 +733,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
     (https://github.com/hypermodeinc/dgraph/pull/8617)
 
 - **CD**
-
   - fix(build): update dockerfile to use cache busting and reduce image size
     (https://github.com/hypermodeinc/dgraph/pull/8652)
   - chore(deps): update min go build version (https://github.com/hypermodeinc/dgraph/pull/8423)
@@ -790,7 +751,6 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 **Changed**
 
 - **Core Dgraph**
-
   - fix(multitenancy) store namespace in predicate as a hex separated by a hyphen to prevent json
     marshal issues (https://github.com/hypermodeinc/dgraph/pull/8601)
   - fix(query): handle bad timezone correctly (https://github.com/hypermodeinc/dgraph/pull/8657)
@@ -830,12 +790,10 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 - **Fixed**
 
 - **EDgraph**
-
   - fix(ACL): Prevents permissions overrride and merges acl cache to persist permissions across
     different namespaces (https://github.com/hypermodeinc/dgraph/pull/8506)
 
 - **Core Dgraph**
-
   - Fix(badger): Upgrade badger version to fix manifest corruption
     (https://github.com/hypermodeinc/dgraph/pull/8365)
   - fix(pagination): Fix after for regexp, match functions
@@ -853,17 +811,14 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
     (https://github.com/hypermodeinc/dgraph/pull/8431)
 
 - **GraphQL**
-
   - Fix(GraphQL): Make mutation rewriting tests more robust
     (https://github.com/hypermodeinc/dgraph/pull/8449)
 
 - **Security**
-
   - <details>
      <summary>CVE Fixes (35 total)</summary>
 
     **CVE Fixes** (35 total)
-
     - CVE-2013-4235
     - CVE-2016-20013
     - CVE-2016-2781
@@ -904,14 +859,12 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
      <summary>GHSA Fixes (2 total)</summary>
 
     **GHSE Fixes** (2 total)
-
     - GHSA-69ch-w2m2-3vjp
     - GHSA-m332-53r6-2w93
 
 **Changed**
 
 - **CI Enhancements**
-
   - Added more unit tests (https://github.com/hypermodeinc/dgraph/pull/8470
     https://github.com/hypermodeinc/dgraph/pull/8489
     https://github.com/hypermodeinc/dgraph/pull/8479
@@ -968,12 +921,10 @@ https://discuss.dgraph.io/t/dgraph-v22-0-0-rc1-20221003-release-candidate/17839
 - **Posting**
   - fix(rollups): Fix splits in roll-up (https://github.com/hypermodeinc/dgraph/pull/8297)
 - **Security**
-
   - <details>
     <summary>CVE Fixes (417 total)</summary>
 
     **CVE Fixes** (417 total)
-
     - CVE-2019-0210
     - CVE-2019-0205
     - CVE-2021-43565
@@ -1397,7 +1348,6 @@ https://discuss.dgraph.io/t/dgraph-v22-0-0-rc1-20221003-release-candidate/17839
     <summary>GHSA Fixes (5 total)</summary>
 
     **GHSA Fixes** (5 total)
-
     - GHSA-jq7p-26h5-w78r
     - GHSA-8c26-wmh5-6g9v
     - GHSA-h6xx-pmxh-3wgp
@@ -1444,7 +1394,6 @@ https://discuss.dgraph.io/t/dgraph-v22-0-0-rc1-20221003-release-candidate/17839
 - **Fixed**
 
 - GraphQL
-
   - Handle extend keyword for Queries and Mutations ([#7923][])
 
 - Core Dgraph
@@ -1490,7 +1439,6 @@ https://discuss.dgraph.io/t/dgraph-v22-0-0-rc1-20221003-release-candidate/17839
 - **Fixed**
 
 - GraphQL
-
   - fix(GraphQL): fix @cascade with Pagination for @auth queries ([#7695][])
   - Fix(GraphQL): Fix GraphQL encoding in case of empty list ([#7726][]) ([#7730][])
   - Fix(GraphQL): Add filter in DQL query in case of reverse predicate ([#7728][]) ([#7733][])
@@ -1603,7 +1551,6 @@ https://discuss.dgraph.io/t/dgraph-v22-0-0-rc1-20221003-release-candidate/17839
 **Added**
 
 - GraphQL
-
   - Feat(GraphQL): Zero HTTP endpoints are now available at GraphQL admin (GraphQL-1118) ([#6649][])
     ([#7670][])
   - Feat(GraphQL): Webhooks on add/update/delete mutations (GraphQL-1045) ([#7494][]) ([#7616][])
@@ -1634,7 +1581,6 @@ https://discuss.dgraph.io/t/dgraph-v22-0-0-rc1-20221003-release-candidate/17839
   - Feat(GraphQL): Add support for passing OAuth Bearer token as authorization JWT ([#7490][])
 
 - Core Dgraph
-
   - Feat(query): Add mechanism to have a limit on number of pending queries ([#7603][])
   - Perf(bulk): Reuse allocator ([#7360][])
   - Perf(compression): Use gzip with BestSpeed in export and backup ([#7643][]) ([#7683][])
@@ -1663,7 +1609,6 @@ https://discuss.dgraph.io/t/dgraph-v22-0-0-rc1-20221003-release-candidate/17839
 **Fixed**
 
 - GraphQL
-
   - Fix(GraphQL): Fix Execution Trace for Add and Update Mutations ([#7656][])
   - Fix(GraphQL): Add error handling for unrecognized args to generate directive. ([#7612][])
   - Fix(GraphQL): Fix panic when no schema exists for a new namespace ([#7630][])
@@ -1708,7 +1653,6 @@ https://discuss.dgraph.io/t/dgraph-v22-0-0-rc1-20221003-release-candidate/17839
   - Fix(GraphQL): Fix panic caused by incorrect input coercion of scalar to list ([#7405][])
 
 - Core Dgraph
-
   - Fix(flag): Fix bulk loader flag and remove flag parsing from critical path ([#7679][])
   - Fix(query): Fix pagination with match functions ([#7668][])
   - Fix(postingList): Acquire lock before reading the cached posting list ([#7632][])
@@ -3350,7 +3294,6 @@ Enterprise features:
 **Changed**
 
 - **Breaking changes**
-
   - **uid schema type**: The `uid` schema type now means a one-to-one relation, **not** a
     one-to-many relation as in Dgraph v1.1. To specify a one-to-many relation in Dgraph v1.0, use
     the `[uid]` schema type. ([#2895][], [#3173][], [#2921][])
@@ -3366,7 +3309,6 @@ Enterprise features:
 
   - **HTTP API**: The HTTP API has been updated to replace the custom HTTP headers with standard
     headers.
-
     - Change `/commit` endpoint to accept a list of preds for conflict detection. ([#3020][])
     - Remove custom HTTP Headers, cleanup API. ([#3365][])
       - The startTs path parameter is now a query parameter `startTs` for the `/query`, `/mutate`,
@@ -3428,7 +3370,6 @@ Enterprise features:
 - Allow glog flags to be set via config file. ([#3062][], [#3077][])
 
 - Logging
-
   - Suppress logging before `flag.Parse` from glog. ([#2970][])
   - Move glog of missing value warning to verbosity level 3. ([#3092][])
   - Change time threshold for Raft.Ready warning logs. ([#3901][])
@@ -3436,7 +3377,6 @@ Enterprise features:
   - Add additional logs to show progress of reindexing operation. ([#3746][])
 
 - Error messages
-
   - Output the line and column number in schema parsing error messages. ([#2986][])
   - Improve error of empty block queries. ([#3015][])
   - Update flag description and error messaging related to `--query_edge_limit` flag. ([#2979][])
@@ -3445,7 +3385,6 @@ Enterprise features:
   - Return GraphQL compliant `"errors"` field for HTTP requests. ([#3728][])
 
 - Optimizations
-
   - Don't read posting lists from disk when mutating indices. ([#3695][], [#3713][])
   - Avoid preallocating uid slice. It was slowing down unpackBlock.
   - Reduce memory consumption in bulk loader. ([#3724][])
@@ -3521,7 +3460,6 @@ Dgraph Increment Tool
 Query
 
 - Type system
-
   - Add `type` function to query types. ([#2933][])
   - Parser for type declaration. ([#2950][])
   - Add `@type` directive to enforce type constraints. ([#3003][])
@@ -3535,7 +3473,6 @@ Query
 - Add the `upsert` block to send "query-mutate-commit" updates as a single call to Dgraph. This is
   especially helpful to do upserts with the `@upsert` schema directive. Addresses [#3059][].
   ([#3412][])
-
   - Add support for conditional mutation in Upsert Block. ([#3612][])
 
 - Allow querying all lang values of a predicate. ([#2910][])
