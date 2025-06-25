@@ -196,7 +196,6 @@ func ProposeDrain(ctx context.Context, drainMode *apiv2.UpdateExtSnapshotStreami
 // there are any issues in the process, such as a broken connection or failure to establish
 // a stream with the leader.
 func InStream(stream apiv2.Dgraph_StreamExtSnapshotServer) error {
-
 	req, err := stream.Recv()
 	if err != nil {
 		return fmt.Errorf("failed to receive initial stream message: %v", err)
@@ -238,20 +237,12 @@ func pipeTwoStream(in apiv2.Dgraph_StreamExtSnapshotServer, out pb.Worker_Stream
 	glog.Infof("[import] [forward from group-%v to group-%v] forwarding stream", currentGroup, groupId)
 
 	defer func() {
-		if err := in.SendAndClose(&apiv2.StreamExtSnapshotResponse{}); err != nil {
+		if err := in.Send(&apiv2.StreamExtSnapshotResponse{}); err != nil {
 			glog.Errorf("[import] [forward from group %v to group %v] failed to send close on in"+
 				" stream for group [%v]: %v", currentGroup, groupId, groupId, err)
 		}
 	}()
-
-	defer func() {
-		// Wait for ACK from the out stream
-		_, err := out.CloseAndRecv()
-		if err != nil {
-			glog.Errorf("[import] [forward from group %v to group %v] failed to receive ACK from group [%v]: %v",
-				currentGroup, groupId, groupId, err)
-		}
-	}()
+	defer out.CloseSend()
 
 	ps := &pubSub{}
 	eg, egCtx := errgroup.WithContext(in.Context())
@@ -407,12 +398,7 @@ func streamInGroup(stream apiv2.Dgraph_StreamExtSnapshotServer, forward bool) er
 					glog.Errorf("failed to establish stream with peer %v: %v", member.Addr, err)
 					return nil
 				}
-				defer func() {
-					_, err = peerStream.CloseAndRecv()
-					if err != nil {
-						glog.Errorf("[import:forward] failed to receive ACK from [%v]: %v", member.Addr, err)
-					}
-				}()
+				defer peerStream.CloseSend()
 
 				forwardReq := &apiv2.StreamExtSnapshotRequest{Forward: false}
 				if err := peerStream.Send(forwardReq); err != nil {
@@ -437,7 +423,7 @@ func streamInGroup(stream apiv2.Dgraph_StreamExtSnapshotServer, forward bool) er
 	eg.Go(func() error {
 		defer ps.close()
 		defer func() {
-			if err := stream.SendAndClose(&apiv2.StreamExtSnapshotResponse{}); err != nil {
+			if err := stream.Send(&apiv2.StreamExtSnapshotResponse{}); err != nil {
 				glog.Errorf("[import] failed to send close on in: %v", err)
 			}
 		}()

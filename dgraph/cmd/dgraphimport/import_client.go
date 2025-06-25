@@ -127,14 +127,7 @@ func streamSnapshotForGroup(ctx context.Context, dc apiv2.DgraphClient, pdir str
 	if err != nil {
 		return fmt.Errorf("failed to start external snapshot stream for group %d: %w", groupId, err)
 	}
-
-	defer func() {
-		if _, err := out.CloseAndRecv(); err != nil {
-			glog.Errorf("failed to close the stream for group [%v]: %v", groupId, err)
-		}
-
-		glog.Infof("[import] Group [%v]: Received ACK ", groupId)
-	}()
+	defer out.CloseSend()
 
 	// Open the BadgerDB instance at the specified directory
 	opt := badger.DefaultOptions(pdir)
@@ -144,7 +137,6 @@ func streamSnapshotForGroup(ctx context.Context, dc apiv2.DgraphClient, pdir str
 		glog.Errorf("failed to open BadgerDB at [%s]: %v", pdir, err)
 		return fmt.Errorf("failed to open BadgerDB at [%v]: %v", pdir, err)
 	}
-
 	defer func() {
 		if err := ps.Close(); err != nil {
 			glog.Warningf("[import] Error closing BadgerDB: %v", err)
