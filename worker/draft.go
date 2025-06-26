@@ -723,6 +723,10 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 			}
 			return nil
 		case proposal.ExtSnapshotState.Finish && x.IsExtSnapshotStreamingStateTrue():
+			glog.Infof("================================>")
+			glog.Infof("================================>", proposal.ExtSnapshotState.Finish)
+			glog.Infof("============drop====================>", proposal.ExtSnapshotState.DropData)
+			glog.Infof("============start====================>", proposal.ExtSnapshotState.Start)
 			lastApplied := n.Applied.LastIndex()
 			pl := groups().Leader(n.gid)
 			if pl == nil {
