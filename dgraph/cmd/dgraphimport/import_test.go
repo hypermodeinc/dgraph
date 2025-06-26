@@ -107,15 +107,15 @@ func TestDrainModeAfterStartSnapshotStream(t *testing.T) {
 
 func TestImportApis(t *testing.T) {
 	tests := []testcase{
-		{
-			name:           "SingleGroupShutTwoAlphasPerGroup",
-			numGroups:      1,
-			targetAlphas:   3,
-			replicasFactor: 3,
-			downAlphas:     2,
-			description:    "Single group with 3 alphas, shutdown 2 alphas",
-			err:            "failed to initiate external snapshot stream",
-		},
+		// {
+		// 	name:           "SingleGroupShutTwoAlphasPerGroup",
+		// 	numGroups:      1,
+		// 	targetAlphas:   3,
+		// 	replicasFactor: 3,
+		// 	downAlphas:     2,
+		// 	description:    "Single group with 3 alphas, shutdown 2 alphas",
+		// 	err:            "failed to initiate external snapshot stream",
+		// },
 		// {
 		// 	name:           "TwoGroupShutTwoAlphasPerGroup",
 		// 	numGroups:      2,
@@ -170,15 +170,15 @@ func TestImportApis(t *testing.T) {
 		// 	description:    "Three groups with 3 alphas each, shutdown 1 alpha per group",
 		// 	err:            "",
 		// },
-		// {
-		// 	name:           "SingleGroupAllAlphasOnline",
-		// 	numGroups:      1,
-		// 	targetAlphas:   3,
-		// 	replicasFactor: 3,
-		// 	downAlphas:     0,
-		// 	description:    "Single group with multiple alphas, all alphas are online",
-		// 	err:            "",
-		// },
+		{
+			name:           "SingleGroupAllAlphasOnline",
+			numGroups:      1,
+			targetAlphas:   3,
+			replicasFactor: 3,
+			downAlphas:     0,
+			description:    "Single group with multiple alphas, all alphas are online",
+			err:            "",
+		},
 		// {
 		// 	name:           "TwoGroupAllAlphasOnline",
 		// 	numGroups:      2,

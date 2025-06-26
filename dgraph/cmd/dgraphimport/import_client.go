@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -109,6 +110,7 @@ func streamSnapshot(ctx context.Context, dc apiv2.DgraphClient, baseDir string, 
 		Finish:   true,
 		DropData: false,
 	}
+
 	if _, err := dc.UpdateExtSnapshotStreamingState(ctx, req); err != nil {
 		glog.Errorf("[import] failed to disable drain mode: %v", err)
 		return fmt.Errorf("failed to disable drain mode: %v", err)
@@ -127,7 +129,6 @@ func streamSnapshotForGroup(ctx context.Context, dc apiv2.DgraphClient, pdir str
 	if err != nil {
 		return fmt.Errorf("failed to start external snapshot stream for group %d: %w", groupId, err)
 	}
-	defer out.CloseSend()
 
 	// Open the BadgerDB instance at the specified directory
 	opt := badger.DefaultOptions(pdir)
@@ -153,10 +154,43 @@ func streamSnapshotForGroup(ctx context.Context, dc apiv2.DgraphClient, pdir str
 
 	// Configure and start the BadgerDB stream
 	glog.Infof("[import] Starting BadgerDB stream for group [%v]", groupId)
+	waitc := make(chan struct{})
+	count := 0
+	go func() {
+		for {
+			res, err := out.Recv()
+			fmt.Println("res is ---------------in go routine-------->", res)
+			count++
+			fmt.Println("count is ---------------in go routine-------->", count)
+			if err == io.EOF {
+				log.Println("Stream closed by server")
+				close(waitc)
+
+				return
+			}
+			if err != nil {
+				log.Fatalf("error receiving: %v", err)
+			}
+
+		}
+	}()
 
 	if err := streamBadger(ctx, ps, out, groupId); err != nil {
 		return fmt.Errorf("badger streaming failed for group [%v]: %v", groupId, err)
 	}
+
+	// resp, err := out.Recv()
+	// if err != nil {
+	// 	glog.Errorf("failed to close the stream for group [%v]: %v", groupId, err)
+	// 	return fmt.Errorf("failed to close the stream for group [%v]: %v", groupId, err)
+	// }
+
+	// glog.Info("resp is ---------------after done------------------------", resp)
+
+	// glog.Infof("[import] Group [%v]: Received ACK ", groupId)
+
+	// out.CloseSend()
+	<-waitc
 
 	return nil
 }
@@ -173,7 +207,12 @@ func streamBadger(ctx context.Context, ps *badger.DB, out apiv2.Dgraph_StreamExt
 		if err := out.Send(&apiv2.StreamExtSnapshotRequest{Pkt: p}); err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("failed to send data chunk: %w", err)
 		}
-		// TODO: receive a response from the server to confirm the receive
+		// resp, err := out.Recv()
+		// if err != nil {
+		// 	return fmt.Errorf("failed to recive from stream: %v", err)
+		// }
+		// glog.Errorf("recived a package ----------------------", resp)
+
 		return nil
 	}
 
@@ -190,7 +229,27 @@ func streamBadger(ctx context.Context, ps *badger.DB, out apiv2.Dgraph_StreamExt
 		return fmt.Errorf("failed to send 'done' signal for group [%d]: %w", groupId, err)
 	}
 
+	out.CloseSend()
+
+	// resp, err := out.Recv()
+	// if err != nil {
+	// 	return fmt.Errorf("failed to recive from stream: %v", err)
+	// }
+	// glog.Errorf("recived a package ----------------------", resp)
+
+	// resp, err := out.Recv()
+	// if err != nil {
+	// 	return fmt.Errorf("failed to recive from stream: %v", err)
+	// }
+
+	// glog.Infof("resp is ---------after done------------------------>", resp.Finish)
+	// if resp.Finish == false {
+	// 	glog.Errorf("Something went wrong with streaming: %v", err)
+	// 	return fmt.Errorf("Something went wrong with streaming: %v", err)
+	// }
 	// TODO: receive a response from the server to confirm the completion
+
+	// out.CloseSend()
 
 	return nil
 }
