@@ -6,7 +6,7 @@ require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2
 	github.com/IBM/sarama v1.45.2
-	github.com/Masterminds/semver/v3 v3.3.1
+	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/blevesearch/bleve/v2 v2.5.2
 	github.com/dgraph-io/badger/v4 v4.7.0
 	github.com/dgraph-io/dgo/v250 v250.0.0-preview4.0.20250619041351-4a519e53fb9d
@@ -17,10 +17,10 @@ require (
 	github.com/dgraph-io/simdjson-go v0.3.0
 	github.com/dgryski/go-farm v0.0.0-20240924180020-3414d57e47da
 	github.com/dgryski/go-groupvarint v0.0.0-20230630160417-2bfb7969fb3c
-	github.com/docker/docker v28.3.0+incompatible
+	github.com/docker/docker v28.3.1+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/dustin/go-humanize v1.0.1
-	github.com/go-jose/go-jose/v4 v4.1.0
+	github.com/go-jose/go-jose/v4 v4.1.1
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/golang/geo v0.0.0-20250613135800-9e8e59d779cc
@@ -50,13 +50,13 @@ require (
 	github.com/xdg/scram v1.0.5
 	go.etcd.io/etcd/raft/v3 v3.5.21
 	go.opencensus.io v0.24.0
-	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.61.0
-	go.opentelemetry.io/contrib/zpages v0.61.0
-	go.opentelemetry.io/otel v1.36.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.36.0
-	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.36.0
-	go.opentelemetry.io/otel/sdk v1.36.0
-	go.opentelemetry.io/otel/trace v1.36.0
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.62.0
+	go.opentelemetry.io/contrib/zpages v0.62.0
+	go.opentelemetry.io/otel v1.37.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.37.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.37.0
+	go.opentelemetry.io/otel/sdk v1.37.0
+	go.opentelemetry.io/otel/trace v1.37.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.39.0
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b
@@ -101,7 +101,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
-	github.com/go-logr/logr v1.4.2 // indirect
+	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-viper/mapstructure/v2 v2.3.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
@@ -110,7 +110,7 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
 	github.com/google/pprof v0.0.0-20250423184734-337e5dd93bb4 // indirect
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.1 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
@@ -163,12 +163,12 @@ require (
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.60.0 // indirect
-	go.opentelemetry.io/otel/metric v1.36.0 // indirect
-	go.opentelemetry.io/proto/otlp v1.6.0 // indirect
+	go.opentelemetry.io/otel/metric v1.37.0 // indirect
+	go.opentelemetry.io/proto/otlp v1.7.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20250519155744-55703ea1f237 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250519155744-55703ea1f237 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20250603155806-513f23925822 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250603155806-513f23925822 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 )
