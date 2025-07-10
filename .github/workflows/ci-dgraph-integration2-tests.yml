@@ -24,7 +24,7 @@ jobs:
   dgraph-integration2-tests:
     if: github.event.pull_request.draft == false
     runs-on: warp-ubuntu-latest-x64-4x
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
         with:
@@ -48,7 +48,7 @@ jobs:
           # move the binary
           cp dgraph/dgraph ~/go/bin/dgraph
           # run the tests
-          go test -v -timeout=30m -failfast -tags=integration2 ./...
+          go test -v -timeout=60m -failfast -tags=integration2 ./...
           # clean up docker containers after test execution
           go clean -testcache
           # sleep
