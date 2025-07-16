@@ -225,26 +225,56 @@ func (o *Oracle) sendDeltasToSubscribers() {
 		// Let's ensure that we have all the commits up until the max here.
 		// Otherwise, we'll be sending commit timestamps out of order, which
 		// would cause Alphas to drop some of them, during writes to Badger.
+
+		newDelta := &pb.OracleDelta{}
+		useNewDelta := false
 		if o.doneUntil.DoneUntil() < waitFor() {
-			continue // The for loop doing blocking reads from o.updates.
-			// We need at least one entry from the updates channel to pick up a missing update.
-			// Don't goto slurp_loop, because it would break from select immediately.
+			if len(delta.Txns) > 10 {
+				replacementTxn := []*pb.TxnStatus{}
+
+				ts := o.doneUntil.DoneUntil()
+				for _, txn := range delta.Txns {
+					if txn.CommitTs > ts {
+						replacementTxn = append(replacementTxn, txn)
+					} else {
+						newDelta.Txns = append(newDelta.Txns, txn)
+						newDelta.MaxAssigned = x.Max(newDelta.MaxAssigned, txn.CommitTs)
+					}
+				}
+
+				if len(newDelta.Txns) == 0 {
+					continue
+				}
+
+				useNewDelta = true
+				delta.Txns = replacementTxn
+			} else {
+				continue // The for loop doing blocking reads from o.updates.
+				// We need at least one entry from the updates channel to pick up a missing update.
+				// Don't goto slurp_loop, because it would break from select immediately.
+			}
 		}
 
 		if glog.V(3) {
 			glog.Infof("DoneUntil: %d. Sending delta: %+v\n", o.doneUntil.DoneUntil(), delta)
 		}
 		o.Lock()
+		k := *delta
+		if useNewDelta {
+			k = *newDelta
+		}
 		for id, ch := range o.subscribers {
 			select {
-			case ch <- *delta:
+			case ch <- k:
 			default:
 				close(ch)
 				delete(o.subscribers, id)
 			}
 		}
 		o.Unlock()
-		delta = &pb.OracleDelta{}
+		if useNewDelta {
+			delta = &pb.OracleDelta{}
+		}
 	}
 }
 
