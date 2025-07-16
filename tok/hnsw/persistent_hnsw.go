@@ -8,6 +8,7 @@ package hnsw
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -32,6 +33,7 @@ type persistentHNSW[T c.Float] struct {
 	// layer for uuid 65443. The result will be a neighboring uuid.
 	nodeAllEdges map[uint64][][]uint64
 	deadNodes    map[uint64]struct{}
+	cache        index.CacheType
 }
 
 func GetPersistantOptions[T c.Float](o opt.Options) string {
@@ -109,6 +111,54 @@ func (ph *persistentHNSW[T]) applyOptions(o opt.Options) error {
 			insortHeap: insortPersistentHeapAscending[T], isBetterScore: isBetterScoreForDistance[T]}
 	}
 	return nil
+}
+
+func (ph *persistentHNSW[T]) NumBuildPasses() int {
+	return 0
+}
+
+func (ph *persistentHNSW[T]) NumIndexPasses() int {
+	return 1
+}
+
+func (ph *persistentHNSW[T]) NumSeedVectors() int {
+	return 0
+}
+
+func (ph *persistentHNSW[T]) StartBuild(caches []index.CacheType) {
+	ph.nodeAllEdges = make(map[uint64][][]uint64)
+	ph.cache = caches[0]
+}
+
+func (ph *persistentHNSW[T]) EndBuild() []int {
+	ph.nodeAllEdges = nil
+	ph.cache = nil
+	return []int{0}
+}
+
+func (ph *persistentHNSW[T]) NumThreads() int {
+	return 1
+}
+
+func (ph *persistentHNSW[T]) BuildInsert(ctx context.Context, uid uint64, vec []T) error {
+	newPh := &persistentHNSW[T]{
+		maxLevels:      ph.maxLevels,
+		efConstruction: ph.efConstruction,
+		efSearch:       ph.efSearch,
+		pred:           ph.pred,
+		vecEntryKey:    ph.vecEntryKey,
+		vecKey:         ph.vecKey,
+		vecDead:        ph.vecDead,
+		simType:        ph.simType,
+		floatBits:      ph.floatBits,
+		nodeAllEdges:   make(map[uint64][][]uint64),
+		cache:          ph.cache,
+	}
+	_, err := newPh.Insert(ctx, ph.cache, uid, vec)
+	return err
+}
+
+func (ph *persistentHNSW[T]) AddSeedVector(vec []T) {
 }
 
 func (ph *persistentHNSW[T]) emptyFinalResultWithError(e error) (
@@ -252,6 +302,46 @@ func (ph *persistentHNSW[T]) Search(ctx context.Context, c index.CacheType, quer
 	maxResults int, filter index.SearchFilter[T]) (nnUids []uint64, err error) {
 	r, err := ph.SearchWithPath(ctx, c, query, maxResults, filter)
 	return r.Neighbors, err
+}
+
+type resultRow[T c.Float] struct {
+	uid  uint64
+	dist T
+}
+
+func (ph *persistentHNSW[T]) MergeResults(ctx context.Context, c index.CacheType, list []uint64, query []T, maxResults int, filter index.SearchFilter[T]) ([]uint64, error) {
+	var result []resultRow[T]
+
+	for i := range list {
+		var vec []T
+		err := ph.getVecFromUid(list[i], c, &vec)
+		if err != nil {
+			return nil, err
+		}
+
+		dist, err := ph.simType.distanceScore(vec, query, ph.floatBits)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, resultRow[T]{
+			uid:  list[i],
+			dist: dist,
+		})
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].dist < result[j].dist
+	})
+
+	uids := []uint64{}
+	for i := range maxResults {
+		if i > len(result) {
+			break
+		}
+		uids = append(uids, result[i].uid)
+	}
+
+	return uids, nil
 }
 
 // SearchWithUid searches the hnsw graph for the nearest neighbors of the query uid
