@@ -34,6 +34,7 @@ func init() {
 
 	flag := ImportCmd.Cmd.Flags()
 	flag.StringP("files", "f", "", "Location of *.rdf(.gz) or *.json(.gz) file(s) to load.")
+	flag.StringP("snapshot-dir", "p", "", "Location of p directory")
 	flag.StringP("schema", "s", "", "Location of DQL schema file.")
 	flag.StringP("graphql_schema", "g", "", "Location of the GraphQL schema file.")
 	flag.StringP("graphql-schema", "", "", "Location of the GraphQL schema file.")
@@ -70,6 +71,17 @@ func run() {
 	if !bulkLoad {
 		fmt.Println("Live Loader is not supported right now!")
 		os.Exit(1)
+	}
+
+	// if snapshot p directory is already provided, there is no need to run bulk loader
+	if ImportCmd.Conf.GetString("snapshot-dir") != "" {
+		connStr := ImportCmd.Conf.GetString("conn-str")
+		snapshotDir := ImportCmd.Conf.GetString("snapshot-dir")
+		if err := Import(context.Background(), connStr, snapshotDir); err != nil {
+			fmt.Println("Failed to import data:", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	cacheSize := 64 << 20 // These are the default values. User can overwrite them using --badger.
