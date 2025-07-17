@@ -117,6 +117,10 @@ func (ph *persistentHNSW[T]) NumBuildPasses() int {
 	return 0
 }
 
+func (ph *persistentHNSW[T]) Dimension() int {
+	return 0
+}
+
 func (ph *persistentHNSW[T]) NumIndexPasses() int {
 	return 1
 }

@@ -19,9 +19,10 @@ type partitionedHNSW[T c.Float] struct {
 	floatBits int
 	pred      string
 
-	clusterMap  map[int]index.VectorIndex[T]
-	numClusters int
-	partition   index.VectorPartitionStrat[T]
+	clusterMap      map[int]index.VectorIndex[T]
+	numClusters     int
+	vectorDimension int
+	partition       index.VectorPartitionStrat[T]
 
 	hnswOptions    opt.Options
 	partitionStrat string
@@ -33,6 +34,7 @@ type partitionedHNSW[T c.Float] struct {
 
 func (ph *partitionedHNSW[T]) applyOptions(o opt.Options) error {
 	ph.numClusters, _, _ = opt.GetOpt(o, NumClustersOpt, 1000)
+	ph.vectorDimension, _, _ = opt.GetOpt(o, vectorDimension, 0)
 	ph.partitionStrat, _, _ = opt.GetOpt(o, PartitionStratOpt, "kmeans")
 
 	if ph.partitionStrat != "kmeans" && ph.partitionStrat != "query" {
@@ -86,6 +88,10 @@ const NUM_PASSES = 10
 
 func (ph *partitionedHNSW[T]) NumBuildPasses() int {
 	return ph.partition.NumPasses()
+}
+
+func (ph *partitionedHNSW[T]) Dimension() int {
+	return ph.vectorDimension
 }
 
 func (ph *partitionedHNSW[T]) NumIndexPasses() int {

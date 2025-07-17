@@ -18,6 +18,7 @@ import (
 
 const (
 	NumClustersOpt    string = "numClusters"
+	vectorDimension   string = "vectorDimension"
 	PartitionStratOpt string = "partitionStratOpt"
 	PartitionedHNSW   string = "partionedhnsw"
 )
@@ -60,10 +61,10 @@ func (hf *partitionedHNSWIndexFactory[T]) AllowedOptions() opt.AllowedOptions {
 		AddIntOption(hnsw.EfConstructionOpt).
 		AddIntOption(hnsw.EfSearchOpt).
 		AddIntOption(NumClustersOpt).
-		AddStringOption(PartitionStratOpt)
+		AddStringOption(PartitionStratOpt).AddIntOption(vectorDimension)
 	getSimFunc := func(optValue string) (any, error) {
 		if optValue != hnsw.Euclidean && optValue != hnsw.Cosine && optValue != hnsw.DotProd {
-			return nil, errors.New(fmt.Sprintf("Can't create a vector index for %s", optValue))
+			return nil, fmt.Errorf("Can't create a vector index for %s", optValue)
 		}
 		return hnsw.GetSimType[T](optValue, hf.floatBits), nil
 	}
