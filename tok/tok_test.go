@@ -30,6 +30,13 @@ func (o byEnc) Swap(i, j int) {
 	o.tokens[i], o.tokens[j] = o.tokens[j], o.tokens[i]
 }
 
+func BenchmarkShinglesTokenizer(b *testing.B) {
+	tokenizer := ShinglesTokenizer{}
+	for i := 0; i < b.N; i++ {
+		BuildTokens("economy series like brother evening tough guess attorney student ago article own identify where care allow pay access decade period during pass fail term real report identify security manage try past account care off rock subject chance seek over effect address article full most believe feel court six involve miss country try if threat care same available tell such process language agreement access poor strong reach cold section past way my seem order live consumer home imagine think return couple office majority answer discover figure college girl Republican enter form recently year experience economic read show necessary general lot bag buy along their painting player information certainly ground soon learn without write determine sure choice sell love subject decide ball death leave happy worry know early main address condition west room he plan weight step loss actually ready provide far fine best nice fund great your scene woman service check feel song ahead material hot leg contain knowledge article lawyer cold", tokenizer)
+	}
+}
+
 func TestIntEncoding(t *testing.T) {
 	a := int64(1<<24 + 10)
 	b := int64(-1<<24 - 1)

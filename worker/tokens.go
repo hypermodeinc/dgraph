@@ -21,6 +21,8 @@ import (
 func verifyStringIndex(ctx context.Context, attr string, funcType FuncType) (string, bool) {
 	var requiredTokenizer tok.Tokenizer
 	switch funcType {
+	case shinglesFn:
+		requiredTokenizer = tok.ShinglesTokenizer{}
 	case fullTextSearchFn:
 		requiredTokenizer = tok.FullTextTokenizer{}
 	case matchFn:
@@ -62,6 +64,9 @@ func getStringTokens(funcArgs []string, lang string, funcType FuncType) ([]strin
 	}
 	if funcType == fullTextSearchFn {
 		return tok.GetFullTextTokens(funcArgs, lang)
+	}
+	if funcType == shinglesFn {
+		return tok.GetShinglesTokens(funcArgs, lang)
 	}
 	return tok.GetTermTokens(funcArgs)
 }

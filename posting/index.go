@@ -883,13 +883,32 @@ func (r *rebuilder) Run(ctx context.Context) error {
 		return errors.Errorf("Rebuilder.run: Unable to find schema for %s", r.attr)
 	}
 
-	// We write the index in a temporary badger first and then,
-	// merge entries before writing them to p directory.
-	tmpIndexDir, err := os.MkdirTemp(x.WorkerConfig.TmpDir, "dgraph_index_")
+	skipPhase1 := false
+	dirName := ""
+	// does folder have any other folder starting with dgraph_index_
+	entries, err := os.ReadDir(x.WorkerConfig.TmpDir)
 	if err != nil {
-		return errors.Wrap(err, "error creating temp dir for reindexing")
+		return errors.Wrap(err, "error reading temp dir for reindexing")
 	}
-	defer os.RemoveAll(tmpIndexDir)
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "dgraph_index_") {
+			skipPhase1 = true
+			dirName = entry.Name()
+			break
+		}
+	}
+
+	tmpIndexDir := ""
+	if skipPhase1 {
+		tmpIndexDir = x.WorkerConfig.TmpDir + "/" + dirName
+	} else {
+		tmpIndexDir, err = os.MkdirTemp(x.WorkerConfig.TmpDir, "dgraph_index_")
+		if err != nil {
+			return errors.Wrap(err, "error creating temp dir for reindexing")
+		}
+		defer os.RemoveAll(tmpIndexDir)
+	}
+
 	glog.V(1).Infof("Rebuilding indexes using the temp folder %s\n", tmpIndexDir)
 
 	dbOpts := badger.DefaultOptions(tmpIndexDir).
@@ -899,7 +918,12 @@ func (r *rebuilder) Run(ctx context.Context) error {
 		WithCompression(options.None).
 		WithLoggingLevel(badger.WARNING).
 		WithMetricsEnabled(false)
-
+	dbOpts.DetectConflicts = false
+	dbOpts.NumLevelZeroTables = 200
+	dbOpts.NumLevelZeroTablesStall = 400
+	dbOpts.BaseLevelSize = 5 * 128 << 20
+	dbOpts.BaseTableSize = 128 << 20
+	dbOpts.MemTableSize = 128 << 20
 	// Set cache if we have encryption.
 	if len(x.WorkerConfig.EncryptionKey) > 0 {
 		dbOpts.EncryptionKey = x.WorkerConfig.EncryptionKey
@@ -912,100 +936,149 @@ func (r *rebuilder) Run(ctx context.Context) error {
 	}
 	defer tmpDB.Close()
 
-	glog.V(1).Infof(
-		"Rebuilding index for predicate %s: Starting process. StartTs=%d. Prefix=\n%s\n",
-		r.attr, r.startTs, hex.Dump(r.prefix))
+	// We write the index in a temporary badger first and then,
+	// merge entries before writing them to p directory.
+	if !skipPhase1 {
+		glog.V(1).Infof(
+			"Rebuilding index for predicate %s: Starting process. StartTs=%d. Prefix=\n%s\n",
+			r.attr, r.startTs, hex.Dump(r.prefix))
 
-	// Counter is used here to ensure that all keys are committed at different timestamp.
-	// We set it to 1 in case there are no keys found and NewStreamAt is called with ts=0.
-	var counter uint64 = 1
+		// Counter is used here to ensure that all keys are committed at different timestamp.
+		// We set it to 1 in case there are no keys found and NewStreamAt is called with ts=0.
+		var counter uint64 = 1
 
-	tmpWriter := tmpDB.NewManagedWriteBatch()
-	stream := pstore.NewStreamAt(r.startTs)
-	stream.LogPrefix = fmt.Sprintf("Rebuilding index for predicate %s (1/2):", r.attr)
-	stream.Prefix = r.prefix
-	//TODO We need to create a single transaction irrespective of the type of the predicate
-	if pred.ValueType == pb.Posting_VFLOAT {
-		x.AssertTrue(false)
-	}
-	stream.KeyToList = func(key []byte, itr *badger.Iterator) (*bpb.KVList, error) {
-		// We should return quickly if the context is no longer valid.
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		default:
+		tmpWriter := tmpDB.NewManagedWriteBatch()
+		stream := pstore.NewStreamAt(r.startTs)
+		stream.LogPrefix = fmt.Sprintf("Rebuilding index for predicate %s (1/2):", r.attr)
+		stream.Prefix = r.prefix
+		stream.MaxSize = (uint64(dbOpts.MemTableSize) * 9) / 10
+		//TODO We need to create a single transaction irrespective of the type of the predicate
+		if pred.ValueType == pb.Posting_VFLOAT {
+			x.AssertTrue(false)
 		}
 
-		pk, err := x.Parse(key)
-		if err != nil {
-			return nil, errors.Wrapf(err, "could not parse key %s", hex.Dump(key))
+		stream.UseKeyToListWithThreadId = true
+
+		const maxThreadIds = 10000
+
+		txns := make([]*Txn, maxThreadIds)
+		for i := range txns {
+			txns[i] = NewTxn(r.startTs)
 		}
 
-		l, err := ReadPostingList(key, itr)
-		if err != nil {
-			return nil, errors.Wrapf(err, "error reading posting list from disk")
-		}
+		stream.FinishThread = func(threadId int) (*bpb.KVList, error) {
+			// Convert data into deltas.
+			streamTxn := txns[threadId]
+			streamTxn.Update()
+			// txn.cache.Lock() is not required because we are the only one making changes to txn.
+			kvs := make([]*bpb.KV, 0)
 
-		kvs, err := l.Rollup(nil, r.startTs)
-		if err != nil {
-			return nil, err
-		}
-
-		for _, kv := range kvs {
-			version := atomic.AddUint64(&counter, 1)
-			kv.Version = version
-		}
-
-		streamTxn := NewTxn(r.startTs)
-		_, err = r.fn(pk.Uid, l, streamTxn)
-		if err != nil {
-			return nil, err
-		}
-
-		// Convert data into deltas.
-		streamTxn.Update()
-		// txn.cache.Lock() is not required because we are the only one making changes to txn.
-		for key, data := range streamTxn.cache.deltas {
-			version := atomic.AddUint64(&counter, 1)
-			kv := bpb.KV{
-				Key:      []byte(key),
-				Value:    data,
-				UserMeta: []byte{BitDeltaPosting},
-				Version:  version,
+			for key, data := range streamTxn.cache.deltas {
+				version := atomic.AddUint64(&counter, 1)
+				kv := bpb.KV{
+					Key:      []byte(key),
+					Value:    data,
+					UserMeta: []byte{BitDeltaPosting},
+					Version:  version,
+				}
+				kvs = append(kvs, &kv)
 			}
-			kvs = append(kvs, &kv)
+			txns[threadId] = NewTxn(r.startTs)
+			return &bpb.KVList{Kv: kvs}, nil
 		}
 
-		return &bpb.KVList{Kv: kvs}, nil
-	}
-	stream.Send = func(buf *z.Buffer) error {
-		if err := tmpWriter.Write(buf); err != nil {
-			return errors.Wrap(err, "error setting entries in temp badger")
+		stream.KeyToListWithThreadId = func(key []byte, itr *badger.Iterator, threadId int) (*bpb.KVList, error) {
+			// We should return quickly if the context is no longer valid.
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+			}
+
+			pk, err := x.Parse(key)
+			if err != nil {
+				return nil, errors.Wrapf(err, "could not parse key %s", hex.Dump(key))
+			}
+
+			l, err := ReadPostingList(key, itr)
+			if err != nil {
+				return nil, errors.Wrapf(err, "error reading posting list from disk")
+			}
+
+			kvs := make([]*bpb.KV, 0)
+			if pred.Count {
+				kvs, err = l.Rollup(nil, r.startTs)
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			for _, kv := range kvs {
+				version := atomic.AddUint64(&counter, 1)
+				kv.Version = version
+			}
+
+			streamTxn := txns[threadId]
+			_, err = r.fn(pk.Uid, l, streamTxn)
+			if err != nil {
+				return nil, err
+			}
+
+			if len(streamTxn.cache.plists) < 10000 {
+				return &bpb.KVList{Kv: kvs}, nil
+			}
+
+			// Convert data into deltas.
+			streamTxn.Update()
+			// txn.cache.Lock() is not required because we are the only one making changes to txn.
+			for key, data := range streamTxn.cache.deltas {
+				version := atomic.AddUint64(&counter, 1)
+				kv := bpb.KV{
+					Key:      []byte(key),
+					Value:    data,
+					UserMeta: []byte{BitDeltaPosting},
+					Version:  version,
+				}
+				kvs = append(kvs, &kv)
+			}
+
+			txns[threadId] = NewTxn(r.startTs)
+			return &bpb.KVList{Kv: kvs}, nil
 		}
 
-		return nil
-	}
+		stream.Send = func(buf *z.Buffer) error {
+			t1 := time.Now()
+			defer func() {
+				glog.V(1).Infof("Rebuilding index for predicate %s: writing index to badger %d bytes took %v", r.attr, len(buf.Bytes()), time.Since(t1))
+			}()
+			if err := tmpWriter.Write(buf); err != nil {
+				return errors.Wrap(err, "error setting entries in temp badger")
+			}
 
-	start := time.Now()
-	if err := stream.Orchestrate(ctx); err != nil {
-		return err
-	}
-	if err := tmpWriter.Flush(); err != nil {
-		return err
-	}
-	glog.V(1).Infof("Rebuilding index for predicate %s: building temp index took: %v\n",
-		r.attr, time.Since(start))
+			return nil
+		}
 
+		start := time.Now()
+		if err := stream.Orchestrate(ctx); err != nil {
+			return err
+		}
+		if err := tmpWriter.Flush(); err != nil {
+			return err
+		}
+
+		glog.V(1).Infof("Rebuilding index for predicate %s: building temp index took: %v\n",
+			r.attr, time.Since(start))
+	}
 	// Now we write all the created posting lists to disk.
 	glog.V(1).Infof("Rebuilding index for predicate %s: writing index to badger", r.attr)
-	start = time.Now()
+	start := time.Now()
 	defer func() {
 		glog.V(1).Infof("Rebuilding index for predicate %s: writing index took: %v\n",
 			r.attr, time.Since(start))
 	}()
 
 	writer := pstore.NewManagedWriteBatch()
-	tmpStream := tmpDB.NewStreamAt(counter)
+	tmpStream := tmpDB.NewStreamAt(math.MaxUint64)
 	tmpStream.LogPrefix = fmt.Sprintf("Rebuilding index for predicate %s (2/2):", r.attr)
 	tmpStream.KeyToList = func(key []byte, itr *badger.Iterator) (*bpb.KVList, error) {
 		l, err := ReadPostingList(key, itr)

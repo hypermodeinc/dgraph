@@ -210,6 +210,7 @@ const (
 	geoFn
 	passwordFn
 	regexFn
+	shinglesFn
 	fullTextSearchFn
 	hasFn
 	uidInFn
@@ -248,6 +249,8 @@ func parseFuncTypeHelper(name string) (FuncType, string) {
 		return passwordFn, f
 	case "regexp":
 		return regexFn, f
+	case "shingles":
+		return shinglesFn, f
 	case "alloftext", "anyoftext":
 		return fullTextSearchFn, f
 	case "has":
@@ -311,7 +314,7 @@ func (srcFn *functionContext) needsValuePostings(typ types.TypeID) (bool, error)
 			return false, nil
 		}
 		return true, nil
-	case geoFn, regexFn, fullTextSearchFn, standardFn, hasFn, customIndexFn, matchFn:
+	case geoFn, regexFn, fullTextSearchFn, standardFn, hasFn, customIndexFn, matchFn, shinglesFn:
 		// All of these require an index, hence would require fetching uid postings.
 		return false, nil
 	case uidInFn, compareScalarFn:
@@ -819,7 +822,7 @@ func (qs *queryState) handleUidPostings(
 				} else {
 					key = x.DataKey(q.Attr, q.UidList.Uids[i])
 				}
-			case geoFn, regexFn, fullTextSearchFn, standardFn, customIndexFn, matchFn,
+			case geoFn, regexFn, fullTextSearchFn, standardFn, customIndexFn, matchFn, shinglesFn,
 				compareAttrFn:
 				key = x.IndexKey(q.Attr, srcFn.tokens[i])
 			default:
@@ -1189,7 +1192,7 @@ func needsStringFiltering(srcFn *functionContext, langs []string, attr string) b
 	return langForFunc(langs) != "." &&
 		(srcFn.fnType == standardFn || srcFn.fnType == hasFn ||
 			srcFn.fnType == fullTextSearchFn || srcFn.fnType == compareAttrFn ||
-			srcFn.fnType == customIndexFn)
+			srcFn.fnType == customIndexFn || srcFn.fnType == shinglesFn)
 }
 
 func (qs *queryState) handleCompareScalarFunction(ctx context.Context, arg funcArgs) error {
@@ -1704,6 +1707,11 @@ func (qs *queryState) filterStringFunction(arg funcArgs) error {
 	case hasFn:
 		// Dont do anything, as filtering based on lang is already
 		// done above.
+	case shinglesFn:
+		filter.tokens = arg.srcFn.tokens
+		filter.match = defaultMatch
+		filter.tokName = "shingles"
+		filtered = matchStrings(filtered, values, &filter)
 	case fullTextSearchFn:
 		filter.tokens = arg.srcFn.tokens
 		filter.match = defaultMatch
@@ -2024,7 +2032,7 @@ func parseSrcFn(ctx context.Context, q *pb.Query) (*functionContext, error) {
 			return nil, err
 		}
 		fc.n = len(q.UidList.Uids)
-	case standardFn, fullTextSearchFn:
+	case standardFn, fullTextSearchFn, shinglesFn:
 		// srcfunc 0th val is func name and [2:] are args.
 		// we tokenize the arguments of the query.
 		if err = ensureArgsCount(q.SrcFunc, 1); err != nil {
