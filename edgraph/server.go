@@ -2151,18 +2151,26 @@ func verifyUniqueWithinMutation(qc *queryContext) error {
 
 	for i := range qc.uniqueVars {
 		gmuIndex, rdfIndex := decodeIndex(i)
-		if len(qc.gmuList[gmuIndex].Set) == 0 {
-			return nil
+		// handles cases where the mutation was pruned in updateMutations
+		if gmuIndex >= uint32(len(qc.gmuList)) || qc.gmuList[gmuIndex] == nil || rdfIndex >= uint32(len(qc.gmuList[gmuIndex].Set)) {
+			continue
 		}
 		pred1 := qc.gmuList[gmuIndex].Set[rdfIndex]
 		pred1Value := dql.TypeValFrom(pred1.ObjectValue).Value
 		for j := range qc.uniqueVars {
+			if i == j {
+				continue
+			}
 			gmuIndex2, rdfIndex2 := decodeIndex(j)
+			// check for the second predicate, which could also have been pruned
+			if gmuIndex2 >= uint32(len(qc.gmuList)) || qc.gmuList[gmuIndex2] == nil || rdfIndex2 >= uint32(len(qc.gmuList[gmuIndex2].Set)) {
+				continue
+			}
 			pred2 := qc.gmuList[gmuIndex2].Set[rdfIndex2]
 			if pred2.Predicate == pred1.Predicate && dql.TypeValFrom(pred2.ObjectValue).Value == pred1Value &&
 				pred2.Subject != pred1.Subject {
 				return errors.Errorf("could not insert duplicate value [%v] for predicate [%v]",
-					dql.TypeValFrom(pred1.ObjectValue).Value, pred1.Predicate)
+					pred1Value, pred1.Predicate)
 			}
 		}
 	}
