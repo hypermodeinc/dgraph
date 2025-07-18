@@ -8,8 +8,8 @@ require (
 	github.com/IBM/sarama v1.45.2
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/blevesearch/bleve/v2 v2.5.2
-	github.com/dgraph-io/badger/v4 v4.7.0
-	github.com/dgraph-io/dgo/v250 v250.0.0-preview4.0.20250619041351-4a519e53fb9d
+	github.com/dgraph-io/badger/v4 v4.8.0
+	github.com/dgraph-io/dgo/v250 v250.0.0-preview4.0.20250709182152-32901102e0d0
 	github.com/dgraph-io/gqlgen v0.13.2
 	github.com/dgraph-io/gqlparser/v2 v2.2.2
 	github.com/dgraph-io/graphql-transport-ws v0.0.0-20210511143556-2cef522f1f15
@@ -17,13 +17,13 @@ require (
 	github.com/dgraph-io/simdjson-go v0.3.0
 	github.com/dgryski/go-farm v0.0.0-20240924180020-3414d57e47da
 	github.com/dgryski/go-groupvarint v0.0.0-20230630160417-2bfb7969fb3c
-	github.com/docker/docker v28.3.1+incompatible
+	github.com/docker/docker v28.3.2+incompatible
 	github.com/docker/go-connections v0.5.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/go-jose/go-jose/v4 v4.1.1
 	github.com/go-sql-driver/mysql v1.9.3
-	github.com/golang-jwt/jwt/v5 v5.2.2
-	github.com/golang/geo v0.0.0-20250704082316-8c117c302233
+	github.com/golang-jwt/jwt/v5 v5.2.3
+	github.com/golang/geo v0.0.0-20250707181242-c5087ca84cf4
 	github.com/golang/glog v1.2.5
 	github.com/golang/snappy v1.0.0
 	github.com/google/codesearch v1.2.0
@@ -33,7 +33,7 @@ require (
 	github.com/graph-gophers/graphql-go v1.6.0
 	github.com/hashicorp/vault/api v1.20.0
 	github.com/klauspost/compress v1.18.0
-	github.com/mark3labs/mcp-go v0.32.0
+	github.com/mark3labs/mcp-go v0.34.0
 	github.com/minio/minio-go/v7 v7.0.94
 	github.com/paulmach/go.geojson v1.5.0
 	github.com/pkg/errors v0.9.1
@@ -58,15 +58,15 @@ require (
 	go.opentelemetry.io/otel/sdk v1.37.0
 	go.opentelemetry.io/otel/trace v1.37.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/crypto v0.39.0
+	golang.org/x/crypto v0.40.0
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b
-	golang.org/x/mod v0.25.0
-	golang.org/x/net v0.41.0
-	golang.org/x/sync v0.15.0
-	golang.org/x/sys v0.33.0
-	golang.org/x/term v0.32.0
-	golang.org/x/text v0.26.0
-	golang.org/x/tools v0.34.0
+	golang.org/x/mod v0.26.0
+	golang.org/x/net v0.42.0
+	golang.org/x/sync v0.16.0
+	golang.org/x/sys v0.34.0
+	golang.org/x/term v0.33.0
+	golang.org/x/text v0.27.0
+	golang.org/x/tools v0.35.0
 	google.golang.org/grpc v1.73.0
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/yaml.v3 v3.0.1
