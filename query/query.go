@@ -1007,7 +1007,7 @@ func calculatePaginationParams(sg *SubGraph) (int32, int32) {
 	shouldExclude := false
 	if sg.SrcFunc != nil {
 		switch sg.SrcFunc.Name {
-		case "regexp", "alloftext", "allofterms", "match":
+		case "regexp", "alloftext", "allofterms", "match", "shingles":
 			shouldExclude = true
 		default:
 			shouldExclude = false
@@ -2746,7 +2746,7 @@ func isValidArg(a string) bool {
 // isValidFuncName checks if fn passed is valid keyword.
 func isValidFuncName(f string) bool {
 	switch f {
-	case "anyofterms", "allofterms", "val", "regexp", "anyoftext", "alloftext",
+	case "anyofterms", "allofterms", "val", "regexp", "anyoftext", "alloftext", "shingles",
 		"has", "uid", "uid_in", "anyof", "allof", "type", "match", "similar_to":
 		return true
 	}

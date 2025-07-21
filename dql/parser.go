@@ -1700,7 +1700,7 @@ func validFuncName(name string) bool {
 	}
 
 	switch name {
-	case "regexp", "anyofterms", "allofterms", "alloftext", "anyoftext",
+	case "regexp", "anyofterms", "allofterms", "alloftext", "anyoftext", "shingles",
 		"has", "uid", "uid_in", "anyof", "allof", "type", "match", "similar_to":
 		return true
 	}

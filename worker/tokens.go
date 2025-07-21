@@ -21,6 +21,8 @@ import (
 func verifyStringIndex(ctx context.Context, attr string, funcType FuncType) (string, bool) {
 	var requiredTokenizer tok.Tokenizer
 	switch funcType {
+	case shinglesFn:
+		requiredTokenizer = tok.ShinglesTokenizer{}
 	case fullTextSearchFn:
 		requiredTokenizer = tok.FullTextTokenizer{}
 	case matchFn:
@@ -56,12 +58,19 @@ func verifyCustomIndex(ctx context.Context, attr string, tokenizerName string) b
 
 // Return string tokens from function arguments. It maps function type to correct tokenizer.
 // Note: regexp functions require regexp compilation of argument, not tokenization.
-func getStringTokens(funcArgs []string, lang string, funcType FuncType) ([]string, error) {
+func getStringTokens(funcArgs []string, lang string, funcType FuncType, query bool) ([]string, error) {
 	if lang == "." {
 		lang = "en"
 	}
 	if funcType == fullTextSearchFn {
 		return tok.GetFullTextTokens(funcArgs, lang)
+	}
+	if funcType == shinglesFn {
+		if query {
+			return tok.GetShinglesTokens(funcArgs, lang)
+		} else {
+			return tok.GetSinglesQueryTokens(funcArgs, lang)
+		}
 	}
 	return tok.GetTermTokens(funcArgs)
 }

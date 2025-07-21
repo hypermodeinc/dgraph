@@ -899,7 +899,12 @@ func (r *rebuilder) Run(ctx context.Context) error {
 		WithCompression(options.None).
 		WithLoggingLevel(badger.WARNING).
 		WithMetricsEnabled(false)
-
+	dbOpts.DetectConflicts = false
+	dbOpts.NumLevelZeroTables = 200
+	dbOpts.NumLevelZeroTablesStall = 400
+	dbOpts.BaseLevelSize = 5 * 128 << 20
+	dbOpts.BaseTableSize = 128 << 20
+	dbOpts.MemTableSize = 128 << 20
 	// Set cache if we have encryption.
 	if len(x.WorkerConfig.EncryptionKey) > 0 {
 		dbOpts.EncryptionKey = x.WorkerConfig.EncryptionKey
@@ -924,11 +929,43 @@ func (r *rebuilder) Run(ctx context.Context) error {
 	stream := pstore.NewStreamAt(r.startTs)
 	stream.LogPrefix = fmt.Sprintf("Rebuilding index for predicate %s (1/2):", r.attr)
 	stream.Prefix = r.prefix
+	stream.MaxSize = (uint64(dbOpts.MemTableSize) * 9) / 10
 	//TODO We need to create a single transaction irrespective of the type of the predicate
 	if pred.ValueType == pb.Posting_VFLOAT {
 		x.AssertTrue(false)
 	}
-	stream.KeyToList = func(key []byte, itr *badger.Iterator) (*bpb.KVList, error) {
+
+	stream.UseKeyToListWithThreadId = true
+
+	const maxThreadIds = 10000
+
+	txns := make([]*Txn, maxThreadIds)
+	for i := range txns {
+		txns[i] = NewTxn(r.startTs)
+	}
+
+	stream.FinishThread = func(threadId int) (*bpb.KVList, error) {
+		// Convert data into deltas.
+		streamTxn := txns[threadId]
+		streamTxn.Update()
+		// txn.cache.Lock() is not required because we are the only one making changes to txn.
+		kvs := make([]*bpb.KV, 0)
+
+		for key, data := range streamTxn.cache.deltas {
+			version := atomic.AddUint64(&counter, 1)
+			kv := bpb.KV{
+				Key:      []byte(key),
+				Value:    data,
+				UserMeta: []byte{BitDeltaPosting},
+				Version:  version,
+			}
+			kvs = append(kvs, &kv)
+		}
+		txns[threadId] = NewTxn(r.startTs)
+		return &bpb.KVList{Kv: kvs}, nil
+	}
+
+	stream.KeyToListWithThreadId = func(key []byte, itr *badger.Iterator, threadId int) (*bpb.KVList, error) {
 		// We should return quickly if the context is no longer valid.
 		select {
 		case <-ctx.Done():
@@ -946,9 +983,12 @@ func (r *rebuilder) Run(ctx context.Context) error {
 			return nil, errors.Wrapf(err, "error reading posting list from disk")
 		}
 
-		kvs, err := l.Rollup(nil, r.startTs)
-		if err != nil {
-			return nil, err
+		kvs := make([]*bpb.KV, 0)
+		if pred.Count {
+			kvs, err = l.Rollup(nil, r.startTs)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		for _, kv := range kvs {
@@ -956,10 +996,14 @@ func (r *rebuilder) Run(ctx context.Context) error {
 			kv.Version = version
 		}
 
-		streamTxn := NewTxn(r.startTs)
+		streamTxn := txns[threadId]
 		_, err = r.fn(pk.Uid, l, streamTxn)
 		if err != nil {
 			return nil, err
+		}
+
+		if len(streamTxn.cache.plists) < 10000 {
+			return &bpb.KVList{Kv: kvs}, nil
 		}
 
 		// Convert data into deltas.
@@ -976,9 +1020,15 @@ func (r *rebuilder) Run(ctx context.Context) error {
 			kvs = append(kvs, &kv)
 		}
 
+		txns[threadId] = NewTxn(r.startTs)
 		return &bpb.KVList{Kv: kvs}, nil
 	}
+
 	stream.Send = func(buf *z.Buffer) error {
+		t1 := time.Now()
+		defer func() {
+			glog.V(1).Infof("Rebuilding index for predicate %s: writing index to badger %d bytes took %v", r.attr, len(buf.Bytes()), time.Since(t1))
+		}()
 		if err := tmpWriter.Write(buf); err != nil {
 			return errors.Wrap(err, "error setting entries in temp badger")
 		}
