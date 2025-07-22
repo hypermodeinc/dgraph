@@ -16,6 +16,7 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/golang/glog"
 	ostats "go.opencensus.io/stats"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/hypermodeinc/dgraph/v25/protos/pb"
 	"github.com/hypermodeinc/dgraph/v25/tok/index"
@@ -54,6 +55,8 @@ type Txn struct {
 	lastUpdate time.Time
 
 	cache *LocalCache // This pointer does not get modified.
+
+	Span trace.Span
 }
 
 // struct to implement Txn interface from vector-indexer
