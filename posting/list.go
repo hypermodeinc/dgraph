@@ -1006,6 +1006,14 @@ func (l *List) setMutationAfterCommit(startTs, commitTs uint64, pl *pb.PostingLi
 	}
 	l.mutationMap.committedUidsTime = x.Max(l.mutationMap.committedUidsTime, commitTs)
 
+	if refresh {
+		newMap := make(map[uint64]*pb.Posting, len(l.mutationMap.committedUids))
+		for uid, post := range l.mutationMap.committedUids {
+			newMap[uid] = post
+		}
+		l.mutationMap.committedUids = newMap
+	}
+
 	for _, mpost := range pl.Postings {
 		if hasDeleteAll(mpost) {
 			l.mutationMap.deleteAllMarker = commitTs
