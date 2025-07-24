@@ -114,6 +114,10 @@ func euclideanDistanceSq[T c.Float](a, b []T, floatBits int) (T, error) {
 	return applyDistanceFunction(a, b, floatBits, "euclidean distance", vek32.Distance, vek.Distance)
 }
 
+func EuclideanDistanceSq[T c.Float](a, b []T, floatBits int) (T, error) {
+	return applyDistanceFunction(a, b, floatBits, "euclidean distance", vek32.Distance, vek.Distance)
+}
+
 // Used for distance, since shorter distance is better
 func insortPersistentHeapAscending[T c.Float](
 	slice []minPersistentHeapElement[T],
@@ -229,67 +233,6 @@ func GetSimType[T c.Float](indexType string, floatBits int) SimilarityType[T] {
 	}
 }
 
-// TxnCache implements CacheType interface
-type TxnCache struct {
-	txn     index.Txn
-	startTs uint64
-}
-
-func (tc *TxnCache) Get(key []byte) (rval []byte, rerr error) {
-	return tc.txn.Get(key)
-}
-
-func (tc *TxnCache) Ts() uint64 {
-	return tc.startTs
-}
-
-func (tc *TxnCache) Find(prefix []byte, filter func([]byte) bool) (uint64, error) {
-	return tc.txn.Find(prefix, filter)
-}
-
-func NewTxnCache(txn index.Txn, startTs uint64) *TxnCache {
-	return &TxnCache{
-		txn:     txn,
-		startTs: startTs,
-	}
-}
-
-// QueryCache implements index.CacheType interface
-type QueryCache struct {
-	cache  index.LocalCache
-	readTs uint64
-}
-
-func (qc *QueryCache) Find(prefix []byte, filter func([]byte) bool) (uint64, error) {
-	return qc.cache.Find(prefix, filter)
-}
-
-func (qc *QueryCache) Get(key []byte) (rval []byte, rerr error) {
-	return qc.cache.Get(key)
-}
-
-func (qc *QueryCache) Ts() uint64 {
-	return qc.readTs
-}
-
-func NewQueryCache(cache index.LocalCache, readTs uint64) *QueryCache {
-	return &QueryCache{
-		cache:  cache,
-		readTs: readTs,
-	}
-}
-
-// getDataFromKeyWithCacheType(keyString, uid, c) looks up data in c
-// associated with keyString and uid.
-func getDataFromKeyWithCacheType(keyString string, uid uint64, c index.CacheType) ([]byte, error) {
-	key := DataKey(keyString, uid)
-	data, err := c.Get(key)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w; %s", err, errFetchingPostingList, keyString+" with uid "+strconv.FormatUint(uid, 10))
-	}
-	return data, nil
-}
-
 // populateEdgeDataFromStore(keyString, uid, c, edgeData)
 // will fill edgeData with the contents of the neighboring edges for
 // a given DataKey by looking into the given cache (which may result
@@ -302,34 +245,22 @@ func populateEdgeDataFromKeyWithCacheType(
 	uid uint64,
 	c index.CacheType,
 	edgeData *[][]uint64) (bool, error) {
-	data, err := getDataFromKeyWithCacheType(keyString, uid, c)
-	// Note that posting list fetching errors are treated as just not having
-	// found the data -- no harm, no foul, as it is probably a
-	// dead reference that we can ignore.
-	if err != nil && !errors.Is(err, errFetchingPostingList) {
-		return false, err
-	}
+	data := c.GetEdge(uid)
 	if data == nil {
 		return false, nil
 	}
-	err = decodeUint64MatrixUnsafe(data, edgeData)
+	err := decodeUint64MatrixUnsafe(*data, edgeData)
 	return true, err
 }
 
 // entryUuidInsert adds the entry uuid to the given key
 func entryUuidInsert(
 	ctx context.Context,
-	key []byte,
-	txn index.Txn,
+	c index.CacheType,
 	predEntryKey string,
-	entryUuid []byte) (*index.KeyValue, error) {
-	edge := &index.KeyValue{
-		Entity: 1,
-		Attr:   predEntryKey,
-		Value:  entryUuid,
-	}
-	err := txn.AddMutationWithLockHeld(ctx, key, edge)
-	return edge, err
+	entryUuid []byte) error {
+	c.SetOther(predEntryKey, &entryUuid)
+	return nil
 }
 
 func ConcatStrings(strs ...string) string {
@@ -359,22 +290,14 @@ var emptyVec = []byte{}
 // adds the data corresponding to a uid to the given vec variable in the form of []T
 // this does not allocate memory for vec, so it must be allocated before calling this function
 func (ph *persistentHNSW[T]) getVecFromUid(uid uint64, c index.CacheType, vec *[]T) error {
-	data, err := getDataFromKeyWithCacheType(ph.pred, uid, c)
-	if err != nil {
-		if errors.Is(err, errFetchingPostingList) {
-			// no vector. Return empty array of floats
-			index.BytesAsFloatArray(emptyVec, vec, ph.floatBits)
-			return fmt.Errorf("%w; %w", errNilVector, err)
-		}
-		return err
-	}
-	if data != nil {
-		index.BytesAsFloatArray(data, vec, ph.floatBits)
-		return nil
-	} else {
+	data := c.GetVector(uid)
+	if data == nil {
+		// no vector. Return empty array of floats
 		index.BytesAsFloatArray(emptyVec, vec, ph.floatBits)
-		return errNilVector
+		return fmt.Errorf("%w; %w", errNilVector, errFetchingPostingList)
 	}
+	index.BytesAsFloatArray(*data, vec, ph.floatBits)
+	return nil
 }
 
 // chooses whether to create the entry and start nodes based on if it already
@@ -382,24 +305,19 @@ func (ph *persistentHNSW[T]) getVecFromUid(uid uint64, c index.CacheType, vec *[
 // levels.
 func (ph *persistentHNSW[T]) createEntryAndStartNodes(
 	ctx context.Context,
-	c *TxnCache,
+	c index.CacheType,
 	inUuid uint64,
-	vec *[]T) (uint64, []*index.KeyValue, error) {
-	txn := c.txn
-	edges := []*index.KeyValue{}
-	entryKey := DataKey(ph.vecEntryKey, 1) // 0-profile_vector_entry
-	txn.LockKey(entryKey)
-	defer txn.UnlockKey(entryKey)
-	data, _ := txn.GetWithLockHeld(entryKey)
+	vec *[]T) (uint64, error) {
 
-	create_edges := func(inUuid uint64) (uint64, []*index.KeyValue, error) {
-		startEdges, err := ph.addStartNodeToAllLevels(ctx, entryKey, txn, inUuid)
+	data := c.GetOther(ph.vecEntryKey)
+
+	create_edges := func(inUuid uint64) (uint64, error) {
+		err := ph.addStartNodeToAllLevels(ctx, c, inUuid)
 		if err != nil {
-			return 0, []*index.KeyValue{}, err
+			return 0, err
 		}
 		// return entry node at all levels
-		edges = append(edges, startEdges...)
-		return 0, edges, nil
+		return 0, nil
 	}
 
 	if data == nil {
@@ -407,7 +325,7 @@ func (ph *persistentHNSW[T]) createEntryAndStartNodes(
 		return create_edges(inUuid)
 	}
 
-	entry := BytesToUint64(data) // convert entry Uuid returned from Get to uint64
+	entry := BytesToUint64(*data) // convert entry Uuid returned from Get to uint64
 	err := ph.getVecFromUid(entry, c, vec)
 	if err != nil || len(*vec) == 0 {
 		// The entry vector has been deleted. We have to create a new entry vector.
@@ -419,7 +337,7 @@ func (ph *persistentHNSW[T]) createEntryAndStartNodes(
 		return create_edges(entry)
 	}
 
-	return entry, edges, nil
+	return entry, nil
 }
 
 // Converts the matrix into linear array that looks like
@@ -489,47 +407,33 @@ func decodeUint64MatrixUnsafe(data []byte, matrix *[][]uint64) error {
 // adds empty layers to all levels
 func (ph *persistentHNSW[T]) addStartNodeToAllLevels(
 	ctx context.Context,
-	entryKey []byte,
-	txn index.Txn,
-	inUuid uint64) ([]*index.KeyValue, error) {
-	edges := []*index.KeyValue{}
-	key := DataKey(ph.vecKey, inUuid)
+	c index.CacheType,
+	inUuid uint64) error {
 	emptyEdgesBytes := encodeUint64MatrixUnsafe(make([][]uint64, ph.maxLevels))
 	// creates empty at all levels only for entry node
-	edge, err := ph.newPersistentEdgeKeyValueEntry(ctx, key, txn, inUuid, emptyEdgesBytes)
+	err := ph.newPersistentEdgeKeyValueEntry(ctx, c, inUuid, emptyEdgesBytes)
 	if err != nil {
-		return []*index.KeyValue{}, err
+		return err
 	}
-	edges = append(edges, edge)
 	inUuidByte := Uint64ToBytes(inUuid)
 	// add inUuid as entry for this structure from now on
-	edge, err = entryUuidInsert(ctx, entryKey, txn, ph.vecEntryKey, inUuidByte)
+	err = entryUuidInsert(ctx, c, ph.vecEntryKey, inUuidByte)
 	if err != nil {
-		return []*index.KeyValue{}, err
+		return err
 	}
-	edges = append(edges, edge)
-	return edges, nil
+	return nil
 }
 
 // creates a new edge with the given uuid and edges. Lock must be held before calling this function
-func (ph *persistentHNSW[T]) newPersistentEdgeKeyValueEntry(ctx context.Context, key []byte,
-	txn index.Txn, uuid uint64, edges []byte) (*index.KeyValue, error) {
-	txn.LockKey(key)
-	defer txn.UnlockKey(key)
-	edge := &index.KeyValue{
-		Entity: uuid,
-		Attr:   ph.vecKey,
-		Value:  edges,
-	}
-	if err := txn.AddMutationWithLockHeld(ctx, key, edge); err != nil {
-		return nil, err
-	}
-	return edge, nil
+func (ph *persistentHNSW[T]) newPersistentEdgeKeyValueEntry(ctx context.Context,
+	c index.CacheType, uuid uint64, edges []byte) error {
+	c.SetEdge(uuid, &edges)
+	return nil
 }
 
-func (ph *persistentHNSW[T]) distance_betw(ctx context.Context, tc *TxnCache, inUuid, outUuid uint64, inVec,
+func (ph *persistentHNSW[T]) distance_betw(ctx context.Context, c index.CacheType, inUuid, outUuid uint64, inVec,
 	outVec *[]T) T {
-	err := ph.getVecFromUid(outUuid, tc, outVec)
+	err := ph.getVecFromUid(outUuid, c, outVec)
 	if err != nil {
 		log.Printf("[ERROR] While getting vector %s", err)
 		return -1
@@ -579,87 +483,67 @@ func (h *HeapDataHolder) Pop() interface{} {
 
 // addNeighbors adds the neighbors of the given uuid to the given level.
 // It returns the edge created and the error if any.
-func (ph *persistentHNSW[T]) addNeighbors(ctx context.Context, tc *TxnCache,
-	uuid uint64, allLayerNeighbors [][]uint64) (*index.KeyValue, error) {
+func (ph *persistentHNSW[T]) addNeighbors(ctx context.Context, c index.CacheType,
+	uuid uint64, allLayerNeighbors [][]uint64) error {
 
-	txn := tc.txn
-	keyPred := ph.vecKey
-	key := DataKey(keyPred, uuid)
-	txn.LockKey(key)
-	defer txn.UnlockKey(key)
-	var nnEdgesErr error
+	// Lock the vector key
+	edges_data := c.GetEdge(uuid)
 	var allLayerEdges [][]uint64
-	var ok bool
-	allLayerEdges, ok = ph.nodeAllEdges[uuid]
-	if !ok {
-		data, _ := txn.GetWithLockHeld(key)
-		if data == nil {
-			allLayerEdges = allLayerNeighbors
-		} else {
-			// all edges of nearest neighbor
-			err := decodeUint64MatrixUnsafe(data, &allLayerEdges)
-			if err != nil {
-				return nil, err
-			}
-		}
+	if edges_data != nil {
+		decodeUint64MatrixUnsafe(*edges_data, &allLayerEdges)
+	} else {
+		encodedData := encodeUint64MatrixUnsafe(allLayerNeighbors)
+		c.SetEdge(uuid, &encodedData)
+		return nil
 	}
+
 	var inVec, outVec []T
 	for level := range ph.maxLevels {
-		allLayerEdges[level], nnEdgesErr = ph.removeDeadNodes(allLayerEdges[level], tc)
-		if nnEdgesErr != nil {
-			return nil, nnEdgesErr
+		var err error
+		allLayerEdges[level], err = ph.removeDeadNodes(allLayerEdges[level], c)
+		if err != nil {
+			return err
 		}
 		// This adds at most efConstruction number of edges for each layer for this node
 		allLayerEdges[level] = append(allLayerEdges[level], allLayerNeighbors[level]...)
 		if len(allLayerEdges[level]) > ph.efConstruction {
-			err := ph.getVecFromUid(uuid, tc, &inVec)
+			err := ph.getVecFromUid(uuid, c, &inVec)
 			if err != nil {
 				log.Printf("[ERROR] While getting vector %s", err)
 			} else {
 				h := &HeapDataHolder{
 					data: allLayerEdges[level],
 					compare: func(i, j uint64) bool {
-						return ph.distance_betw(ctx, tc, uuid, i, &inVec, &outVec) >
-							ph.distance_betw(ctx, tc, uuid, j, &inVec, &outVec)
+						return ph.distance_betw(ctx, c, uuid, i, &inVec, &outVec) >
+							ph.distance_betw(ctx, c, uuid, j, &inVec, &outVec)
 					}}
 
 				for _, e := range allLayerNeighbors[level] {
 					heap.Push(h, e)
-					heap.Pop(h)
 				}
 			}
 			allLayerEdges[level] = allLayerEdges[level][:ph.efConstruction]
 		}
 	}
 
-	// on every modification of the layer edges, add it to in mem map so you dont have to always be reading
-	// from persistent storage
-	ph.nodeAllEdges[uuid] = allLayerEdges
 	inboundEdgesBytes := encodeUint64MatrixUnsafe(allLayerEdges)
-
-	edge := &index.KeyValue{
-		Entity: uuid,
-		Attr:   ph.vecKey,
-		Value:  inboundEdgesBytes,
-	}
-	if err := txn.AddMutationWithLockHeld(ctx, key, edge); err != nil {
-		return nil, err
-	}
-	return edge, nil
+	c.SetEdge(uuid, &inboundEdgesBytes)
+	return nil
 }
 
 // removeDeadNodes(nnEdges, tc) removes dead nodes from nnEdges and returns the new nnEdges
-func (ph *persistentHNSW[T]) removeDeadNodes(nnEdges []uint64, tc *TxnCache) ([]uint64, error) {
+func (ph *persistentHNSW[T]) removeDeadNodes(nnEdges []uint64, c index.CacheType) ([]uint64, error) {
 	// TODO add a path to delete deadNodes
 	if ph.deadNodes == nil {
-		data, err := getDataFromKeyWithCacheType(ph.vecDead, 1, tc)
-		if err != nil && !errors.Is(err, errFetchingPostingList) {
-			return []uint64{}, err
+		data := c.GetOther(ph.vecDead)
+		if data == nil {
+			return nnEdges, nil
 		}
 
 		var deadNodes []uint64
 		if data != nil { // if dead nodes exist, convert to []uint64
-			deadNodes, err = ParseEdges(string(data))
+			var err error
+			deadNodes, err = ParseEdges(string(*data))
 			if err != nil {
 				return []uint64{}, err
 			}
