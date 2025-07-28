@@ -6,6 +6,7 @@ package partitioned_hnsw
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	c "github.com/hypermodeinc/dgraph/v25/tok/constraints"
@@ -152,6 +153,14 @@ func (ph *partitionedHNSW[T]) EndBuild() []int {
 }
 
 func (ph *partitionedHNSW[T]) Insert(ctx context.Context, txn index.CacheType, uid uint64, vec []T) ([]*index.KeyValue, error) {
+	if len(vec) == 0 {
+		ph.vectorDimension = len(vec)
+	}
+
+	if len(vec) != ph.vectorDimension {
+		return nil, fmt.Errorf("connot insert vector length of %d vector lenth should be %d", len(vec), ph.vectorDimension)
+	}
+
 	index, err := ph.partition.FindIndexForInsert(vec)
 	if err != nil {
 		return nil, err
