@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -23,7 +22,8 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/x"
 )
 
-func TestVectorIncrBackupRestore(t *testing.T) {
+func (vsuite *VectorTestSuite) TestVectorIncrBackupRestore() {
+	t := vsuite.T()
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
 	require.NoError(t, err)
@@ -41,7 +41,7 @@ func TestVectorIncrBackupRestore(t *testing.T) {
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser,
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 
 	numVectors := 500
 	pred := "project_description_v"
@@ -100,7 +100,8 @@ func TestVectorIncrBackupRestore(t *testing.T) {
 	}
 }
 
-func TestVectorBackupRestore(t *testing.T) {
+func (vsuite *VectorTestSuite) TestVectorBackupRestore() {
+	t := vsuite.T()
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
 	require.NoError(t, err)
@@ -118,7 +119,7 @@ func TestVectorBackupRestore(t *testing.T) {
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser,
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 
 	numVectors := 1000
 	pred := "project_description_v"
@@ -138,7 +139,8 @@ func TestVectorBackupRestore(t *testing.T) {
 	testVectorQuery(t, gc, vectors, rdfs, pred, numVectors)
 }
 
-func TestVectorBackupRestoreDropIndex(t *testing.T) {
+func (vsuite *VectorTestSuite) TestVectorBackupRestoreDropIndex() {
+	t := vsuite.T()
 	// setup cluster
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
@@ -158,7 +160,7 @@ func TestVectorBackupRestoreDropIndex(t *testing.T) {
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
 	// add vector predicate + index
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 	// add data to the vector predicate
 	numVectors := 3
 	pred := "project_description_v"
@@ -195,7 +197,7 @@ func TestVectorBackupRestoreDropIndex(t *testing.T) {
 	require.NoError(t, hc.Backup(c, false, dgraphtest.DefaultBackupDir))
 
 	// add index
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 
 	t.Log("taking second incr backup \n")
 	require.NoError(t, hc.Backup(c, false, dgraphtest.DefaultBackupDir))
@@ -227,7 +229,8 @@ func TestVectorBackupRestoreDropIndex(t *testing.T) {
 	}
 }
 
-func TestVectorBackupRestoreReIndexing(t *testing.T) {
+func (vsuite *VectorTestSuite) TestVectorBackupRestoreReIndexing() {
+	t := vsuite.T()
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
 	require.NoError(t, err)
@@ -245,7 +248,7 @@ func TestVectorBackupRestoreReIndexing(t *testing.T) {
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser,
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 
 	numVectors := 1000
 	pred := "project_description_v"
@@ -271,7 +274,7 @@ func TestVectorBackupRestoreReIndexing(t *testing.T) {
 		// drop index
 		require.NoError(t, gc.SetupSchema(testSchemaWithoutIndex))
 		// add index
-		require.NoError(t, gc.SetupSchema(testSchema))
+		require.NoError(t, gc.SetupSchema(vsuite.schema))
 	}
 	vectors = append(vectors, vectors2...)
 	rdfs = rdfs + rdfs2
