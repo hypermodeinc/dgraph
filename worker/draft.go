@@ -538,6 +538,12 @@ func (n *node) applyMutations(ctx context.Context, proposal *pb.Proposal) (rerr 
 	// Discard the posting lists from cache to release memory at the end.
 	defer txn.Update()
 
+	featureFlag := true
+	if featureFlag {
+		mp := posting.NewMutationPipeline(txn)
+		return mp.Process(ctx, m.Edges)
+	}
+
 	process := func(edges []*pb.DirectedEdge) error {
 		var retries int
 		for _, edge := range edges {

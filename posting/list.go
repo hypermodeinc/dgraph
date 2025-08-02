@@ -712,6 +712,53 @@ type ListOptions struct {
 	First     int
 }
 
+func NewPostingExisting(p *pb.Posting, t *pb.DirectedEdge) {
+	var op uint32
+	switch t.Op {
+	case pb.DirectedEdge_SET:
+		op = Set
+	case pb.DirectedEdge_OVR:
+		op = Ovr
+	case pb.DirectedEdge_DEL:
+		op = Del
+	default:
+		x.Fatalf("Unhandled operation: %+v", t)
+	}
+
+	var postingType pb.Posting_PostingType
+	switch {
+	case len(t.Lang) > 0:
+		postingType = pb.Posting_VALUE_LANG
+	case t.ValueId == 0:
+		postingType = pb.Posting_VALUE
+	default:
+		postingType = pb.Posting_REF
+	}
+
+	p.Uid = t.ValueId
+	p.Value = t.Value
+	p.ValType = t.ValueType
+	p.PostingType = postingType
+	p.LangTag = []byte(t.Lang)
+	p.Op = op
+	p.Facets = t.Facets
+}
+
+func GetPostingOp(top uint32) pb.DirectedEdge_Op {
+	var op pb.DirectedEdge_Op
+	switch top {
+	case Set:
+		op = pb.DirectedEdge_SET
+	case Del:
+		op = pb.DirectedEdge_DEL
+	case Ovr:
+		op = pb.DirectedEdge_OVR
+	default:
+		x.Fatalf("Unhandled operation: %+v", top)
+	}
+	return op
+}
+
 // NewPosting takes the given edge and returns its equivalent representation as a posting.
 func NewPosting(t *pb.DirectedEdge) *pb.Posting {
 	var op uint32
@@ -831,6 +878,10 @@ func fingerprintEdge(t *pb.DirectedEdge) uint64 {
 		id = farm.Fingerprint64(t.Value)
 	}
 	return id
+}
+
+func FingerprintEdge(t *pb.DirectedEdge) uint64 {
+	return fingerprintEdge(t)
 }
 
 func (l *List) addMutation(ctx context.Context, txn *Txn, t *pb.DirectedEdge) error {

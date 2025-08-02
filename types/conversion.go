@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"math"
 	"math/big"
 	"strconv"
@@ -95,6 +96,8 @@ func cannotConvertToVFloat(s string) error {
 // Convert converts the value to given scalar type.
 func Convert(from Val, toID TypeID) (Val, error) {
 	to := Val{Tid: toID}
+
+	fmt.Println("Converting", from, toID)
 
 	// sanity: we expect a value
 	data, ok := from.Value.([]byte)
