@@ -225,11 +225,13 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 		pk, _ := x.Parse([]byte(key))
 		if (!ok) {
 			fmt.Println("Key not found in global map", pk, val)
+			x.Panic(errors.Errorf("Key not found in global map %v", pk))
 		} else {
 			gp := SortAndDedupPostings(globalGet.Postings)
 			pp := SortAndDedupPostings(val.Postings)
 			if len(gp) != len(pp) {
 				fmt.Println("Length mismatch", len(gp), len(pp), pk, gp, pp)
+				x.Panic(errors.Errorf("Length mismatch %v %v %v %v %v", len(gp), len(pp), pk, gp, pp))
 			}
 		}
 		return nil
