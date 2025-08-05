@@ -162,7 +162,6 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 		process := func(start int) {
 			defer wg.Done()
 			localMap := make(map[string]*pb.PostingList, len(values)/numGo)
-			fmt.Println("STARTING THREAD", numGo, start)
 			for i := start; i < len(values); i += numGo {
 				token := strings[i]
 				valPl := values[token]
@@ -198,8 +197,6 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 			} 
 
 			for key, value := range localMap {
-				pk, _ := x.Parse([]byte(key))
-				fmt.Println("LOCAL MAP", pk, numGo, value)
 				globalMap.Update(key, func(val *pb.PostingList, ok bool) *pb.PostingList {
 					if ok {
 						val.Postings = append(val.Postings, value.Postings...)
@@ -214,15 +211,16 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 			wg.Add(1)
 			go process(i)
 		}
+		wg.Wait()
 
 		return globalMap
 	}
 
-	globalMap := f(1)
+	globalMapI := f(1)
 	parallelGlobalMap := f(100)
 
 	parallelGlobalMap.ParallelIterate(func (key string, val *pb.PostingList) error {
-		globalGet, ok := globalMap.Get(key)
+		globalGet, ok := globalMapI.Get(key)
 		pk, _ := x.Parse([]byte(key))
 		if (!ok) {
 			fmt.Println("Key not found in global map", pk, val)
@@ -238,7 +236,7 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 		return nil
 	})
 
-	globalMap.ParallelIterate(func(key string, val *pb.PostingList) error {
+	globalMapI.ParallelIterate(func(key string, val *pb.PostingList) error {
 		if _, err := mp.txn.AddDelta(key, *val); err != nil {
 			pipeline.errCh <- err
 			return err
