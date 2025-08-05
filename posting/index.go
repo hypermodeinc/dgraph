@@ -149,7 +149,7 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 	}
 	fmt.Println("Took time to create first map", time.Since(startTime))
 
-	numGo := 1
+	numGo := 100
 	wg := &sync.WaitGroup{}
 
 	strings := make([]string, 0, len(values))
@@ -221,14 +221,14 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 	wg.Wait()
 	fmt.Println("Took time to create global map", time.Since(startTime))
 
-	for key, val := range globalMap {
-		if _, err := mp.txn.AddDelta(key, *val); err != nil {
-			pipeline.errCh <- err
-			continue
-		} else {
-			//mp.txn.addConflictKeyWithUid([]byte(key), newPl)
-		}
-	}
+	// for key, val := range globalMap {
+	// 	if newPl, err := mp.txn.AddDelta(key, *val); err != nil {
+	// 		pipeline.errCh <- err
+	// 		continue
+	// 	} else {
+	// 		mp.txn.addConflictKeyWithUid([]byte(key), newPl)
+	// 	}
+	// }
 }
 
 func (mp *MutationPipeline) ProcessList(ctx context.Context, pipeline *PredicatePipeline, index bool, reverse bool, count bool) {
