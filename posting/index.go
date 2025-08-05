@@ -197,6 +197,8 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 			} 
 
 			for key, value := range localMap {
+				pk, _ := x.Parse([]byte(key))
+				fmt.Println("LOCAL MAP", pk, numGo, value)
 				globalMap.Update(key, func(val *pb.PostingList, ok bool) *pb.PostingList {
 					if ok {
 						val.Postings = append(val.Postings, value.Postings...)
