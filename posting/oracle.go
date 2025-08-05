@@ -97,7 +97,7 @@ func SortAndDedupPostings(postings []*pb.Posting) []*pb.Posting {
 func (txn *Txn) AddDelta(key string, pl pb.PostingList) (*pb.PostingList, error) {
 	txn.cache.Lock()
 	defer txn.cache.Unlock()
-	prevDelta, ok := txn.cache.deltas[key]
+	prevDelta, ok := txn.cache.deltas.Get(key)
 	var p1 *pb.PostingList
 	if ok {
 		p1 = new(pb.PostingList)
@@ -117,11 +117,11 @@ func (txn *Txn) AddDelta(key string, pl pb.PostingList) (*pb.PostingList, error)
 		glog.Errorf("Error marshalling posting list: %v", err)
 		return nil, err
 	}
-	txn.cache.deltas[key] = newPl
+	txn.cache.deltas.Set(key, newPl)
 
 	list, listOk := txn.cache.plists[key]
 	if listOk {
-		list.setMutation(txn.StartTs, txn.cache.deltas[key])
+		list.setMutation(txn.StartTs, newPl)
 	}
 	return p1, nil
 }
@@ -402,9 +402,10 @@ func (o *oracle) ProcessDelta(delta *pb.OracleDelta) {
 	for _, status := range delta.Txns {
 		txn := o.pendingTxns[status.StartTs]
 		if txn != nil && status.CommitTs > 0 {
-			for k := range txn.cache.deltas {
-				IncrRollup.addKeyToBatch([]byte(k), 0)
-			}
+			txn.cache.deltas.Iterate(func(key string, value []byte) error {
+				IncrRollup.addKeyToBatch([]byte(key), 0)
+				return nil
+			})
 		}
 		delete(o.pendingTxns, status.StartTs)
 	}
@@ -457,17 +458,6 @@ func (o *oracle) GetTxn(startTs uint64) *Txn {
 	return o.pendingTxns[startTs]
 }
 
-func (txn *Txn) matchesDelta(ok func(key []byte) bool) bool {
-	txn.Lock()
-	defer txn.Unlock()
-	for key := range txn.cache.deltas {
-		if ok([]byte(key)) {
-			return true
-		}
-	}
-	return false
-}
-
 // IterateTxns returns a list of start timestamps for currently pending transactions, which match
 // the provided function.
 func (o *oracle) IterateTxns(ok func(key []byte) bool) []uint64 {
@@ -475,9 +465,12 @@ func (o *oracle) IterateTxns(ok func(key []byte) bool) []uint64 {
 	defer o.RUnlock()
 	var timestamps []uint64
 	for startTs, txn := range o.pendingTxns {
-		if txn.matchesDelta(ok) {
-			timestamps = append(timestamps, startTs)
-		}
+		txn.cache.deltas.Iterate(func(key string, value []byte) error {
+			if ok([]byte(key)) {
+				timestamps = append(timestamps, startTs)
+			}
+			return nil
+		})
 	}
 	return timestamps
 }

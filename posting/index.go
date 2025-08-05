@@ -157,8 +157,7 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 		strings = append(strings, i)
 	}
 
-	globalMap := make(map[string]*pb.PostingList, len(values))
-	var m sync.Mutex
+	globalMap := types.NewLockedShardedMap[string, *pb.PostingList]()
 
 	process := func(start int) {
 		startTime := time.Now()
@@ -185,7 +184,6 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 			info.edge = indexEdge
 
 			tokens, erri := indexTokens(ctx, info)
-			//fmt.Println("TOKENS", token, , tokens)
 			if erri != nil {
 				pipeline.errCh <- erri
 				return
@@ -202,15 +200,15 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 			}
 		}
 
-		m.Lock()
-		for key, val := range localMap {
-			if _, ok := globalMap[key]; ok {
-				globalMap[key].Postings = append(globalMap[key].Postings, val.Postings...)
-			} else {
-				globalMap[key] = val
-			}
+		for key, value := range localMap {
+			globalMap.Update(key, func(val *pb.PostingList, ok bool) *pb.PostingList {
+				if ok {
+					val.Postings = append(val.Postings, value.Postings...)
+					return val
+				}
+				return value
+			})
 		}
-		m.Unlock()
 	}
 
 	for i := range numGo {
@@ -221,14 +219,15 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 	wg.Wait()
 	fmt.Println("Took time to create global map", time.Since(startTime))
 
-	// for key, val := range globalMap {
-	// 	if newPl, err := mp.txn.AddDelta(key, *val); err != nil {
-	// 		pipeline.errCh <- err
-	// 		continue
-	// 	} else {
-	// 		mp.txn.addConflictKeyWithUid([]byte(key), newPl)
-	// 	}
-	// }
+	globalMap.ParallelIterate(func(key string, val *pb.PostingList) error {
+		if newPl, err := mp.txn.AddDelta(key, *val); err != nil {
+			pipeline.errCh <- err
+			return err
+		} else {
+			mp.txn.addConflictKeyWithUid([]byte(key), newPl)
+		}
+		return nil
+	})
 }
 
 func (mp *MutationPipeline) ProcessList(ctx context.Context, pipeline *PredicatePipeline, index bool, reverse bool, count bool) {
@@ -1731,7 +1730,7 @@ func (r *rebuilder) Run(ctx context.Context) error {
 		// Convert data into deltas.
 		streamTxn.Update()
 		// txn.cache.Lock() is not required because we are the only one making changes to txn.
-		for key, data := range streamTxn.cache.deltas {
+		streamTxn.cache.deltas.Iterate(func(key string, data []byte) error {
 			version := atomic.AddUint64(&counter, 1)
 			kv := bpb.KV{
 				Key:      []byte(key),
@@ -1740,7 +1739,8 @@ func (r *rebuilder) Run(ctx context.Context) error {
 				Version:  version,
 			}
 			kvs = append(kvs, &kv)
-		}
+			return nil
+		})
 
 		return &bpb.KVList{Kv: kvs}, nil
 	}
