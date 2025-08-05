@@ -292,6 +292,35 @@ func (txn *Txn) CommitToDisk(writer *TxnWriter, commitTs uint64) error {
 		}
 	}()
 
+	for _, i := range cache.globalMap {
+		i.Iterate(func(key string, data *pb.PostingList) error {
+			return writer.update(commitTs, func(btxn *badger.Txn) error {
+				if len(data.Postings) == 0{
+					return nil
+				}
+				dataBytes, err := proto.Marshal(data)
+				if err != nil {
+					return err
+				}
+				if ts := cache.maxVersions[key]; ts >= commitTs {
+					// Skip write because we already have a write at a higher ts.
+					// Logging here can cause a lot of output when doing Raft log replay. So, let's
+					// not output anything here.
+					return nil
+				}
+				err = btxn.SetEntry(&badger.Entry{
+					Key:      []byte(key),
+					Value:    dataBytes,
+					UserMeta: BitDeltaPosting,
+				})
+				if err != nil {
+					return err
+				}
+				return nil
+			})
+		})
+	}
+
 	var idx int
 	for idx < len(keys) {
 		// writer.update can return early from the loop in case we encounter badger.ErrTxnTooBig. On

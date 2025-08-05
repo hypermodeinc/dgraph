@@ -148,8 +148,6 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 		}
 	}
 
-	wg := &sync.WaitGroup{}
-
 	strings := make([]string, 0, len(values))
 	for i := range values {
 		strings = append(strings, i)
@@ -158,6 +156,8 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 	//fmt.Println("START")
 
 	f := func(numGo int) *types.LockedShardedMap[string, *pb.PostingList] {
+		wg := &sync.WaitGroup{}
+
 		globalMap := types.NewLockedShardedMap[string, *pb.PostingList]()
 		process := func(start int) {
 			defer wg.Done()
@@ -220,7 +220,10 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 		return globalMap
 	}
 
-	globalMapI := f(1)
+	globalMapI := f(100)
+	mp.txn.cache.Lock()
+	defer mp.txn.cache.Unlock()
+	mp.txn.cache.globalMap[pipeline.attr] = globalMapI
 	// parallelGlobalMap := f(100)
 
 	// parallelGlobalMap.ParallelIterate(func (key string, val *pb.PostingList) error {
@@ -240,13 +243,13 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 	// 	return nil
 	// })
 
-	globalMapI.ParallelIterate(func(key string, val *pb.PostingList) error {
-		if _, err := mp.txn.AddDelta(key, *val); err != nil {
-			pipeline.errCh <- err
-			return err
-		}
-		return nil
-	})
+	// globalMapI.ParallelIterate(func(key string, val *pb.PostingList) error {
+	// 	if _, err := mp.txn.AddDelta(key, *val); err != nil {
+	// 		pipeline.errCh <- err
+	// 		return err
+	// 	}
+	// 	return nil
+	// })
 }
 
 func (mp *MutationPipeline) ProcessList(ctx context.Context, pipeline *PredicatePipeline, index bool, reverse bool, count bool) {

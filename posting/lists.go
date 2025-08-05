@@ -75,6 +75,8 @@ type LocalCache struct {
 	// during commit.
 	deltas *types.LockedShardedMap[string, []byte]
 
+	globalMap map[string]*types.LockedShardedMap[string, *pb.PostingList]
+
 	// max committed timestamp of the read posting lists.
 	maxVersions map[string]uint64
 
