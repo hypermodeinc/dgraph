@@ -155,7 +155,7 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 		strings = append(strings, i)
 	}
 
-	fmt.Println("START")
+	//fmt.Println("START")
 
 	f := func(numGo int) *types.LockedShardedMap[string, *pb.PostingList] {
 		globalMap := types.NewLockedShardedMap[string, *pb.PostingList]()
@@ -187,8 +187,8 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 
 				for _, token := range tokens {
 					key := x.IndexKey(pipeline.attr, token)
-					pk, _ := x.Parse([]byte(key))
-					fmt.Println("TOKENS", stringValue, i, numGo, pk)
+					//pk, _ := x.Parse([]byte(key))
+					//fmt.Println("TOKENS", stringValue, i, numGo, pk)
 					val, ok := localMap[string(key)]
 					if !ok {
 						val = &pb.PostingList{}
@@ -199,8 +199,8 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 			} 
 
 			for key, value := range localMap {
-				pk, _ := x.Parse([]byte(key))
-				fmt.Println("LOCAL MAP", pk, numGo, value)
+				//pk, _ := x.Parse([]byte(key))
+				//fmt.Println("LOCAL MAP", pk, numGo, value)
 				globalMap.Update(key, func(val *pb.PostingList, ok bool) *pb.PostingList {
 					if ok {
 						val.Postings = append(val.Postings, value.Postings...)
@@ -221,24 +221,24 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 	}
 
 	globalMapI := f(1)
-	parallelGlobalMap := f(100)
+	// parallelGlobalMap := f(100)
 
-	parallelGlobalMap.ParallelIterate(func (key string, val *pb.PostingList) error {
-		globalGet, ok := globalMapI.Get(key)
-		pk, _ := x.Parse([]byte(key))
-		if (!ok) {
-			fmt.Println("Key not found in global map", pk, val)
-			x.Panic(errors.Errorf("Key not found in global map %v", pk))
-		} else {
-			gp := SortAndDedupPostings(globalGet.Postings)
-			pp := SortAndDedupPostings(val.Postings)
-			if len(gp) != len(pp) {
-				fmt.Println("Length mismatch", len(gp), len(pp), pk, gp, pp)
-				x.Panic(errors.Errorf("Length mismatch %v %v %v %v %v", len(gp), len(pp), pk, gp, pp))
-			}
-		}
-		return nil
-	})
+	// parallelGlobalMap.ParallelIterate(func (key string, val *pb.PostingList) error {
+	// 	globalGet, ok := globalMapI.Get(key)
+	// 	pk, _ := x.Parse([]byte(key))
+	// 	if (!ok) {
+	// 		fmt.Println("Key not found in global map", pk, val)
+	// 		x.Panic(errors.Errorf("Key not found in global map %v", pk))
+	// 	} else {
+	// 		gp := SortAndDedupPostings(globalGet.Postings)
+	// 		pp := SortAndDedupPostings(val.Postings)
+	// 		if len(gp) != len(pp) {
+	// 			fmt.Println("Length mismatch", len(gp), len(pp), pk, gp, pp)
+	// 			x.Panic(errors.Errorf("Length mismatch %v %v %v %v %v", len(gp), len(pp), pk, gp, pp))
+	// 		}
+	// 	}
+	// 	return nil
+	// })
 
 	globalMapI.ParallelIterate(func(key string, val *pb.PostingList) error {
 		if _, err := mp.txn.AddDelta(key, *val); err != nil {
