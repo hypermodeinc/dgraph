@@ -99,6 +99,11 @@ func (pp *PredicatePipeline) close() {
 }
 
 func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline *PredicatePipeline, postings *map[uint64]*pb.PostingList) {
+	startTime := time.Now()
+	defer func() {
+		fmt.Println("Inserting tokenizer indexes for predicate", pipeline.attr, "took", time.Since(startTime))
+	}()
+	
 	tokenizers := schema.State().Tokenizer(ctx, pipeline.attr)
 	factorySpecs, err := schema.State().FactoryCreateSpec(ctx, pipeline.attr)
 	if err != nil {
@@ -121,6 +126,7 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 	}
 
 	for uid, postingList := range *postings {
+		//fmt.Println("POSTING", uid, postingList)
 		for _, posting := range postingList.Postings {
 			valPl, ok := values[string(posting.Value)]
 			if !ok {
@@ -142,7 +148,6 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 		}
 	}
 
-	numGo := 1
 	wg := &sync.WaitGroup{}
 
 	strings := make([]string, 0, len(values))
@@ -150,69 +155,88 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 		strings = append(strings, i)
 	}
 
-	globalMap := types.NewLockedShardedMap[string, *pb.PostingList]()
-
-	process := func(start int) {
-		defer wg.Done()
-		localMap := make(map[string]*pb.PostingList, len(values)/numGo)
-		for i := start; i < len(values); i += numGo {
-			token := strings[i]
-			valPl := values[token]
-			if len(valPl.Postings) == 0 {
-				continue
-			}
-
-			posting := valPost[token]
-			val := types.Val{
-				Tid:   types.TypeID(posting.ValType),
-				Value: posting.Value,
-			}
-			info.val = val
-
-			indexEdge.Value = posting.Value
-			info.edge = indexEdge
-
-			tokens, erri := indexTokens(ctx, info)
-			if erri != nil {
-				pipeline.errCh <- erri
-				return
-			}
-
-			for _, token := range tokens {
-				key := x.IndexKey(pipeline.attr, token)
-				val, ok := localMap[string(key)]
-				if !ok {
-					val = &pb.PostingList{}
+	f := func(numGo int) *types.LockedShardedMap[string, *pb.PostingList] {
+		globalMap := types.NewLockedShardedMap[string, *pb.PostingList]()
+		process := func(start int) {
+			defer wg.Done()
+			localMap := make(map[string]*pb.PostingList, len(values)/numGo)
+			for i := start; i < len(values); i += numGo {
+				token := strings[i]
+				valPl := values[token]
+				if len(valPl.Postings) == 0 {
+					continue
 				}
-				val.Postings = append(val.Postings, valPl.Postings...)
-				localMap[string(key)] = val
+
+				posting := valPost[token]
+				val := types.Val{
+					Tid:   types.TypeID(posting.ValType),
+					Value: posting.Value,
+				}
+				info.val = val
+
+				indexEdge.Value = posting.Value
+				info.edge = indexEdge
+
+				tokens, erri := indexTokens(ctx, info)
+				if erri != nil {
+					pipeline.errCh <- erri
+					return
+				}
+
+				for _, token := range tokens {
+					key := x.IndexKey(pipeline.attr, token)
+					val, ok := localMap[string(key)]
+					if !ok {
+						val = &pb.PostingList{}
+					}
+					val.Postings = append(val.Postings, valPl.Postings...)
+					localMap[string(key)] = val
+				}
+			}
+
+			for key, value := range localMap {
+				globalMap.Update(key, func(val *pb.PostingList, ok bool) *pb.PostingList {
+					if ok {
+						val.Postings = append(val.Postings, value.Postings...)
+						return val
+					}
+					return value
+				})
 			}
 		}
 
-		for key, value := range localMap {
-			globalMap.Update(key, func(val *pb.PostingList, ok bool) *pb.PostingList {
-				if ok {
-					val.Postings = append(val.Postings, value.Postings...)
-					return val
-				}
-				return value
-			})
+		for i := range numGo {
+			wg.Add(1)
+			go process(i)
 		}
+
+		return globalMap
 	}
 
-	for i := range numGo {
-		wg.Add(1)
-		go process(i)
-	}
+	globalMap := f(1)
+	parallelGlobalMap := f(100)
 
-	wg.Wait()
+	parallelGlobalMap.ParallelIterate(func (key string, val *pb.PostingList) error {
+		globalGet, ok := globalMap.Get(key)
+		pk, _ := x.Parse([]byte(key))
+		if (!ok) {
+			fmt.Println("Key not found in global map", pk, val)
+			x.Panic(errors.Errorf("Key not found in global map %v", pk))
+		} else {
+			gp := SortAndDedupPostings(globalGet.Postings)
+			pp := SortAndDedupPostings(val.Postings)
+			if len(gp) != len(pp) {
+				fmt.Println("Length mismatch", len(gp), len(pp), pk, gp, pp)
+				x.Panic(errors.Errorf("Length mismatch %v %v %v %v %v", len(gp), len(pp), pk, gp, pp))
+			}
+		}
+		return nil
+	})
 
 	globalMap.ParallelIterate(func(key string, val *pb.PostingList) error {
-		if newPl, err := mp.txn.AddDelta(key, *val); err != nil {
+		if _, err := mp.txn.AddDelta(key, *val); err != nil {
 			pipeline.errCh <- err
 			return err
-		} else {
-			mp.txn.addConflictKeyWithUid([]byte(key), newPl)
 		}
 		return nil
 	})
