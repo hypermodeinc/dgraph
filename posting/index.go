@@ -181,9 +181,10 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 
 				tokens, erri := indexTokens(ctx, info)
 				if erri != nil {
-					pipeline.errCh <- erri
-					return
+					x.Panic(erri)
 				}
+
+				fmt.Println("TOKENS", token, tokens, i, numGo)
 
 				for _, token := range tokens {
 					key := x.IndexKey(pipeline.attr, token)
