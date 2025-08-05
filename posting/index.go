@@ -162,6 +162,7 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 		process := func(start int) {
 			defer wg.Done()
 			localMap := make(map[string]*pb.PostingList, len(values)/numGo)
+			fmt.Println("STARTING THREAD", numGo, start)
 			for i := start; i < len(values); i += numGo {
 				token := strings[i]
 				valPl := values[token]
@@ -181,6 +182,7 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 
 				tokens, erri := indexTokens(ctx, info)
 				if erri != nil {
+					fmt.Println("ERRORRRING", erri)
 					x.Panic(erri)
 				}
 
