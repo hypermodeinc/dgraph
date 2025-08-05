@@ -220,7 +220,7 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 		globalGet, ok := globalMap.Get(key)
 		pk, _ := x.Parse([]byte(key))
 		if (!ok) {
-			fmt.Println("Key not found in global map", pk, val)
+			fmt.Println("Key not found in global map", pk, val, globalMap, parallelGlobalMap)
 			x.Panic(errors.Errorf("Key not found in global map %v", pk))
 		} else {
 			gp := SortAndDedupPostings(globalGet.Postings)
