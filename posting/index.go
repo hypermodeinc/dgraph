@@ -223,6 +223,9 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 	globalMapI := f(100)
 	mp.txn.cache.Lock()
 	defer mp.txn.cache.Unlock()
+	if mp.txn.cache.globalMap == nil {
+		mp.txn.cache.globalMap = make(map[string]*types.LockedShardedMap[string, *pb.PostingList])
+	}
 	mp.txn.cache.globalMap[pipeline.attr] = globalMapI
 	// parallelGlobalMap := f(100)
 
