@@ -155,21 +155,19 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 		strings = append(strings, i)
 	}
 
-	fmt.Println("START")
-
 	f := func(numGo int) *types.LockedShardedMap[string, *pb.PostingList] {
 		globalMap := types.NewLockedShardedMap[string, *pb.PostingList]()
 		process := func(start int) {
 			defer wg.Done()
 			localMap := make(map[string]*pb.PostingList, len(values)/numGo)
 			for i := start; i < len(values); i += numGo {
-				token := strings[i]
-				valPl := values[token]
+				stringValue := strings[i]
+				valPl := values[stringValue]
 				if len(valPl.Postings) == 0 {
 					continue
 				}
 
-				posting := valPost[token]
+				posting := valPost[stringValue]
 				val := types.Val{
 					Tid:   types.TypeID(posting.ValType),
 					Value: posting.Value,
@@ -187,8 +185,6 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 
 				for _, token := range tokens {
 					key := x.IndexKey(pipeline.attr, token)
-					pk, _ := x.Parse([]byte(key))
-					fmt.Println("TOKENS", token, i, numGo, pk)
 					val, ok := localMap[string(key)]
 					if !ok {
 						val = &pb.PostingList{}
@@ -199,8 +195,6 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 			} 
 
 			for key, value := range localMap {
-				pk, _ := x.Parse([]byte(key))
-				fmt.Println("LOCAL MAP", pk, numGo, value)
 				globalMap.Update(key, func(val *pb.PostingList, ok bool) *pb.PostingList {
 					if ok {
 						val.Postings = append(val.Postings, value.Postings...)
