@@ -208,9 +208,11 @@ func (mp *MutationPipeline) InsertTokenizerIndexes(ctx context.Context, pipeline
 	wg.Wait()
 
 	globalMap.ParallelIterate(func(key string, val *pb.PostingList) error {
-		if _, err := mp.txn.AddDelta(key, *val); err != nil {
+		if newPl, err := mp.txn.AddDelta(key, *val); err != nil {
 			pipeline.errCh <- err
 			return err
+		} else {
+			mp.txn.addConflictKeyWithUid([]byte(key), newPl)
 		}
 		return nil
 	})
