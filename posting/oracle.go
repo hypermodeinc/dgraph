@@ -110,7 +110,7 @@ func (txn *Txn) AddDelta(key string, pl pb.PostingList) (*pb.PostingList, error)
 		p1 = &pl
 	}
 
-	//p1.Postings = SortAndDedupPostings(p1.Postings)
+	p1.Postings = SortAndDedupPostings(p1.Postings)
 
 	newPl, err := proto.Marshal(p1)
 	if err != nil {
