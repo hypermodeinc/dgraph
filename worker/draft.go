@@ -736,9 +736,13 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 				ReadTs:  State.GetTimestamp(false),
 			}
 			// Request and populate snapshot
-			if err := n.populateSnapshot(snap, pl); err != nil {
-				glog.Errorf("[import] failed to populate snapshot for rejoining node: %v", err)
-				return errors.Wrapf(err, "failed to populate snapshot for rejoining node")
+			retries := 3
+			for i := 0; i < retries; i++ {
+				if err := n.populateSnapshot(snap, pl); err != nil {
+					glog.Errorf("[import] failed to populate snapshot for rejoining node: %v", err)
+					return errors.Wrapf(err, "failed to populate snapshot for rejoining node")
+				}
+				time.Sleep(30 * time.Second)
 			}
 
 			if err := postStreamProcessing(ctx); err != nil {
