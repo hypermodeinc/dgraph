@@ -122,6 +122,10 @@ func (ps *pubSub) runLocalSubscriber(ctx context.Context, stream pb.Worker_Strea
 		glog.Infof("[import] local subscriber stopped")
 	}()
 
+	if err := stream.Send(&apiv2.StreamExtSnapshotResponse{Finish: false}); err != nil {
+		return err
+	}
+
 	buffer := ps.subscribe()
 	glog.Infof("[import:flush] flushing external snapshot in badger db")
 
