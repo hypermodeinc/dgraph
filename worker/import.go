@@ -228,6 +228,8 @@ func InStream(stream apiv2.Dgraph_StreamExtSnapshotServer) error {
 		return streamInGroup(stream, true)
 	}
 
+	fmt.Println("Got groups")
+
 	glog.Infof("[import] streaming external snapshot to other group [%v]", groupId)
 	pl := groups().Leader(groupId)
 	if pl == nil {
@@ -235,8 +237,12 @@ func InStream(stream apiv2.Dgraph_StreamExtSnapshotServer) error {
 		return fmt.Errorf("unable to connect to the leader of group [%v] : %v", groupId, conn.ErrNoConnection)
 	}
 
+	fmt.Println("Got leader")
+
 	con := pl.Get()
 	c := pb.NewWorkerClient(con)
+	fmt.Println("STREAM EXT SNAPSHOT")
+
 	alphaStream, err := c.StreamExtSnapshot(stream.Context())
 	if err != nil {
 		glog.Errorf("[import] failed to establish stream with leader: %v", err)
