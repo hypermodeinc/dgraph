@@ -153,7 +153,7 @@ Loop:
 			fmt.Println("GOT KVS", len(kvs.Data), kvs.Done)
 			if msg.Pkt.Done || (kvs != nil && kvs.Done) {
 				fmt.Println("GOT KVS DONE")
-				break
+				break Loop
 			}
 
 			buf := z.NewBufferSlice(kvs.Data)
