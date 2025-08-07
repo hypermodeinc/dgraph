@@ -139,6 +139,7 @@ Loop:
 			return ctx.Err()
 
 		default:
+			fmt.Println("WATING FOR KVS")
 			msg, ok := <-buffer
 			if !ok {
 				break Loop
