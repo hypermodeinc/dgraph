@@ -743,6 +743,8 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 					if i == retries-1 {
 						return errors.Wrapf(err, "failed to populate snapshot for rejoining node")
 					}
+				} else {
+					break
 				}
 				time.Sleep(30 * time.Second)
 			}
