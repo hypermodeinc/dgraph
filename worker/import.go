@@ -150,7 +150,7 @@ Loop:
 			}
 			kvs := msg.GetPkt()
 			fmt.Println("GOT KVS")
-			if kvs != nil && kvs.Done {
+			if msg.Pkt.Done || (kvs != nil && kvs.Done) {
 				fmt.Println("GOT KVS DONE")
 				break
 			}
@@ -312,6 +312,9 @@ func (w *grpcWorker) UpdateExtSnapshotStreamingState(ctx context.Context,
 	if req.Start && req.Finish {
 		return nil, errors.New("UpdateExtSnapshotStreamingStateRequest cannot have both Start and Finish set to true")
 	}
+
+	// Make sure that badger has actually done writing before this is called.
+	// Add waits and retries in the client for this place afterwards.
 
 	glog.Infof("[import] Applying import mode proposal: %+v", req)
 	err := groups().Node.proposeAndWait(ctx, &pb.Proposal{ExtSnapshotState: req})
