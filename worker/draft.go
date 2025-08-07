@@ -740,7 +740,9 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 			for i := 0; i < retries; i++ {
 				if err := n.populateSnapshot(snap, pl); err != nil {
 					glog.Errorf("[import] failed to populate snapshot for rejoining node: %v", err)
-					return errors.Wrapf(err, "failed to populate snapshot for rejoining node")
+					if i == retries-1 {
+						return errors.Wrapf(err, "failed to populate snapshot for rejoining node")
+					}
 				}
 				time.Sleep(30 * time.Second)
 			}
