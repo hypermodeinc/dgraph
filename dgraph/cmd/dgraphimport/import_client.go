@@ -176,8 +176,10 @@ func streamBadger(ctx context.Context, ps *badger.DB, out apiv2.Dgraph_StreamExt
 		if err := out.Send(&apiv2.StreamExtSnapshotRequest{Pkt: p}); err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("failed to send data chunk: %w", err)
 		}
-		if _, err := out.Recv(); err != nil {
+		if bytes, err := out.Recv(); err != nil {
 			return fmt.Errorf("failed to receive response for group ID [%v] from the server: %w", groupId, err)
+		} else {
+			fmt.Println("RECEIVED ACK", bytes)
 		}
 		glog.Infof("[import] Group [%v]: Received ACK for sending data chunk", groupId)
 
@@ -197,10 +199,17 @@ func streamBadger(ctx context.Context, ps *badger.DB, out apiv2.Dgraph_StreamExt
 		return fmt.Errorf("failed to send 'done' signal for group [%d]: %w", groupId, err)
 	}
 
-	if _, err := out.Recv(); err != nil {
-		return fmt.Errorf("failed to receive response for group ID [%v] from the server: %w", groupId, err)
+	var bytes *apiv2.StreamExtSnapshotResponse
+	var err error
+	for {
+		if bytes, err = out.Recv(); err != nil {
+			return fmt.Errorf("failed to receive response for group ID [%v] from the server: %w", groupId, err)
+		} else {
+			fmt.Println("RECEIVED ACK FOR DONE", bytes)
+			glog.Infof("[import] Group [%v]: Received ACK for sending completion signal", groupId)
+			if bytes.Finish {
+				return nil
+			}
+		}
 	}
-	glog.Infof("[import] Group [%v]: Received ACK for sending completion signal", groupId)
-
-	return nil
 }

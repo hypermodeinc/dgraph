@@ -26,7 +26,8 @@ import (
 
 type pubSub struct {
 	sync.RWMutex
-	subscribers []chan *apiv2.StreamExtSnapshotRequest
+	stillFlushing bool
+	subscribers   []chan *apiv2.StreamExtSnapshotRequest
 }
 
 // Subscribe returns a new channel to receive published messages
@@ -149,7 +150,7 @@ Loop:
 				break Loop
 			}
 			kvs := msg.GetPkt()
-			fmt.Println("GOT KVS", kvs)
+			fmt.Println("GOT KVS", len(kvs.Data), kvs.Done)
 			if msg.Pkt.Done || (kvs != nil && kvs.Done) {
 				fmt.Println("GOT KVS DONE")
 				break
