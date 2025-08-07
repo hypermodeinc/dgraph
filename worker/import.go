@@ -144,15 +144,12 @@ Loop:
 			return ctx.Err()
 
 		default:
-			fmt.Println("WATING FOR KVS")
 			msg, ok := <-buffer
 			if !ok {
 				break Loop
 			}
 			kvs := msg.GetPkt()
-			fmt.Println("GOT KVS", len(kvs.Data), kvs.Done)
 			if msg.Pkt.Done || (kvs != nil && kvs.Done) {
-				fmt.Println("GOT KVS DONE")
 				break Loop
 			}
 
@@ -221,21 +218,16 @@ func ProposeDrain(ctx context.Context, drainMode *apiv2.UpdateExtSnapshotStreami
 // there are any issues in the process, such as a broken connection or failure to establish
 // a stream with the leader.
 func InStream(stream apiv2.Dgraph_StreamExtSnapshotServer) error {
-	fmt.Println("WAITING FOR STREAM RECV")
 	req, err := stream.Recv()
 	if err != nil {
 		return fmt.Errorf("failed to receive initial stream message: %v", err)
 	}
-
-	fmt.Println("GOT REQ")
 
 	groupId := req.GroupId
 	if groupId == groups().Node.gid {
 		glog.Infof("[import] streaming external snapshot to current group [%v]", groupId)
 		return streamInGroup(stream, true)
 	}
-
-	fmt.Println("Got groups")
 
 	glog.Infof("[import] streaming external snapshot to other group [%v]", groupId)
 	pl := groups().Leader(groupId)
@@ -244,11 +236,8 @@ func InStream(stream apiv2.Dgraph_StreamExtSnapshotServer) error {
 		return fmt.Errorf("unable to connect to the leader of group [%v] : %v", groupId, conn.ErrNoConnection)
 	}
 
-	fmt.Println("Got leader")
-
 	con := pl.Get()
 	c := pb.NewWorkerClient(con)
-	fmt.Println("STREAM EXT SNAPSHOT")
 
 	alphaStream, err := c.StreamExtSnapshot(stream.Context())
 	if err != nil {
@@ -256,7 +245,6 @@ func InStream(stream apiv2.Dgraph_StreamExtSnapshotServer) error {
 		return fmt.Errorf("failed to establish stream with leader: %v", err)
 	}
 
-	fmt.Println("SENDING REQUEST")
 	glog.Infof("[import] sending forward true to leader of group [%v]", groupId)
 	forwardReq := &apiv2.StreamExtSnapshotRequest{Forward: true}
 	if err := alphaStream.Send(forwardReq); err != nil {

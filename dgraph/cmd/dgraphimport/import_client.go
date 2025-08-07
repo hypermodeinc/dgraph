@@ -176,10 +176,8 @@ func streamBadger(ctx context.Context, ps *badger.DB, out apiv2.Dgraph_StreamExt
 		if err := out.Send(&apiv2.StreamExtSnapshotRequest{Pkt: p}); err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("failed to send data chunk: %w", err)
 		}
-		if bytes, err := out.Recv(); err != nil {
+		if _, err := out.Recv(); err != nil {
 			return fmt.Errorf("failed to receive response for group ID [%v] from the server: %w", groupId, err)
-		} else {
-			fmt.Println("RECEIVED ACK", bytes)
 		}
 		glog.Infof("[import] Group [%v]: Received ACK for sending data chunk", groupId)
 
@@ -205,7 +203,6 @@ func streamBadger(ctx context.Context, ps *badger.DB, out apiv2.Dgraph_StreamExt
 		if bytes, err = out.Recv(); err != nil {
 			return fmt.Errorf("failed to receive response for group ID [%v] from the server: %w", groupId, err)
 		} else {
-			fmt.Println("RECEIVED ACK FOR DONE", bytes)
 			glog.Infof("[import] Group [%v]: Received ACK for sending completion signal", groupId)
 			if bytes.Finish {
 				return nil
