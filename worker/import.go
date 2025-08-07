@@ -149,7 +149,7 @@ Loop:
 				break Loop
 			}
 			kvs := msg.GetPkt()
-			fmt.Println("GOT KVS")
+			fmt.Println("GOT KVS", kvs)
 			if msg.Pkt.Done || (kvs != nil && kvs.Done) {
 				fmt.Println("GOT KVS DONE")
 				break
