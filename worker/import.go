@@ -143,6 +143,7 @@ Loop:
 			if !ok {
 				break Loop
 			}
+			fmt.Println("GOT KVS")
 			kvs := msg.GetPkt()
 			if kvs != nil && kvs.Done {
 				break
@@ -213,10 +214,13 @@ func ProposeDrain(ctx context.Context, drainMode *apiv2.UpdateExtSnapshotStreami
 // there are any issues in the process, such as a broken connection or failure to establish
 // a stream with the leader.
 func InStream(stream apiv2.Dgraph_StreamExtSnapshotServer) error {
+	fmt.Println("WAITING FOR STREAM RECV")
 	req, err := stream.Recv()
 	if err != nil {
 		return fmt.Errorf("failed to receive initial stream message: %v", err)
 	}
+
+	fmt.Println("GOT REQ")
 
 	groupId := req.GroupId
 	if groupId == groups().Node.gid {
@@ -239,6 +243,7 @@ func InStream(stream apiv2.Dgraph_StreamExtSnapshotServer) error {
 		return fmt.Errorf("failed to establish stream with leader: %v", err)
 	}
 
+	fmt.Println("SENDING REQUEST")
 	glog.Infof("[import] sending forward true to leader of group [%v]", groupId)
 	forwardReq := &apiv2.StreamExtSnapshotRequest{Forward: true}
 	if err := alphaStream.Send(forwardReq); err != nil {

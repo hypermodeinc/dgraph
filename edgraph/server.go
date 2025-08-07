@@ -1837,6 +1837,7 @@ func (s *ServerV25) UpdateExtSnapshotStreamingState(ctx context.Context,
 }
 
 func (s *ServerV25) StreamExtSnapshot(stream apiv2.Dgraph_StreamExtSnapshotServer) error {
+	fmt.Println("STREAM EXT STNAPHOST CALLED")
 	defer x.ExtSnapshotStreamingState(false)
 	if err := worker.InStream(stream); err != nil {
 		glog.Errorf("[import] failed to stream external snapshot: %v", err)
