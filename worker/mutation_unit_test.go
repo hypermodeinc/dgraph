@@ -47,8 +47,8 @@ func TestReverseEdge(t *testing.T) {
 		Op:      pb.DirectedEdge_DEL,
 	}
 
-	x.Check(runMutation(ctx, edge, txn))
-	x.Check(runMutation(ctx, edge, txn))
+	x.Check(newRunMutation(ctx, edge, txn))
+	x.Check(newRunMutation(ctx, edge, txn))
 
 	pl, err := txn.Get(x.DataKey(attr, 1))
 	require.NoError(t, err)
@@ -107,10 +107,10 @@ func TestReverseEdgeSetDel(t *testing.T) {
 	}
 
 
-	x.Check(runMutation(ctx, edgeSet1, txn))
-	x.Check(runMutation(ctx, edgeSet2, txn))
-	x.Check(runMutation(ctx, edgeSet3, txn))
-	x.Check(runMutation(ctx, edgeDel, txn))
+	x.Check(newRunMutation(ctx, edgeSet1, txn))
+	x.Check(newRunMutation(ctx, edgeSet2, txn))
+	x.Check(newRunMutation(ctx, edgeSet3, txn))
+	x.Check(newRunMutation(ctx, edgeDel, txn))
 
 	pl, err := txn.Get(x.ReverseKey(attr, 2))
 	require.NoError(t, err)
