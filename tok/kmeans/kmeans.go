@@ -1,26 +1,34 @@
 package kmeans
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"sync"
 
 	c "github.com/hypermodeinc/dgraph/v25/tok/constraints"
+	"github.com/hypermodeinc/dgraph/v25/tok/hnsw"
 	"github.com/hypermodeinc/dgraph/v25/tok/index"
 	"github.com/hypermodeinc/dgraph/v25/x"
 )
 
+const (
+	CentroidPrefix = "__centroid_"
+)
+
 type Kmeans[T c.Float] struct {
 	floatBits int
+	numPasses int
 	centroids *vectorCentroids[T]
 }
 
-func CreateKMeans[T c.Float](floatBits int, distFunc func(a, b []T, floatBits int) (T, error)) index.VectorPartitionStrat[T] {
+func CreateKMeans[T c.Float](floatBits int, pred string, distFunc func(a, b []T, floatBits int) (T, error)) index.VectorPartitionStrat[T] {
 	return &Kmeans[T]{
 		floatBits: floatBits,
 		centroids: &vectorCentroids[T]{
 			distFunc:  distFunc,
 			floatBits: floatBits,
+			pred:      pred,
 		},
 	}
 }
@@ -33,6 +41,10 @@ func (km *Kmeans[T]) AddVector(vec []T) error {
 	return km.centroids.addVector(vec)
 }
 
+func (km *Kmeans[T]) GetCentroids() [][]T {
+	return km.centroids.centroids
+}
+
 func (km *Kmeans[T]) FindIndexForSearch(vec []T) ([]int, error) {
 	res := make([]int, km.NumSeedVectors())
 	for i := range res {
@@ -42,11 +54,18 @@ func (km *Kmeans[T]) FindIndexForSearch(vec []T) ([]int, error) {
 }
 
 func (km *Kmeans[T]) FindIndexForInsert(vec []T) (int, error) {
+	if km.NumPasses() == 0 {
+		return 0, nil
+	}
 	return km.centroids.findCentroid(vec)
 }
 
 func (km *Kmeans[T]) NumPasses() int {
-	return 5
+	return km.numPasses
+}
+
+func (km *Kmeans[T]) SetNumPasses(n int) {
+	km.numPasses = n
 }
 
 func (km *Kmeans[T]) NumSeedVectors() int {
@@ -66,6 +85,7 @@ func (km *Kmeans[T]) EndBuildPass() {
 type vectorCentroids[T c.Float] struct {
 	dimension  int
 	numCenters int
+	pred       string
 
 	distFunc func(a, b []T, floatBits int) (T, error)
 
@@ -90,6 +110,71 @@ func (vc *vectorCentroids[T]) findCentroid(input []T) (int, error) {
 		}
 	}
 	return minIdx, nil
+}
+
+func (vc *vectorCentroids[T]) getCentroids(txn index.CacheType) ([][]T, error) {
+	if len(vc.centroids) > 0 {
+		return vc.centroids, nil
+	}
+	indexCountAttr := hnsw.ConcatStrings(vc.pred, CentroidPrefix)
+	key := x.DataKey(indexCountAttr, 1)
+	centroidsMarshalled, err := txn.Get(key)
+	if err != nil {
+		return nil, err
+	}
+
+	centroids := [][]T{}
+	err = json.Unmarshal(centroidsMarshalled, &centroids)
+	if err != nil {
+		return nil, err
+	}
+
+	vc.centroids = centroids
+	return vc.centroids, nil
+}
+
+func (vc *vectorCentroids[T]) findNClosestCentroids(input []T, n int, txn index.CacheType) ([]int, error) {
+	cNS, err := vc.getCentroids(txn)
+	if err != nil {
+		return nil, err
+	}
+	if n <= 0 || len(vc.centroids) == 0 {
+		return []int{}, nil
+	}
+	if n >= len(vc.centroids) {
+		res := make([]int, len(vc.centroids))
+		for i := range res {
+			res[i] = i
+		}
+		return res, nil
+	}
+	res := []int{}
+	resDist := []float64{}
+	// get centroids
+
+	for i, centroid := range cNS {
+		dist, err := vc.distFunc(centroid, input, vc.floatBits)
+		if err != nil {
+			return nil, err
+		}
+		if len(res) < n {
+			res = append(res, i)
+			resDist = append(resDist, float64(dist))
+		} else {
+			// Find the farthest in current top-n
+			maxIdx, maxDist := 0, resDist[0]
+			for j, d := range resDist {
+				if d > maxDist {
+					maxIdx, maxDist = j, d
+				}
+			}
+			if float64(dist) < maxDist {
+				res[maxIdx] = i
+				resDist[maxIdx] = float64(dist)
+			}
+		}
+	}
+	return res, nil
 }
 
 func (vc *vectorCentroids[T]) addVector(vec []T) error {

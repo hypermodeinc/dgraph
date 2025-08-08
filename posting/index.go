@@ -35,6 +35,7 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/tok"
 	"github.com/hypermodeinc/dgraph/v25/tok/hnsw"
 	tokIndex "github.com/hypermodeinc/dgraph/v25/tok/index"
+	"github.com/hypermodeinc/dgraph/v25/tok/kmeans"
 
 	"github.com/hypermodeinc/dgraph/v25/types"
 	"github.com/hypermodeinc/dgraph/v25/x"
@@ -1364,8 +1365,6 @@ func (rb *indexRebuildInfo) prefixesForTokIndexes() ([][]byte, error) {
 	return prefixes, nil
 }
 
-const numCentroids = 1000
-
 func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSpec, rb *IndexRebuild) error {
 	pk := x.ParsedKey{Attr: rb.Attr}
 
@@ -1413,9 +1412,10 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 
 	fmt.Println("Selecting vector dimension to be:", dimension)
 
+	count := 0
+
 	if indexer.NumSeedVectors() > 0 {
-		count := 0
-		MemLayerInstance.IterateDisk(ctx, IterateDiskArgs{
+		err := MemLayerInstance.IterateDisk(ctx, IterateDiskArgs{
 			Prefix:      pk.DataPrefix(),
 			ReadTs:      rb.StartTs,
 			AllVersions: false,
@@ -1430,7 +1430,7 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 				}
 				inVec := types.BytesAsFloatArray(val.Value.([]byte))
 				if len(inVec) != dimension {
-					return nil
+					return fmt.Errorf("vector dimension mismatch expected dimension %d but got %d", dimension, len(inVec))
 				}
 				count += 1
 				indexer.AddSeedVector(inVec)
@@ -1441,6 +1441,9 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 			},
 			StartKey: x.DataKey(rb.Attr, 0),
 		})
+		if err != nil {
+			return err
+		}
 	}
 
 	txns := make([]*Txn, indexer.NumThreads())
@@ -1450,6 +1453,11 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 	caches := make([]tokIndex.CacheType, indexer.NumThreads())
 	for i := range caches {
 		caches[i] = hnsw.NewTxnCache(NewViTxn(txns[i]), rb.StartTs)
+	}
+
+	if count < indexer.NumSeedVectors() {
+		indexer.SetNumPasses(0)
+
 	}
 
 	for pass_idx := range indexer.NumBuildPasses() {
@@ -1481,7 +1489,30 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 		indexer.EndBuild()
 	}
 
-	for pass_idx := range indexer.NumIndexPasses() {
+	txn := NewTxn(rb.StartTs)
+	centroids := indexer.GetCentroids()
+
+	bCentroids, err := json.Marshal(centroids)
+	if err != nil {
+		return err
+	}
+
+	if err := addCentroidInDB(ctx, rb.Attr, bCentroids, txn); err != nil {
+		return err
+	}
+	txn.Update()
+	writer := NewTxnWriter(pstore)
+	if err := txn.CommitToDisk(writer, rb.StartTs); err != nil {
+		return err
+	}
+
+	numIndexPasses := indexer.NumIndexPasses()
+
+	if count < indexer.NumSeedVectors() {
+		numIndexPasses = 1
+	}
+
+	for pass_idx := range numIndexPasses {
 		fmt.Println("Indexing pass", pass_idx)
 
 		indexer.StartBuild(caches)
@@ -1654,11 +1685,31 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 	// return nil
 }
 
+func addCentroidInDB(ctx context.Context, attr string, vec []byte, txn *Txn) error {
+	indexCountAttr := hnsw.ConcatStrings(attr, kmeans.CentroidPrefix)
+	countKey := x.DataKey(indexCountAttr, 1)
+	pl, err := txn.Get(countKey)
+	if err != nil {
+		return err
+	}
+
+	edge := &pb.DirectedEdge{
+		Entity:    1,
+		Attr:      indexCountAttr,
+		Value:     vec,
+		ValueType: pb.Posting_ValType(12),
+	}
+	if err := pl.addMutation(ctx, txn, edge); err != nil {
+		return err
+	}
+	return nil
+}
+
 func addDimensionOptionInSchema(schema *pb.SchemaUpdate, dimension int) {
 	for _, vs := range schema.IndexSpecs {
 		if vs.Name == "partionedhnsw" {
 			vs.Options = append(vs.Options, &pb.OptionPair{
-				Key:   "dimension",
+				Key:   "vectorDimension",
 				Value: strconv.Itoa(dimension),
 			})
 		}

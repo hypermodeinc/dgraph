@@ -117,6 +117,10 @@ func (ph *persistentHNSW[T]) NumBuildPasses() int {
 	return 0
 }
 
+func (ph *persistentHNSW[T]) SetNumPasses(int) {
+	return
+}
+
 func (ph *persistentHNSW[T]) Dimension() int {
 	return 0
 }
@@ -317,6 +321,13 @@ type resultRow[T c.Float] struct {
 	dist T
 }
 
+// MergeResults takes a list of UIDs and returns the maxResults nearest neighbors
+// in order of increasing distance. It returns an error if any of the UIDs are
+// not present in the index.
+//
+// The filter parameter is not used by this method.
+//
+// This method is part of the index.MultipleIndex interface.
 func (ph *persistentHNSW[T]) MergeResults(ctx context.Context, c index.CacheType, list []uint64, query []T, maxResults int, filter index.SearchFilter[T]) ([]uint64, error) {
 	var result []resultRow[T]
 
@@ -342,6 +353,7 @@ func (ph *persistentHNSW[T]) MergeResults(ctx context.Context, c index.CacheType
 	})
 
 	uids := []uint64{}
+	// out of range error
 	for i := range maxResults {
 		if i > len(result) {
 			break
@@ -497,6 +509,9 @@ func (ph *persistentHNSW[T]) Insert(ctx context.Context, c index.CacheType,
 	}
 	_, edges, err := ph.insertHelper(ctx, tc, inUuid, inVec)
 	return edges, err
+}
+func (ph *persistentHNSW[T]) GetCentroids() [][]T {
+	return nil
 }
 
 // InsertToPersistentStorage inserts a node into the hnsw graph and returns the

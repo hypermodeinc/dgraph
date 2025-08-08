@@ -6,6 +6,7 @@ package partitioned_hnsw
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	c "github.com/hypermodeinc/dgraph/v25/tok/constraints"
@@ -22,6 +23,8 @@ type partitionedHNSW[T c.Float] struct {
 	clusterMap      map[int]index.VectorIndex[T]
 	numClusters     int
 	vectorDimension int
+	vecCount        int
+	numPasses       int
 	partition       index.VectorPartitionStrat[T]
 
 	hnswOptions    opt.Options
@@ -42,10 +45,11 @@ func (ph *partitionedHNSW[T]) applyOptions(o opt.Options) error {
 	}
 
 	if ph.partitionStrat == "kmeans" {
-		ph.partition = kmeans.CreateKMeans(ph.floatBits, hnsw.EuclideanDistanceSq[T])
+		ph.partition = kmeans.CreateKMeans(ph.floatBits, ph.pred, hnsw.EuclideanDistanceSq[T])
 	}
 
 	ph.buildPass = 0
+	ph.numPasses = 10
 	ph.hnswOptions = o
 	for i := range ph.numClusters {
 		factory := hnsw.CreateFactory[T](ph.floatBits)
@@ -75,7 +79,7 @@ func (ph *partitionedHNSW[T]) BuildInsert(ctx context.Context, uuid uint64, vec 
 	if err != nil {
 		return err
 	}
-	if index%NUM_PASSES != passIdx {
+	if index%ph.numPasses != passIdx {
 		return nil
 	}
 	ph.buildSyncMaps[index].Lock()
@@ -84,10 +88,16 @@ func (ph *partitionedHNSW[T]) BuildInsert(ctx context.Context, uuid uint64, vec 
 	return err
 }
 
-const NUM_PASSES = 10
+func (ph *partitionedHNSW[T]) GetCentroids() [][]T {
+	return ph.partition.GetCentroids()
+}
 
 func (ph *partitionedHNSW[T]) NumBuildPasses() int {
 	return ph.partition.NumPasses()
+}
+
+func (ph *partitionedHNSW[T]) SetNumPasses(n int) {
+	ph.partition.SetNumPasses(n)
 }
 
 func (ph *partitionedHNSW[T]) Dimension() int {
@@ -99,7 +109,7 @@ func (ph *partitionedHNSW[T]) SetDimension(dimension int) {
 }
 
 func (ph *partitionedHNSW[T]) NumIndexPasses() int {
-	return NUM_PASSES
+	return ph.numPasses
 }
 
 func (ph *partitionedHNSW[T]) NumThreads() int {
@@ -119,7 +129,7 @@ func (ph *partitionedHNSW[T]) StartBuild(caches []index.CacheType) {
 
 	for i := range ph.clusterMap {
 		ph.buildSyncMaps[i] = &sync.Mutex{}
-		if i%NUM_PASSES != (ph.buildPass - ph.partition.NumPasses()) {
+		if i%ph.numPasses != (ph.buildPass - ph.partition.NumPasses()) {
 			continue
 		}
 		ph.clusterMap[i].StartBuild([]index.CacheType{ph.caches[i]})
@@ -131,7 +141,7 @@ func (ph *partitionedHNSW[T]) EndBuild() []int {
 
 	if ph.buildPass >= ph.partition.NumPasses() {
 		for i := range ph.clusterMap {
-			if i%NUM_PASSES != (ph.buildPass - ph.partition.NumPasses()) {
+			if i%ph.numPasses != (ph.buildPass - ph.partition.NumPasses()) {
 				continue
 			}
 			ph.clusterMap[i].EndBuild()
@@ -152,6 +162,14 @@ func (ph *partitionedHNSW[T]) EndBuild() []int {
 }
 
 func (ph *partitionedHNSW[T]) Insert(ctx context.Context, txn index.CacheType, uid uint64, vec []T) ([]*index.KeyValue, error) {
+	if len(vec) == 0 {
+		ph.vectorDimension = len(vec)
+	}
+
+	if len(vec) != ph.vectorDimension {
+		return nil, fmt.Errorf("connot insert vector length of %d vector lenth should be %d", len(vec), ph.vectorDimension)
+	}
+
 	index, err := ph.partition.FindIndexForInsert(vec)
 	if err != nil {
 		return nil, err

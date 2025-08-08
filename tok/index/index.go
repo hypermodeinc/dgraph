@@ -93,11 +93,13 @@ type VectorPartitionStrat[T c.Float] interface {
 	FindIndexForSearch(vec []T) ([]int, error)
 	FindIndexForInsert(vec []T) (int, error)
 	NumPasses() int
+	SetNumPasses(int)
 	NumSeedVectors() int
 	StartBuildPass()
 	EndBuildPass()
 	AddSeedVector(vec []T)
 	AddVector(vec []T) error
+	GetCentroids() [][]T
 }
 
 // A VectorIndex can be used to Search for vectors and add vectors to an index.
@@ -132,8 +134,10 @@ type VectorIndex[T c.Float] interface {
 	Insert(ctx context.Context, c CacheType, uuid uint64, vec []T) ([]*KeyValue, error)
 
 	BuildInsert(ctx context.Context, uuid uint64, vec []T) error
+	GetCentroids() [][]T
 	AddSeedVector(vec []T)
 	NumBuildPasses() int
+	SetNumPasses(int)
 	NumIndexPasses() int
 	NumSeedVectors() int
 	StartBuild(caches []CacheType)
