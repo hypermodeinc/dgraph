@@ -7,8 +7,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 
+	"github.com/hypermodeinc/dgraph/v25/protos/pb"
 	c "github.com/hypermodeinc/dgraph/v25/tok/constraints"
 	hnsw "github.com/hypermodeinc/dgraph/v25/tok/hnsw"
 	"github.com/hypermodeinc/dgraph/v25/tok/index"
@@ -104,8 +106,16 @@ func (ph *partitionedHNSW[T]) Dimension() int {
 	return ph.vectorDimension
 }
 
-func (ph *partitionedHNSW[T]) SetDimension(dimension int) {
+func (ph *partitionedHNSW[T]) SetDimension(schema *pb.SchemaUpdate, dimension int) {
 	ph.vectorDimension = dimension
+	for _, vs := range schema.IndexSpecs {
+		if vs.Name == "partionedhnsw" {
+			vs.Options = append(vs.Options, &pb.OptionPair{
+				Key:   "vectorDimension",
+				Value: strconv.Itoa(dimension),
+			})
+		}
+	}
 }
 
 func (ph *partitionedHNSW[T]) NumIndexPasses() int {

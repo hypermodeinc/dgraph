@@ -14,7 +14,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -1406,8 +1405,7 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 			StartKey: x.DataKey(rb.Attr, 0),
 		})
 
-		indexer.SetDimension(dimension)
-		addDimensionOptionInSchema(rb.CurrentSchema, dimension)
+		indexer.SetDimension(rb.CurrentSchema, dimension)
 	}
 
 	fmt.Println("Selecting vector dimension to be:", dimension)
@@ -1457,7 +1455,6 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 
 	if count < indexer.NumSeedVectors() {
 		indexer.SetNumPasses(0)
-
 	}
 
 	for pass_idx := range indexer.NumBuildPasses() {
@@ -1489,21 +1486,24 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 		indexer.EndBuild()
 	}
 
-	txn := NewTxn(rb.StartTs)
 	centroids := indexer.GetCentroids()
 
-	bCentroids, err := json.Marshal(centroids)
-	if err != nil {
-		return err
-	}
+	if centroids != nil {
+		txn := NewTxn(rb.StartTs)
 
-	if err := addCentroidInDB(ctx, rb.Attr, bCentroids, txn); err != nil {
-		return err
-	}
-	txn.Update()
-	writer := NewTxnWriter(pstore)
-	if err := txn.CommitToDisk(writer, rb.StartTs); err != nil {
-		return err
+		bCentroids, err := json.Marshal(centroids)
+		if err != nil {
+			return err
+		}
+
+		if err := addCentroidInDB(ctx, rb.Attr, bCentroids, txn); err != nil {
+			return err
+		}
+		txn.Update()
+		writer := NewTxnWriter(pstore)
+		if err := txn.CommitToDisk(writer, rb.StartTs); err != nil {
+			return err
+		}
 	}
 
 	numIndexPasses := indexer.NumIndexPasses()
@@ -1703,17 +1703,6 @@ func addCentroidInDB(ctx context.Context, attr string, vec []byte, txn *Txn) err
 		return err
 	}
 	return nil
-}
-
-func addDimensionOptionInSchema(schema *pb.SchemaUpdate, dimension int) {
-	for _, vs := range schema.IndexSpecs {
-		if vs.Name == "partionedhnsw" {
-			vs.Options = append(vs.Options, &pb.OptionPair{
-				Key:   "vectorDimension",
-				Value: strconv.Itoa(dimension),
-			})
-		}
-	}
 }
 
 // rebuildTokIndex rebuilds index for a given attribute.

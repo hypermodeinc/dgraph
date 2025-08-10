@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/hypermodeinc/dgraph/v25/protos/pb"
 	c "github.com/hypermodeinc/dgraph/v25/tok/constraints"
 	"github.com/hypermodeinc/dgraph/v25/tok/index"
 	opt "github.com/hypermodeinc/dgraph/v25/tok/options"
@@ -125,7 +126,7 @@ func (ph *persistentHNSW[T]) Dimension() int {
 	return 0
 }
 
-func (ph *persistentHNSW[T]) SetDimension(dimension int) {
+func (ph *persistentHNSW[T]) SetDimension(schema *pb.SchemaUpdate, dimension int) {
 	glog.Info("not implemented")
 }
 

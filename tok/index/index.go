@@ -8,6 +8,7 @@ package index
 import (
 	"context"
 
+	"github.com/hypermodeinc/dgraph/v25/protos/pb"
 	c "github.com/hypermodeinc/dgraph/v25/tok/constraints"
 	opts "github.com/hypermodeinc/dgraph/v25/tok/options"
 )
@@ -144,7 +145,7 @@ type VectorIndex[T c.Float] interface {
 	EndBuild() []int
 	NumThreads() int
 	Dimension() int
-	SetDimension(dimension int)
+	SetDimension(schema *pb.SchemaUpdate, dimension int)
 }
 
 // A Txn is an interface representation of a persistent storage transaction,
