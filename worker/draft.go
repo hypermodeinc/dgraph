@@ -723,7 +723,7 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 				return err
 			}
 			return nil
-		case proposal.ExtSnapshotState.Finish && x.IsExtSnapshotStreamingStateTrue():
+		case proposal.ExtSnapshotState.Finish:
 			fmt.Println("HERE proposal finishing", proposal.ExtSnapshotState)
 			lastApplied := n.Applied.LastIndex()
 			pl := groups().Leader(n.gid)
