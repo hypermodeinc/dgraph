@@ -725,32 +725,26 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 			return nil
 		case proposal.ExtSnapshotState.Finish:
 			fmt.Println("HERE proposal finishing", proposal.ExtSnapshotState)
-			lastApplied := n.Applied.LastIndex()
-			pl := groups().Leader(n.gid)
-			if pl == nil {
-				glog.Errorf("[import] failed to get connection pool for group %d", n.gid)
-				x.ExtSnapshotStreamingState(false) // In case of a restart, we will reach here as no leader has been assigned yet.
-				return errors.Errorf("failed to get connection pool for group %d", n.gid)
-			}
-			glog.Infof("[import] requesting snapshot from leader")
-			snap := &pb.Snapshot{
-				Context: n.RaftContext,
-				Index:   lastApplied,
-				ReadTs:  posting.Oracle().MaxAssigned(),
-			}
-			// Request and populate snapshot
-			retries := 3
-			for i := 0; i < retries; i++ {
-				fmt.Println("Populating snapshot")
-				if err := n.populateSnapshot(snap, pl); err != nil {
-					glog.Errorf("[import] failed to populate snapshot for rejoining node: %v", err)
-					if i == retries-1 {
-						return errors.Wrapf(err, "failed to populate snapshot for rejoining node")
-					}
-				} else {
-					break
+
+			if n.AmLeader() {
+				_, err := n.Store.Snapshot()
+				if err != nil {
+					glog.Errorf("[import] failed to get snapshot: %v", err)
+					return err
 				}
-				time.Sleep(30 * time.Second)
+
+				_, err = n.Store.Checkpoint()
+				if err != nil {
+					glog.Errorf("[import] failed to get checkpoint: %v", err)
+					return err
+				}
+
+				if err := n.proposeSnapshot(); err != nil {
+					glog.Errorf("[import] failed to propose snapshot: %v", err)
+					return err
+				}
+			} else {
+
 			}
 
 			if err := postStreamProcessing(ctx); err != nil {
