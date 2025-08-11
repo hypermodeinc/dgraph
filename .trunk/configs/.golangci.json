@@ -1,5 +1,19 @@
 {
+  "formatters": {
+    "exclusions": {
+      "generated": "lax",
+      "paths": ["third_party$", "builtin$", "examples$"]
+    }
+  },
+  "linters": {
+    "exclusions": {
+      "generated": "lax",
+      "paths": ["third_party$", "builtin$", "examples$"],
+      "presets": ["comments", "common-false-positives", "legacy", "std-error-handling"]
+    }
+  },
   "run": {
     "build-tags": ["integration"]
-  }
+  },
+  "version": "2"
 }
