@@ -210,11 +210,6 @@ func doStreamSnapshot(snap *pb.Snapshot, out pb.Worker_StreamSnapshotServer) err
 		if item.Version() >= snap.SinceTs {
 			return true
 		}
-
-		if item.Version() != 1 {
-			return false
-		}
-
 		// Type and Schema keys always have a timestamp of 1. They all need to be sent
 		// with the snapshot.
 		pk, err := x.Parse(item.Key())
