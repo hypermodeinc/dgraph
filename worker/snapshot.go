@@ -207,6 +207,7 @@ func doStreamSnapshot(snap *pb.Snapshot, out pb.Worker_StreamSnapshotServer) err
 		return out.Send(kvs)
 	}
 	stream.ChooseKey = func(item *badger.Item) bool {
+		fmt.Println("HERE", item, item.Version(), snap.SinceTs)
 		if item.Version() >= snap.SinceTs {
 			return true
 		}
