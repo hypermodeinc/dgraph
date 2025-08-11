@@ -175,6 +175,7 @@ func streamBadger(ctx context.Context, ps *badger.DB, out apiv2.Dgraph_StreamExt
 	stream.Send = func(buf *z.Buffer) error {
 		p := &apiv2.StreamPacket{Data: buf.Bytes()}
 		count += 1
+		fmt.Println("Packets sent:", len(buf.Bytes()))
 		if err := out.Send(&apiv2.StreamExtSnapshotRequest{Pkt: p}); err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("failed to send data chunk: %w", err)
 		}
