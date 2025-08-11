@@ -735,7 +735,7 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 			snap := &pb.Snapshot{
 				Context: n.RaftContext,
 				Index:   lastApplied,
-				ReadTs:  State.GetTimestamp(false),
+				ReadTs:  posting.Oracle().MaxAssigned(),
 			}
 			// Request and populate snapshot
 			retries := 3
