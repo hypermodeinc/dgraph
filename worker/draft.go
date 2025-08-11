@@ -707,6 +707,7 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 		//   - Something went wrong with other groups/nodes
 		//   - The node needs to be brought back in sync with the cluster
 		//   - Ensures the node reaches a clean, consistent state
+		fmt.Println("HERE1 Snapshot Proposal", proposal.ExtSnapshotState, x.IsExtSnapshotStreamingStateTrue())
 		switch {
 		case proposal.ExtSnapshotState.Start:
 			x.ExtSnapshotStreamingState(true)
@@ -723,6 +724,7 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 			}
 			return nil
 		case proposal.ExtSnapshotState.Finish && x.IsExtSnapshotStreamingStateTrue():
+			fmt.Println("HERE proposal finishing", proposal.ExtSnapshotState)
 			lastApplied := n.Applied.LastIndex()
 			pl := groups().Leader(n.gid)
 			if pl == nil {
