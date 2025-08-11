@@ -729,6 +729,7 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 			pl := groups().Leader(n.gid)
 			if pl == nil {
 				glog.Errorf("[import] failed to get connection pool for group %d", n.gid)
+				x.ExtSnapshotStreamingState(false) // In case of a restart, we will reach here as no leader has been assigned yet.
 				return errors.Errorf("failed to get connection pool for group %d", n.gid)
 			}
 			glog.Infof("[import] requesting snapshot from leader")
