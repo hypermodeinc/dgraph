@@ -724,12 +724,9 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 			}
 			return nil
 		case proposal.ExtSnapshotState.Finish:
-			fmt.Println("HERE proposal finishing", proposal.ExtSnapshotState)
+			fmt.Println("HERE proposal finishing", proposal.ExtSnapshotState, n.AmLeader())
 
 			if n.AmLeader() {
-				if err := n.updateRaftProgress(); err != nil {
-					glog.Errorf("While updating Raft progress: %v", err)
-				}
 				_, err := n.Store.Snapshot()
 				if err != nil {
 					glog.Errorf("[import] failed to get snapshot: %v", err)
