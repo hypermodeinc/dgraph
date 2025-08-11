@@ -168,11 +168,13 @@ func streamSnapshotForGroup(ctx context.Context, dc apiv2.DgraphClient, pdir str
 // It creates a new stream at the maximum sequence number and sends the data to the specified group.
 // It also sends a final 'done' signal to mark completion.
 func streamBadger(ctx context.Context, ps *badger.DB, out apiv2.Dgraph_StreamExtSnapshotClient, groupId uint32) error {
+	count := 0
 	stream := ps.NewStreamAt(math.MaxUint64)
 	stream.LogPrefix = "[import] Sending external snapshot to group [" + fmt.Sprintf("%d", groupId) + "]"
 	stream.KeyToList = nil
 	stream.Send = func(buf *z.Buffer) error {
 		p := &apiv2.StreamPacket{Data: buf.Bytes()}
+		count += 1
 		if err := out.Send(&apiv2.StreamExtSnapshotRequest{Pkt: p}); err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("failed to send data chunk: %w", err)
 		}
@@ -196,6 +198,8 @@ func streamBadger(ctx context.Context, ps *badger.DB, out apiv2.Dgraph_StreamExt
 	if err := out.Send(&apiv2.StreamExtSnapshotRequest{Pkt: done}); err != nil && !errors.Is(err, io.EOF) {
 		return fmt.Errorf("failed to send 'done' signal for group [%d]: %w", groupId, err)
 	}
+
+	fmt.Println("Packets sent:", count)
 
 	var bytes *apiv2.StreamExtSnapshotResponse
 	var err error

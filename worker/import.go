@@ -136,6 +136,7 @@ func (ps *pubSub) runLocalSubscriber(ctx context.Context, stream pb.Worker_Strea
 		return err
 	}
 
+	count := 0
 Loop:
 	for {
 		select {
@@ -153,6 +154,8 @@ Loop:
 				break Loop
 			}
 
+			count += 1
+
 			buf := z.NewBufferSlice(kvs.Data)
 			if err := sw.Write(buf); err != nil {
 				return err
@@ -163,6 +166,8 @@ Loop:
 	if err := sw.Flush(); err != nil {
 		return err
 	}
+
+	fmt.Println("Packets received:", count)
 
 	glog.Infof("[import:flush] successfully flushed data in badger db")
 	if err := postStreamProcessing(ctx); err != nil {
