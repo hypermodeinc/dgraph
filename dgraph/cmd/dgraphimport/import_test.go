@@ -351,7 +351,7 @@ func setupTargetCluster(t *testing.T, numAlphas, replicasFactor int) (
 func verifyImportResults(t *testing.T, gc *dgraphapi.GrpcClient, downAlphas int) {
 	maxRetries := 1
 	if downAlphas > 0 {
-		maxRetries = 10
+		maxRetries = 5
 	}
 
 	retryDelay := 500 * time.Millisecond
