@@ -307,34 +307,41 @@ func (w *grpcWorker) UpdateExtSnapshotStreamingState(ctx context.Context,
 		return nil, errors.New("UpdateExtSnapshotStreamingStateRequest cannot have both Start and Finish set to true")
 	}
 
-	groupId := groups().Node.gid
+	if req.Finish {
+		groupId := groups().Node.gid
 
-	pl := groups().Leader(groupId)
-	if pl == nil {
-		glog.Errorf("[import] unable to connect to the leader of group [%v]", groupId)
-		return nil, fmt.Errorf("unable to connect to the leader of group [%v] : %v", groupId, conn.ErrNoConnection)
-	}
-
-	if groups().Node.MyAddr == pl.Addr {
-		// Make sure that badger has actually done writing before this is called.
-		// Add waits and retries in the client for this place afterwards.
-
-		glog.Errorf("[import] Applying import mode proposal: %+v", req)
-		err := groups().Node.proposeAndWait(ctx, &pb.Proposal{ExtSnapshotState: req})
-
-		err = groups().Node.forceSnapshot()
-		if err != nil {
-			glog.Errorf("[import] failed to force snapshot: %v", err)
-			return nil, err
+		pl := groups().Leader(groupId)
+		if pl == nil {
+			glog.Errorf("[import] unable to connect to the leader of group [%v]", groupId)
+			return nil, fmt.Errorf("unable to connect to the leader of group [%v] : %v", groupId, conn.ErrNoConnection)
 		}
 
-		return &pb.Status{}, nil
+		if groups().Node.MyAddr == pl.Addr {
+			// Make sure that badger has actually done writing before this is called.
+			// Add waits and retries in the client for this place afterwards.
+
+			glog.Errorf("[import] Applying import mode proposal: %+v", req)
+			err := groups().Node.proposeAndWait(ctx, &pb.Proposal{ExtSnapshotState: req})
+
+			err = groups().Node.forceSnapshot()
+			if err != nil {
+				glog.Errorf("[import] failed to force snapshot: %v", err)
+				return nil, err
+			}
+
+			return &pb.Status{}, nil
+		}
+
+		con := pl.Get()
+		c := pb.NewWorkerClient(con)
+
+		return c.UpdateExtSnapshotStreamingState(ctx, req)
 	}
 
-	con := pl.Get()
-	c := pb.NewWorkerClient(con)
+	glog.Errorf("[import] Applying import mode proposal: %+v", req)
+	err := groups().Node.proposeAndWait(ctx, &pb.Proposal{ExtSnapshotState: req})
 
-	return c.UpdateExtSnapshotStreamingState(ctx, req)
+	return &pb.Status{}, err
 }
 
 // StreamExtSnapshot handles the stream of key-value pairs sent from proxy alpha.
