@@ -13,6 +13,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/dgo/v250"
@@ -67,10 +68,13 @@ func initiateSnapshotStream(ctx context.Context, dc apiv2.DgraphClient) (*apiv2.
 // subdirectories named with numeric group IDs.
 func streamSnapshot(ctx context.Context, dc apiv2.DgraphClient, baseDir string, groups []uint32) error {
 	glog.Infof("[import] Starting to stream snapshot from directory: %s", baseDir)
+	var m sync.Mutex
 
 	errG, errGrpCtx := errgroup.WithContext(ctx)
 	for _, group := range groups {
 		errG.Go(func() error {
+			m.Lock()
+			defer m.Unlock()
 			pDir := filepath.Join(baseDir, fmt.Sprintf("%d", group-1), "p")
 			if _, err := os.Stat(pDir); err != nil {
 				return fmt.Errorf("p directory does not exist for group [%d]: [%s]", group, pDir)
