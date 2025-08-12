@@ -174,9 +174,6 @@ Loop:
 		return err
 	}
 
-	pstore.Close()
-	State.InitPstore()
-
 	if err := stream.Send(&apiv2.StreamExtSnapshotResponse{Finish: true}); err != nil {
 		glog.Errorf("[import] failed to send close on in: %v", err)
 		return err
