@@ -297,16 +297,16 @@ func pipeTwoStream(in apiv2.Dgraph_StreamExtSnapshotServer, out pb.Worker_Stream
 }
 
 func (w *grpcWorker) ProposeSnapshotAndWait(ctx context.Context,
-	req *apiv2.UpdateExtSnapshotStreamingStateRequest) error {
+	req *apiv2.UpdateExtSnapshotStreamingStateRequest) (*pb.Status, error) {
 	glog.Errorf("[import] Applying import mode proposal: %+v", req)
 	err := groups().Node.proposeAndWait(ctx, &pb.Proposal{ExtSnapshotState: req})
 
 	if err != nil {
 		glog.Errorf("[import] failed to force snapshot: %v", err)
-		return err
+		return nil, err
 	}
 
-	return groups().Node.forceSnapshot()
+	return &pb.Status{}, groups().Node.forceSnapshot()
 }
 
 func (w *grpcWorker) UpdateExtSnapshotStreamingState(ctx context.Context,
