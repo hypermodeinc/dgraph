@@ -124,6 +124,7 @@ func TestGetSinglePosting(t *testing.T) {
 
 	res, err := l.StaticValue(1)
 	require.NoError(t, err)
+	fmt.Println(res, res == nil)
 	require.Equal(t, res == nil, true)
 
 	l.plist = create_pl(1, 1)
@@ -254,7 +255,7 @@ func TestAddMutation_jchiu1(t *testing.T) {
 	key := x.DataKey(x.AttrInRootNamespace(x.AttrInRootNamespace("value")), 12)
 	ol, err := GetNoStore(key, math.MaxUint64)
 	require.NoError(t, err)
-
+	ol.mutationMap.setTs(1)
 	// Set value to cars and merge to BadgerDB.
 	edge := &pb.DirectedEdge{
 		Value: []byte("cars"),
@@ -297,6 +298,7 @@ func TestAddMutation_DelSet(t *testing.T) {
 	key := x.DataKey(x.AttrInRootNamespace(x.AttrInRootNamespace("value")), 1534)
 	ol, err := GetNoStore(key, math.MaxUint64)
 	require.NoError(t, err)
+	ol.mutationMap.setTs(1)
 
 	// DO sp*, don't commit
 	// Del a value cars and but don't merge.
@@ -312,6 +314,7 @@ func TestAddMutation_DelSet(t *testing.T) {
 		Value: []byte("newcars"),
 	}
 	ol1, err := GetNoStore(key, math.MaxUint64)
+	ol1.mutationMap.setTs(2)
 	require.NoError(t, err)
 	txn = &Txn{StartTs: 2}
 	addMutationHelper(t, ol1, edge, Set, txn)
@@ -323,6 +326,7 @@ func TestAddMutation_DelSet(t *testing.T) {
 func TestAddMutation_DelRead(t *testing.T) {
 	key := x.DataKey(x.AttrInRootNamespace(x.AttrInRootNamespace("value")), 1543)
 	ol, err := GetNoStore(key, math.MaxUint64)
+	ol.mutationMap.setTs(1)
 	require.NoError(t, err)
 
 	// Set value to newcars, and commit it
@@ -361,6 +365,7 @@ func TestAddMutation_DelRead(t *testing.T) {
 func TestAddMutation_jchiu2(t *testing.T) {
 	key := x.DataKey(x.AttrInRootNamespace(x.AttrInRootNamespace("value")), 15)
 	ol, err := GetNoStore(key, math.MaxUint64)
+	ol.mutationMap.setTs(1)
 	require.NoError(t, err)
 
 	// Del a value cars and but don't merge.
@@ -383,6 +388,7 @@ func TestAddMutation_jchiu2(t *testing.T) {
 func TestAddMutation_jchiu2_Commit(t *testing.T) {
 	key := x.DataKey(x.AttrInRootNamespace(x.AttrInRootNamespace("value")), 16)
 	ol, err := GetNoStore(key, math.MaxUint64)
+	ol.mutationMap.setTs(1)
 	require.NoError(t, err)
 
 	// Del a value cars and but don't merge.
@@ -408,6 +414,7 @@ func TestAddMutation_jchiu2_Commit(t *testing.T) {
 func TestAddMutation_jchiu3(t *testing.T) {
 	key := x.DataKey(x.AttrInRootNamespace("value"), 29)
 	ol, err := GetNoStore(key, math.MaxUint64)
+	ol.mutationMap.setTs(1)
 	require.NoError(t, err)
 
 	// Set value to cars and merge to BadgerDB.
@@ -448,6 +455,7 @@ func TestAddMutation_jchiu3(t *testing.T) {
 func TestAddMutation_mrjn1(t *testing.T) {
 	key := x.DataKey(x.AttrInRootNamespace("value"), 21)
 	ol, err := GetNoStore(key, math.MaxUint64)
+	ol.mutationMap.setTs(1)
 	require.NoError(t, err)
 
 	// Set a value cars and merge.

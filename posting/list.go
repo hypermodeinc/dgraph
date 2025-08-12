@@ -155,7 +155,7 @@ func (mm *MutableLayer) setCurrentEntries(ts uint64, pl *pb.PostingList) {
 		return
 	}
 	if mm.readTs != 0 {
-		x.AssertTrue(mm.readTs == ts)
+		x.AssertTruef(mm.readTs == ts, "List object reused for a different transaction %d %d", mm.readTs, ts)
 	}
 
 	mm.readTs = ts
@@ -353,7 +353,7 @@ func (mm *MutableLayer) populateUidMap(pl *pb.PostingList) {
 // insertPosting inserts a new posting in the mutable layers. It updates the currentUids map.
 func (mm *MutableLayer) insertPosting(mpost *pb.Posting, hasCountIndex bool) {
 	if mm.readTs != 0 {
-		x.AssertTrue(mpost.StartTs == mm.readTs)
+		x.AssertTruef(mpost.StartTs == mm.readTs, "Diffrenent read ts and start ts found %d %d", mpost.StartTs, mm.readTs)
 	}
 
 	mm.readTs = mpost.StartTs
@@ -410,7 +410,7 @@ func (mm *MutableLayer) print() string {
 		mm.deleteAllMarker)
 }
 
-func (l *List) print() string {
+func (l *List) Print() string {
 	return fmt.Sprintf("minTs: %d, plist: %+v, mutationMap: %s", l.minTs, l.plist, l.mutationMap.print())
 }
 
@@ -699,6 +699,7 @@ func (it *pIterator) posting() *pb.Posting {
 		it.pidx++
 	}
 	it.uidPosting.Uid = uid
+	it.uidPosting.ValType = pb.Posting_UID
 	return it.uidPosting
 }
 
@@ -1006,6 +1007,14 @@ func (l *List) setMutationAfterCommit(startTs, commitTs uint64, pl *pb.PostingLi
 	}
 	l.mutationMap.committedUidsTime = x.Max(l.mutationMap.committedUidsTime, commitTs)
 
+	if refresh {
+		newMap := make(map[uint64]*pb.Posting, len(l.mutationMap.committedUids))
+		for uid, post := range l.mutationMap.committedUids {
+			newMap[uid] = post
+		}
+		l.mutationMap.committedUids = newMap
+	}
+
 	for _, mpost := range pl.Postings {
 		if hasDeleteAll(mpost) {
 			l.mutationMap.deleteAllMarker = commitTs
@@ -1144,7 +1153,7 @@ func (l *List) iterate(readTs uint64, afterUid uint64, f func(obj *pb.Posting) e
 	// pitr iterates through immutable postings
 	err = pitr.seek(l, afterUid, deleteBelowTs)
 	if err != nil {
-		return errors.Wrapf(err, "cannot initialize iterator when calling List.iterate %v", l.print())
+		return errors.Wrapf(err, "cannot initialize iterator when calling List.iterate %v", l.Print())
 	}
 
 loop:
@@ -1995,7 +2004,10 @@ func (l *List) findStaticValue(readTs uint64) *pb.PostingList {
 
 	// If we reach here, that means that there was no entry in mutation map which is less than readTs. That
 	// means we need to return l.plist
-	return l.plist
+	if l.plist != nil && len(l.plist.Postings) > 0 {
+		return l.plist
+	}
+	return nil
 }
 
 // Value returns the default value from the posting list. The default value is

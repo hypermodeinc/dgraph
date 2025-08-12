@@ -1,5 +1,5 @@
 ###################### Stage I ######################
-FROM golang:1.24.4 AS builder
+FROM golang:1.24.5 AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     bzip2=1.0.8-5+b1 \
     git=1:2.39.5-0+deb12u2 \

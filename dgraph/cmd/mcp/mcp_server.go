@@ -3,12 +3,16 @@ package mcp
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/dgraph-io/dgo/v250"
 	"github.com/dgraph-io/dgo/v250/protos/api"
+
+	"github.com/hypermodeinc/dgraph/v25/dql"
 	"github.com/hypermodeinc/dgraph/v25/x"
 
 	"github.com/golang/glog"
@@ -70,11 +74,69 @@ func NewMCPServer(connectionString string, readOnly bool) (*server.MCPServer, er
 		}),
 	)
 
-	queryTool := mcp.NewTool("run_query",
-		mcp.WithDescription("Run Dgraph DQL Query on dgraph db"),
+	validateQuerySyntaxTool := mcp.NewTool("validate_query_syntax",
+		mcp.WithDescription("Check if a Dgraph DQL Query is valid"),
 		mcp.WithString("query",
 			mcp.Required(),
-			mcp.Description("The query to perform"),
+			mcp.Description("The query to validate"),
+		),
+		mcp.WithString("variables",
+			mcp.Description("The variables to be used in the query. Should be in JSON format to be unmarshalled into map[string]string"),
+		),
+		mcp.WithToolAnnotation(mcp.ToolAnnotation{
+			ReadOnlyHint:    &True,
+			DestructiveHint: &False,
+			IdempotentHint:  &True,
+			OpenWorldHint:   &False,
+		}),
+	)
+
+	s.AddTool(validateQuerySyntaxTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := request.GetArguments()
+		if args == nil {
+			return mcp.NewToolResultError("Query must be present"), nil
+		}
+		queryArg, ok := args["query"]
+		if !ok || queryArg == nil {
+			return mcp.NewToolResultError("Query must be present"), nil
+		}
+
+		op, ok := queryArg.(string)
+		if !ok {
+			return mcp.NewToolResultError("Query must be a string"), nil
+		}
+
+		var variablesMap map[string]string
+		variablesArg, ok := args["variables"]
+		if ok && variablesArg != nil {
+			variables, ok := variablesArg.(string)
+			if !ok {
+				return mcp.NewToolResultError("Variables must be a string"), nil
+			}
+			if err := json.Unmarshal([]byte(variables), &variablesMap); err != nil {
+				return mcp.NewToolResultErrorFromErr("Error unmarshalling variables", err), nil
+			}
+		}
+
+		req := &dql.Request{
+			Str:       op,
+			Variables: variablesMap,
+		}
+		_, err := dql.Parse(*req)
+		if err != nil {
+			return mcp.NewToolResultErrorFromErr("Error parsing query", err), nil
+		}
+		return mcp.NewToolResultText("Query is valid"), nil
+	})
+
+	queryTool := mcp.NewTool("run_query",
+		mcp.WithDescription("Run DQL Query on Dgraph"),
+		mcp.WithString("query",
+			mcp.Required(),
+			mcp.Description("The query to run"),
+		),
+		mcp.WithString("variables",
+			mcp.Description("The parameters to pass to the query in JSON format. The JSON should be a map of string keys to string, number or boolean values. Example: {\"$param1\": \"value1\", \"$param2\": 123, \"$param3\": true}"),
 		),
 		mcp.WithToolAnnotation(mcp.ToolAnnotation{
 			ReadOnlyHint:    &True,
@@ -86,10 +148,10 @@ func NewMCPServer(connectionString string, readOnly bool) (*server.MCPServer, er
 
 	if !readOnly {
 		alterSchemaTool := mcp.NewTool("alter_schema",
-			mcp.WithDescription("Alter Dgraph DQL Schema in dgraph db"),
+			mcp.WithDescription("Alter DQL Schema in Dgraph"),
 			mcp.WithString("schema",
 				mcp.Required(),
-				mcp.Description("Updated schema to insert inside the db"),
+				mcp.Description("DQL Schema to apply"),
 			),
 			mcp.WithToolAnnotation(mcp.ToolAnnotation{
 				ReadOnlyHint:    &False,
@@ -127,11 +189,14 @@ func NewMCPServer(connectionString string, readOnly bool) (*server.MCPServer, er
 			return mcp.NewToolResultText("Schema updated successfully"), nil
 		})
 
+		mutationArgumentDescription := `The mutation to perform in JSON format.
+		For example: {"set": [{ "uid": "_:1", "n": "Foo", "m": 20, "p": 3.14 }]} to set a node with blank identifier _:1 with name "Foo", m=20 and p=3.14
+		Another example: { "delete": [{ "uid": "0xfa12" }]} to delete a node with uid 0xfa12`
 		mutationTool := mcp.NewTool("run_mutation",
-			mcp.WithDescription("Run DQL Mutation on dgraph db"),
+			mcp.WithDescription("Run DQL Mutation on Dgraph"),
 			mcp.WithString("mutation",
 				mcp.Required(),
-				mcp.Description("The mutation to perform in json format"),
+				mcp.Description(mutationArgumentDescription),
 			),
 			mcp.WithToolAnnotation(mcp.ToolAnnotation{
 				ReadOnlyHint:    &False,
@@ -183,7 +248,7 @@ func NewMCPServer(connectionString string, readOnly bool) (*server.MCPServer, er
 		if err != nil {
 			return mcp.NewToolResultErrorFromErr("Error opening connection with Dgraph Alpha", err), nil
 		}
-		txn := conn.NewTxn()
+		txn := conn.NewReadOnlyTxn()
 		defer func() {
 			err := txn.Discard(ctx)
 			if err != nil {
@@ -202,7 +267,35 @@ func NewMCPServer(connectionString string, readOnly bool) (*server.MCPServer, er
 		if !ok {
 			return mcp.NewToolResultError("Query must be a string"), nil
 		}
-		resp, err := txn.Query(ctx, op)
+		vars := make(map[string]any)
+		variablesArg, ok := args["variables"]
+		if ok && variablesArg != nil {
+			variables, ok := variablesArg.(string)
+			if !ok {
+				return mcp.NewToolResultError("Variables must be a JSON-formatted string"), nil
+			}
+			// create a map of variables from JSON string
+			if err := json.Unmarshal([]byte(variables), &vars); err != nil {
+				return mcp.NewToolResultErrorFromErr("Error parsing variables", err), nil
+			}
+		}
+		// convert vars map[string]any to map[string]string as required by txn.QueryWithVars
+		varsString := make(map[string]string)
+		for k, v := range vars {
+			switch val := v.(type) {
+			case string:
+				varsString[k] = val
+			case float64:
+				varsString[k] = strconv.FormatFloat(val, 'f', -1, 64)
+			case bool:
+				varsString[k] = strconv.FormatBool(val)
+			case nil:
+				varsString[k] = "null"
+			default:
+				return mcp.NewToolResultError(fmt.Sprintf("could not convert complex variable %q to string", k)), nil
+			}
+		}
+		resp, err := txn.QueryWithVars(ctx, op, varsString)
 		if err != nil {
 			return mcp.NewToolResultErrorFromErr("Error running query", err), nil
 		}
@@ -214,7 +307,7 @@ func NewMCPServer(connectionString string, readOnly bool) (*server.MCPServer, er
 		if err != nil {
 			return mcp.NewToolResultErrorFromErr("Error opening connection with Dgraph Alpha", err), nil
 		}
-		txn := conn.NewTxn()
+		txn := conn.NewReadOnlyTxn()
 		defer func() {
 			err := txn.Discard(ctx)
 			if err != nil {

@@ -90,6 +90,124 @@ func TestEmptyTypeSchema(t *testing.T) {
 	x.ParseNamespaceAttr(types[0].TypeName)
 }
 
+func TestDeleteSetWithVarEdgeCorruptsData(t *testing.T) {
+	// Setup temporary directory for Badger DB
+	dir, err := os.MkdirTemp("", "storetest_")
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	opt := badger.DefaultOptions(dir)
+	ps, err := badger.OpenManaged(opt)
+	require.NoError(t, err)
+	posting.Init(ps, 0, false)
+	Init(ps)
+
+	// Set schema
+	schemaTxt := `
+		room: string @index(hash) @upsert .
+		person: string @index(hash) @upsert .
+		office: uid @reverse @count .
+	`
+	err = schema.ParseBytes([]byte(schemaTxt), 1)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	attrRoom := x.AttrInRootNamespace("room")
+	attrPerson := x.AttrInRootNamespace("person")
+	attrOffice := x.AttrInRootNamespace("office")
+
+	uidRoom := uint64(1)
+	uidJohn := uint64(2)
+
+	runMutation := func(startTs, commitTs uint64, edges []*pb.DirectedEdge) {
+		txn := posting.Oracle().RegisterStartTs(startTs)
+		for _, edge := range edges {
+			require.NoError(t, runMutation(ctx, edge, txn))
+		}
+		txn.Update()
+		writer := posting.NewTxnWriter(ps)
+		require.NoError(t, txn.CommitToDisk(writer, commitTs))
+		require.NoError(t, writer.Flush())
+		txn.UpdateCachedKeys(commitTs)
+	}
+
+	// Initial mutation: Set John → Leopard
+	runMutation(1, 3, []*pb.DirectedEdge{
+		{
+			Entity:    uidJohn,
+			Attr:      attrPerson,
+			Value:     []byte("John Smith"),
+			ValueType: pb.Posting_STRING,
+			Op:        pb.DirectedEdge_SET,
+		},
+		{
+			Entity:    uidRoom,
+			Attr:      attrRoom,
+			Value:     []byte("Leopard"),
+			ValueType: pb.Posting_STRING,
+			Op:        pb.DirectedEdge_SET,
+		},
+		{
+			Entity:    uidJohn,
+			Attr:      attrOffice,
+			ValueId:   uidRoom,
+			ValueType: pb.Posting_UID,
+			Op:        pb.DirectedEdge_SET,
+		},
+	})
+
+	key := x.DataKey(attrOffice, uidJohn)
+	rollup(t, key, ps, 4)
+
+	// Second mutation: Remove John from Leopard, assign Amanda
+	uidAmanda := uint64(3)
+
+	runMutation(6, 8, []*pb.DirectedEdge{
+		{
+			Entity:    uidJohn,
+			Attr:      attrOffice,
+			ValueId:   uidRoom,
+			ValueType: pb.Posting_UID,
+			Op:        pb.DirectedEdge_DEL,
+		},
+		{
+			Entity:    uidAmanda,
+			Attr:      attrPerson,
+			Value:     []byte("Amanda Anderson"),
+			ValueType: pb.Posting_STRING,
+			Op:        pb.DirectedEdge_SET,
+		},
+		{
+			Entity:    uidAmanda,
+			Attr:      attrOffice,
+			ValueId:   uidRoom,
+			ValueType: pb.Posting_UID,
+			Op:        pb.DirectedEdge_SET,
+		},
+	})
+
+	// Read and validate: Amanda assigned, John unassigned
+	txnRead := posting.Oracle().RegisterStartTs(10)
+
+	list, err := txnRead.Get(key)
+	require.NoError(t, err)
+
+	uids, err := list.Uids(posting.ListOptions{ReadTs: 10})
+	require.NoError(t, err)
+
+	// This assertion FAILS in the broken case where both Amanda and John are assigned
+	require.Equal(t, 0, len(uids.Uids), "John should no longer have an office assigned")
+
+	keyRev := x.ReverseKey(attrOffice, uidRoom)
+	listRev, err := txnRead.Get(keyRev)
+	require.NoError(t, err)
+
+	reverseUids, err := listRev.Uids(posting.ListOptions{ReadTs: 10})
+	require.NoError(t, err)
+
+	require.Equal(t, []uint64{uidAmanda}, reverseUids.Uids, "Only Amanda should be assigned on reverse edge")
+}
+
 func TestGetScalarList(t *testing.T) {
 	dir, err := os.MkdirTemp("", "storetest_")
 	x.Check(err)
