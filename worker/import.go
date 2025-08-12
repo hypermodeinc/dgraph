@@ -308,34 +308,40 @@ func (w *grpcWorker) UpdateExtSnapshotStreamingState(ctx context.Context,
 	}
 
 	if req.Finish {
-		groupId := groups().Node.gid
-
-		pl := groups().Leader(groupId)
-		if pl == nil {
-			glog.Errorf("[import] unable to connect to the leader of group [%v]", groupId)
-			return nil, fmt.Errorf("unable to connect to the leader of group [%v] : %v", groupId, conn.ErrNoConnection)
+		members := GetMembershipState()
+		currentGroups := make([]uint32, 0)
+		for gid := range members.GetGroups() {
+			currentGroups = append(currentGroups, gid)
 		}
 
-		if groups().Node.MyAddr == pl.Addr {
-			// Make sure that badger has actually done writing before this is called.
-			// Add waits and retries in the client for this place afterwards.
+		for _, gid := range currentGroups {
+			if groups().ServesGroup(gid) && groups().Node.AmLeader() {
+				glog.Errorf("[import] Applying import mode proposal: %+v", req)
+				err := groups().Node.proposeAndWait(ctx, &pb.Proposal{ExtSnapshotState: req})
 
-			glog.Errorf("[import] Applying import mode proposal: %+v", req)
-			err := groups().Node.proposeAndWait(ctx, &pb.Proposal{ExtSnapshotState: req})
-
-			err = groups().Node.forceSnapshot()
-			if err != nil {
-				glog.Errorf("[import] failed to force snapshot: %v", err)
-				return nil, err
+				err = groups().Node.forceSnapshot()
+				if err != nil {
+					glog.Errorf("[import] failed to force snapshot: %v", err)
+					return nil, err
+				}
+				continue
 			}
 
-			return &pb.Status{}, nil
+			pl := groups().Leader(gid)
+			if pl == nil {
+				glog.Errorf("[import:apply-drainmode] unable to connect to the leader of group [%v]", gid)
+				return nil, fmt.Errorf("unable to connect to the leader of group [%v] : %v", gid, conn.ErrNoConnection)
+			}
+
+			c := pb.NewWorkerClient(pl.Get())
+			glog.Infof("[import:apply-drainmode] Successfully connected to leader of group [%v]", gid)
+
+			_, err := c.UpdateExtSnapshotStreamingState(ctx, req)
+			if err != nil {
+				glog.Errorf("[import] failed to update ext snapshot streaming state: %v", err)
+				return nil, err
+			}
 		}
-
-		con := pl.Get()
-		c := pb.NewWorkerClient(con)
-
-		return c.UpdateExtSnapshotStreamingState(ctx, req)
 	}
 
 	glog.Errorf("[import] Applying import mode proposal: %+v", req)
