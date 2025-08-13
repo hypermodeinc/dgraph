@@ -288,8 +288,6 @@ func runImportTest(t *testing.T, tt testcase) {
 	require.NoError(t, targetCluster.HealthCheck(false))
 	t.Log("Import completed")
 
-	targetCluster.AssignTs(gc.Dgraph, 25000)
-
 	for i := 0; i < tt.targetAlphas; i++ {
 		t.Logf("Verifying import for alpha %v", i)
 		gc, cleanup, err := targetCluster.AlphaClient(i)
@@ -344,6 +342,9 @@ func setupTargetCluster(t *testing.T, numAlphas, replicasFactor int) (
 
 	gc, cleanup, err := cluster.Client()
 	require.NoError(t, err)
+
+	cluster.AssignTs(gc.Dgraph, 25000)
+	cluster.AssignUids(gc.Dgraph, 65536)
 
 	// Return cluster and client (cleanup will be handled by the caller)
 	return cluster, gc, cleanup
