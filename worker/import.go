@@ -65,6 +65,7 @@ func (ps *pubSub) handlePublisher(ctx context.Context, stream apiv2.Dgraph_Strea
 			return ctx.Err()
 
 		default:
+			fmt.Println("WAITING FOR RECV")
 			msg, err := stream.Recv()
 			if err != nil && !errors.Is(err, io.EOF) {
 				glog.Errorf("[import] error receiving from in stream: %v", err)
@@ -72,6 +73,7 @@ func (ps *pubSub) handlePublisher(ctx context.Context, stream apiv2.Dgraph_Strea
 			} else if err == io.EOF {
 				return nil
 			}
+			fmt.Println("Publishing msg", msg)
 			ps.publish(msg)
 			if err := stream.Send(&apiv2.StreamExtSnapshotResponse{Finish: false}); err != nil {
 				return err
@@ -80,10 +82,14 @@ func (ps *pubSub) handlePublisher(ctx context.Context, stream apiv2.Dgraph_Strea
 	}
 }
 
-func (ps *pubSub) runForwardSubscriber(ctx context.Context, out apiv2.Dgraph_StreamExtSnapshotClient, peerId string) error {
+func (ps *pubSub) runForwardSubscriber(ctx context.Context, out apiv2.Dgraph_StreamExtSnapshotClient, peerId string, in apiv2.Dgraph_StreamExtSnapshotServer) error {
 	defer func() {
 		glog.Infof("[import] forward subscriber stopped for peer [%v]", peerId)
 	}()
+
+	if err := in.Send(&apiv2.StreamExtSnapshotResponse{Finish: false}); err != nil {
+		return err
+	}
 
 	buffer := ps.subscribe()
 Loop:
@@ -113,6 +119,11 @@ Loop:
 				return err
 			}
 		}
+	}
+
+	if err := in.Send(&apiv2.StreamExtSnapshotResponse{Finish: true}); err != nil {
+		glog.Errorf("[import] failed to send close on in: %v", err)
+		return err
 	}
 
 	return nil
@@ -283,7 +294,7 @@ func pipeTwoStream(in apiv2.Dgraph_StreamExtSnapshotServer, out pb.Worker_Stream
 	ps := &pubSub{}
 	eg, egCtx := errgroup.WithContext(in.Context())
 	eg.Go(func() error {
-		return ps.runForwardSubscriber(egCtx, out, fmt.Sprintf("%d", groupId))
+		return ps.runForwardSubscriber(egCtx, out, fmt.Sprintf("%d", groupId), in)
 	})
 	eg.Go(func() error {
 		return ps.handlePublisher(egCtx, in)
@@ -448,7 +459,7 @@ func streamInGroup(stream apiv2.Dgraph_StreamExtSnapshotServer, forward bool) er
 		if forward {
 			// We are not going to return any error from here because we care about the majority of nodes.
 			// If the majority of nodes are able to receive the data, the remaining ones can catch up later.
-			glog.Infof("[import] Streaming external snapshot to [%v] from [%v] forward [%v]", member.Addr, node.MyAddr)
+			glog.Infof("[import] Streaming external snapshot to [%v] from [%v] forward", member.Addr, node.MyAddr)
 			eg.Go(func() error {
 				glog.Infof(`[import:forward] streaming external snapshot to [%v] from [%v]`, member.Addr, node.MyAddr)
 				if member.AmDead {
@@ -483,7 +494,7 @@ func streamInGroup(stream apiv2.Dgraph_StreamExtSnapshotServer, forward bool) er
 					return nil
 				}
 
-				if err := ps.runForwardSubscriber(errGCtx, peerStream, member.Addr); err != nil {
+				if err := ps.runForwardSubscriber(errGCtx, peerStream, member.Addr, stream); err != nil {
 					updateNodeStatus(&ps.RWMutex, successfulNodes, member.Addr, false)
 					glog.Errorf("failed to run forward subscriber: %v", err)
 					return nil
