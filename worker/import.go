@@ -73,7 +73,7 @@ func (ps *pubSub) handlePublisher(ctx context.Context, stream apiv2.Dgraph_Strea
 			} else if err == io.EOF {
 				return nil
 			}
-			fmt.Println("Publishing msg", msg)
+			fmt.Println("Publishing msg")
 			ps.publish(msg)
 			if err := stream.Send(&apiv2.StreamExtSnapshotResponse{Finish: false}); err != nil {
 				return err
