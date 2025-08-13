@@ -154,6 +154,24 @@ func TestImportApis(t *testing.T) {
 			err:            "",
 		},
 		{
+			name:           "TwoGroupShutOneAlphaPerGroup",
+			numGroups:      2,
+			targetAlphas:   6,
+			replicasFactor: 3,
+			downAlphas:     1,
+			description:    "Multiple groups with multiple alphas, shutdown 1 alphas per group",
+			err:            "",
+		},
+		{
+			name:           "ThreeGroupShutOneAlphaPerGroup",
+			numGroups:      3,
+			targetAlphas:   9,
+			replicasFactor: 3,
+			downAlphas:     1,
+			description:    "Three groups with 3 alphas each, shutdown 1 alpha per group",
+			err:            "",
+		},
+		{
 			name:           "SingleGroupAllAlphasOnline",
 			numGroups:      1,
 			targetAlphas:   3,
@@ -269,6 +287,8 @@ func runImportTest(t *testing.T, tt testcase) {
 
 	require.NoError(t, targetCluster.HealthCheck(false))
 	t.Log("Import completed")
+
+	targetCluster.AssignTs(gc, 25000)
 
 	for i := 0; i < tt.targetAlphas; i++ {
 		t.Logf("Verifying import for alpha %v", i)

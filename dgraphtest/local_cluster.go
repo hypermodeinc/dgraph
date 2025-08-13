@@ -898,6 +898,40 @@ func (c *LocalCluster) AlphasLogs() ([]string, error) {
 	return alphasLogs, nil
 }
 
+func (c *LocalCluster) AssignTs(_ *dgo.Dgraph, num uint64) error {
+	if len(c.zeros) == 0 {
+		return errors.New("no zero running")
+	}
+
+	baseURL, err := c.zeros[0].assignURL(c)
+	if err != nil {
+		return err
+	}
+
+	url := fmt.Sprintf("%v?what=timestamps&num=%d", baseURL, num)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return errors.Wrapf(err, "error building req for endpoint [%v]", url)
+	}
+	body, err := dgraphapi.DoReq(req)
+	if err != nil {
+		return err
+	}
+	var data struct {
+		Errors []struct {
+			Message string
+			Code    string
+		}
+	}
+	if err := json.Unmarshal(body, &data); err != nil {
+		return errors.Wrap(err, "error unmarshaling response")
+	}
+	if len(data.Errors) > 0 {
+		return fmt.Errorf("error received from zero: %v", data.Errors[0].Message)
+	}
+	return nil
+}
+
 // AssignUids talks to zero to assign the given number of uids
 func (c *LocalCluster) AssignUids(_ *dgo.Dgraph, num uint64) error {
 	if len(c.zeros) == 0 {
