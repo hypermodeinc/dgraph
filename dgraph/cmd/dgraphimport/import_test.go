@@ -288,7 +288,7 @@ func runImportTest(t *testing.T, tt testcase) {
 	require.NoError(t, targetCluster.HealthCheck(false))
 	t.Log("Import completed")
 
-	targetCluster.AssignTs(gc, 25000)
+	targetCluster.AssignTs(gc.Dgraph, 25000)
 
 	for i := 0; i < tt.targetAlphas; i++ {
 		t.Logf("Verifying import for alpha %v", i)
