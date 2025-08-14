@@ -24,7 +24,7 @@ jobs:
     runs-on: warp-ubuntu-latest-x64-4x
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: "${{ github.event.inputs.releasetag }}"
       - name: Set up Go
@@ -124,7 +124,7 @@ jobs:
     runs-on: warp-ubuntu-latest-arm64-4x
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: "${{ github.event.inputs.releasetag }}"
       - name: Set up Go
@@ -225,7 +225,7 @@ jobs:
     runs-on: warp-ubuntu-latest-x64-4x
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: "${{ github.event.inputs.releasetag }}"
       - name: Set Dgraph Release Version
@@ -250,13 +250,13 @@ jobs:
 
           # Download AMD64 Tar File
       - name: Download Dgraph AMD64 Tar
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: dgraph-docker-amd64
 
       # Download Dgraph ARM64 Tar File
       - name: Download ARM64 Tar
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: dgraph-docker-arm64
 
@@ -273,7 +273,7 @@ jobs:
       # Download Standalone AMD64 Tar File
       - name: Download Standalone AMD64 Tar
         if: inputs.custom-build == false
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: dgraph-standalone-amd64
 
@@ -286,7 +286,7 @@ jobs:
       # Download Standalone ARM64 Tar File
       - name: Download Standalone ARM64 Tar
         if: inputs.custom-build == false
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: dgraph-standalone-arm64
 

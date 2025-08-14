@@ -16,9 +16,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout dgraph repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Checkout jepsen repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: hypermodeinc/jepsen
           path: jepsen
