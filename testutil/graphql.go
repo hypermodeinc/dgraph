@@ -91,11 +91,12 @@ func MakeGQLRequestWithAccessJwt(t *testing.T, params *GraphQLParams, accessToke
 func MakeGQLRequestWithAccessJwtAndTLS(t *testing.T, params *GraphQLParams,
 	tls *tls.Config, accessToken string) *GraphQLResponse {
 
+	ensureAddressesInitialized()
 	var adminUrl string
 	if tls != nil {
-		adminUrl = "https://" + SockAddrHttp + "/admin"
+		adminUrl = "https://" + GetSockAddrHttp() + "/admin"
 	} else {
-		adminUrl = "http://" + SockAddrHttp + "/admin"
+		adminUrl = "http://" + GetSockAddrHttp() + "/admin"
 	}
 
 	b, err := json.Marshal(params)

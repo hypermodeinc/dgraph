@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"testing"
 	"time"
 
@@ -26,6 +27,9 @@ import (
 )
 
 func TestCheckUpgrade(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Skipping test on non-Linux platforms due to dgraph binary dependency")
+	}
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).
 		WithACL(time.Hour).WithVersion("57aa5c4ac")
 	c, err := dgraphtest.NewLocalCluster(conf)

@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -43,84 +44,247 @@ var (
 	TestDataDirectory string
 	Instance          string
 	MinioInstance     string
-	// SockAddr is the address to the gRPC endpoint of the alpha used during tests with localhost
-	SockAddrLocalhost string
-	// SockAddr is the address to the gRPC endpoint of the alpha used during tests.
-	SockAddr string
-	// SockAddrHttp is the address to the HTTP of alpha used during tests.
-	SockAddrHttp          string
-	SockAddrHttpLocalhost string
-	// SockAddrZero is the address to the gRPC endpoint of the zero used during tests.
-	SockAddrZero string
-	// SockAddrZeroHttp is the address to the HTTP endpoint of the zero used during tests.
-	SockAddrZeroHttp      string
-	SockAddrZeroLocalhost string
 
-	// SockAddrAlpha4 is the address to the gRPC endpoint of the alpha4 used during restore tests.
-	SockAddrAlpha4 string
-	// SockAddrAlpha4Http is the address to the HTTP of alpha4 used during restore tests.
-	SockAddrAlpha4Http string
-	// SockAddrZero4 is the address to the gRPC endpoint of the zero4 used during restore tests.
-	SockAddrZero4 string
-	// SockAddrZero4Http is the address to the HTTP endpoint of the zero4 used during restore tests.
-	SockAddrZero4Http string
-	// SockAddrAlpha7 is the address to the gRPC endpoint of the alpha4 used during restore tests.
-	SockAddrAlpha7 string
-	// SockAddrAlpha7Http is the address to the HTTP of alpha7 used during restore tests.
-	SockAddrAlpha7Http string
-	// SockAddrZero7 is the address to the gRPC endpoint of the zero7 used during restore tests.
-	SockAddrZero7 string
-	// SockAddrZero7Http is the address to the HTTP endpoint of the zero7 used during restore tests.
-	SockAddrZero7Http string
-	// SockAddrAlpha8 is the address to the gRPC endpoint of the alpha8 used during restore tests.
-	SockAddrAlpha8 string
-	// SockAddrAlpha8Http is the address to the HTTP of alpha8 used during restore tests.
-	SockAddrAlpha8Http string
-	// SockAddrZero8 is the address to the gRPC endpoint of the zero8 used during restore tests.
-	SockAddrZero8 string
-	// SockAddrZero8Http is the address to the HTTP endpoint of the zero8 used during restore tests.
-	SockAddrZero8Http string
+	// sockAddrLocalhost is the address to the gRPC endpoint of the alpha used during tests with localhost
+	sockAddrLocalhost string
+	// sockAddr is the address to the gRPC endpoint of the alpha used during tests.
+	sockAddr string
+	// sockAddrHttp is the address to the HTTP of alpha used during tests.
+	sockAddrHttp          string
+	sockAddrHttpLocalhost string
+	// sockAddrZero is the address to the gRPC endpoint of the zero used during tests.
+	sockAddrZero string
+	// sockAddrZeroHttp is the address to the HTTP endpoint of the zero used during tests.
+	sockAddrZeroHttp      string
+	sockAddrZeroLocalhost string
+
+	// sockAddrAlpha4 is the address to the gRPC endpoint of the alpha4 used during restore tests.
+	sockAddrAlpha4 string
+	// sockAddrAlpha4Http is the address to the HTTP of alpha4 used during restore tests.
+	sockAddrAlpha4Http string
+	// sockAddrZero4 is the address to the gRPC endpoint of the zero4 used during restore tests.
+	sockAddrZero4 string
+	// sockAddrZero4Http is the address to the HTTP endpoint of the zero4 used during restore tests.
+	sockAddrZero4Http string
+	// sockAddrAlpha7 is the address to the gRPC endpoint of the alpha4 used during restore tests.
+	sockAddrAlpha7 string
+	// sockAddrAlpha7Http is the address to the HTTP of alpha7 used during restore tests.
+	sockAddrAlpha7Http string
+	// sockAddrZero7 is the address to the gRPC endpoint of the zero7 used during restore tests.
+	sockAddrZero7 string
+	// sockAddrZero7Http is the address to the HTTP endpoint of the zero7 used during restore tests.
+	sockAddrZero7Http string
+	// sockAddrAlpha8 is the address to the gRPC endpoint of the alpha8 used during restore tests.
+	sockAddrAlpha8 string
+	// sockAddrAlpha8Http is the address to the HTTP of alpha8 used during restore tests.
+	sockAddrAlpha8Http string
+	// sockAddrZero8 is the address to the gRPC endpoint of the zero8 used during restore tests.
+	sockAddrZero8 string
+	// sockAddrZero8Http is the address to the HTTP endpoint of the zero8 used during restore tests.
+	sockAddrZero8Http string
+
+	// sync.Once to ensure addresses are initialized only once
+	addressInitOnce sync.Once
 )
 
 func AdminUrlHttps() string {
-	return "https://" + SockAddrHttp + "/admin"
+	ensureAddressesInitialized()
+	return "https://" + sockAddrHttp + "/admin"
 }
 
 func AdminUrl() string {
-	return "http://" + SockAddrHttp + "/admin"
+	ensureAddressesInitialized()
+	return "http://" + sockAddrHttp + "/admin"
 }
 
-// This allows running (most) tests against dgraph running on the default ports, for example.
-// Only the GRPC ports are needed and the others are deduced.
+// Initialize basic environment variables that don't require Docker API calls
 func init() {
 	DockerPrefix = os.Getenv("TEST_DOCKER_PREFIX")
 	TestDataDirectory = os.Getenv("TEST_DATA_DIRECTORY")
-	MinioInstance = ContainerAddr("minio", 9001)
-	Instance = fmt.Sprintf("%s_%s_1", DockerPrefix, "alpha1")
-	SockAddrLocalhost = ContainerAddrLocalhost("alpha1", 9080)
-	SockAddr = ContainerAddr("alpha1", 9080)
-	SockAddrHttp = ContainerAddr("alpha1", 8080)
-	SockAddrHttpLocalhost = ContainerAddrLocalhost("alpha1", 8080)
+}
 
-	SockAddrZero = ContainerAddr("zero1", 5080)
-	SockAddrZeroLocalhost = ContainerAddrLocalhost("zero1", 5080)
-	SockAddrZeroHttp = ContainerAddr("zero1", 6080)
+// ensureAddressesInitialized ensures that all address variables are populated
+// This uses sync.Once to ensure thread-safe lazy initialization
+func ensureAddressesInitialized() {
+	addressInitOnce.Do(func() {
+		// If DockerPrefix is empty, provide fallback default addresses
+		if DockerPrefix == "" {
+			// Use default ports when no Docker containers are available
+			MinioInstance = "localhost:9001"
+			Instance = "alpha1_1"
+			sockAddrLocalhost = "localhost:9080"
+			sockAddr = "localhost:9080"
+			sockAddrHttp = "localhost:8080"
+			sockAddrHttpLocalhost = "localhost:8080"
 
-	SockAddrAlpha4 = ContainerAddr("alpha4", 9080)
-	SockAddrAlpha4Http = ContainerAddr("alpha4", 8080)
-	SockAddrAlpha7 = ContainerAddr("alpha7", 9080)
-	SockAddrAlpha7Http = ContainerAddr("alpha7", 8080)
-	SockAddrZero7 = ContainerAddr("zero7", 5080)
-	SockAddrZero7Http = ContainerAddr("zero7", 6080)
-	SockAddrAlpha8 = ContainerAddr("alpha8", 9080)
-	SockAddrAlpha8Http = ContainerAddr("alpha8", 8080)
-	SockAddrZero8 = ContainerAddr("zero8", 5080)
-	SockAddrZero8Http = ContainerAddr("zero8", 6080)
+			sockAddrZero = "localhost:5080"
+			sockAddrZeroLocalhost = "localhost:5080"
+			sockAddrZeroHttp = "localhost:6080"
+			sockAddrAlpha4 = "localhost:9080"
+			sockAddrAlpha4Http = "localhost:8080"
+			sockAddrAlpha7 = "localhost:9080"
+			sockAddrAlpha7Http = "localhost:8080"
+			sockAddrZero7 = "localhost:5080"
+			sockAddrZero7Http = "localhost:6080"
+			sockAddrAlpha8 = "localhost:9080"
+			sockAddrAlpha8Http = "localhost:8080"
+			sockAddrZero8 = "localhost:5080"
+			sockAddrZero8Http = "localhost:6080"
 
-	SockAddrZero4 = ContainerAddr("zero2", 5080)
-	SockAddrZero4Http = ContainerAddr("zero2", 6080)
+			sockAddrZero4 = "localhost:5080"
+			sockAddrZero4Http = "localhost:6080"
+		} else {
+			// Define container configurations for multi-threaded resolution
+			type containerConfig struct {
+				name         string
+				port         uint16
+				target       *string
+				useLocalhost bool
+			}
 
-	fmt.Printf("testutil: %q %s %s\n", DockerPrefix, SockAddr, SockAddrZero)
+			// Configure all container address resolutions
+			configs := []containerConfig{
+				{"minio", 9001, &MinioInstance, false},
+				{"alpha1", 9080, &sockAddrLocalhost, true},
+				{"alpha1", 9080, &sockAddr, false},
+				{"alpha1", 8080, &sockAddrHttp, false},
+				{"alpha1", 8080, &sockAddrHttpLocalhost, true},
+				{"zero1", 5080, &sockAddrZero, false},
+				{"zero1", 5080, &sockAddrZeroLocalhost, true},
+				{"zero1", 6080, &sockAddrZeroHttp, false},
+				{"alpha4", 9080, &sockAddrAlpha4, false},
+				{"alpha4", 8080, &sockAddrAlpha4Http, false},
+				{"alpha7", 9080, &sockAddrAlpha7, false},
+				{"alpha7", 8080, &sockAddrAlpha7Http, false},
+				{"zero7", 5080, &sockAddrZero7, false},
+				{"zero7", 6080, &sockAddrZero7Http, false},
+				{"alpha8", 9080, &sockAddrAlpha8, false},
+				{"alpha8", 8080, &sockAddrAlpha8Http, false},
+				{"zero8", 5080, &sockAddrZero8, false},
+				{"zero8", 6080, &sockAddrZero8Http, false},
+				{"zero2", 5080, &sockAddrZero4, false},
+				{"zero2", 6080, &sockAddrZero4Http, false},
+			}
+
+			// Resolve addresses concurrently
+			var wg sync.WaitGroup
+			for _, config := range configs {
+				wg.Add(1)
+				go func(cfg containerConfig) {
+					defer wg.Done()
+					if cfg.useLocalhost {
+						*cfg.target = ContainerAddrLocalhost(cfg.name, cfg.port)
+					} else {
+						*cfg.target = ContainerAddr(cfg.name, cfg.port)
+					}
+				}(config)
+			}
+
+			// Set Instance separately as it's not a container address
+			Instance = fmt.Sprintf("%s_%s_1", DockerPrefix, "alpha1")
+
+			// Wait for all goroutines to complete
+			wg.Wait()
+		}
+	})
+}
+
+// Getter functions that ensure addresses are initialized before returning them
+// These can be used when you need to ensure initialization happens
+
+func GetSockAddr() string {
+	ensureAddressesInitialized()
+	return sockAddr
+}
+
+func GetSockAddrHttp() string {
+	ensureAddressesInitialized()
+	return sockAddrHttp
+}
+
+func GetSockAddrZero() string {
+	ensureAddressesInitialized()
+	return sockAddrZero
+}
+
+func GetSockAddrZeroHttp() string {
+	ensureAddressesInitialized()
+	return sockAddrZeroHttp
+}
+
+func GetSockAddrLocalhost() string {
+	ensureAddressesInitialized()
+	return sockAddrLocalhost
+}
+
+func GetSockAddrHttpLocalhost() string {
+	ensureAddressesInitialized()
+	return sockAddrHttpLocalhost
+}
+
+func GetSockAddrZeroLocalhost() string {
+	ensureAddressesInitialized()
+	return sockAddrZeroLocalhost
+}
+
+func GetSockAddrAlpha4() string {
+	ensureAddressesInitialized()
+	return sockAddrAlpha4
+}
+
+func GetSockAddrAlpha4Http() string {
+	ensureAddressesInitialized()
+	return sockAddrAlpha4Http
+}
+
+func GetSockAddrZero4() string {
+	ensureAddressesInitialized()
+	return sockAddrZero4
+}
+
+func GetSockAddrZero4Http() string {
+	ensureAddressesInitialized()
+	return sockAddrZero4Http
+}
+
+func GetSockAddrAlpha7() string {
+	ensureAddressesInitialized()
+	return sockAddrAlpha7
+}
+
+func GetSockAddrAlpha7Http() string {
+	ensureAddressesInitialized()
+	return sockAddrAlpha7Http
+}
+
+func GetSockAddrZero7() string {
+	ensureAddressesInitialized()
+	return sockAddrZero7
+}
+
+func GetSockAddrZero7Http() string {
+	ensureAddressesInitialized()
+	return sockAddrZero7Http
+}
+
+func GetSockAddrAlpha8() string {
+	ensureAddressesInitialized()
+	return sockAddrAlpha8
+}
+
+func GetSockAddrAlpha8Http() string {
+	ensureAddressesInitialized()
+	return sockAddrAlpha8Http
+}
+
+func GetSockAddrZero8() string {
+	ensureAddressesInitialized()
+	return sockAddrZero8
+}
+
+func GetSockAddrZero8Http() string {
+	ensureAddressesInitialized()
+	return sockAddrZero8Http
 }
 
 // DgraphClientDropAll creates a Dgraph client and drops all existing data.
@@ -487,7 +651,8 @@ top:
 
 // AssignUids talks to zero to assign the given number of uids.
 func AssignUids(num uint64) error {
-	resp, err := http.Get(fmt.Sprintf("http://"+SockAddrZeroHttp+"/assign?what=uids&num=%d", num))
+	ensureAddressesInitialized()
+	resp, err := http.Get(fmt.Sprintf("http://"+sockAddrZeroHttp+"/assign?what=uids&num=%d", num))
 	type assignResp struct {
 		Errors []struct {
 			Message string

@@ -124,7 +124,7 @@ func readBestEffort(t *testing.T, dg *dgo.Dgraph, pred string, M int) {
 }
 
 func setup(t *testing.T) *dgo.Dgraph {
-	dg, err := testutil.DgraphClientWithGroot(testutil.SockAddr)
+	dg, err := testutil.DgraphClientWithGroot(testutil.GetSockAddr())
 	if err != nil {
 		t.Fatalf("Error while getting a dgraph client: %v", err)
 	}

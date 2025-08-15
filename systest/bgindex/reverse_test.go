@@ -34,7 +34,7 @@ func TestReverseIndex(t *testing.T) {
 	var dg *dgo.Dgraph
 	err := x.RetryUntilSuccess(10, time.Second, func() error {
 		var err error
-		dg, err = testutil.DgraphClientWithGroot(testutil.SockAddr)
+		dg, err = testutil.DgraphClientWithGroot(testutil.GetSockAddr())
 		return err
 	})
 	require.NoError(t, err)

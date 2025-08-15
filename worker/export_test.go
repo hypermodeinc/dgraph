@@ -390,7 +390,7 @@ const exportRequest = `mutation export($format: String!) {
 }`
 
 func TestExportFormat(t *testing.T) {
-	adminUrl := "http://" + testutil.SockAddrHttp + "/admin"
+	adminUrl := "http://" + testutil.GetSockAddrHttp() + "/admin"
 	require.NoError(t, testutil.CheckForGraphQLEndpointToReady(t))
 
 	params := testutil.GraphQLParams{
@@ -407,7 +407,7 @@ func TestExportFormat(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&data))
 	require.Equal(t, "Success", testutil.JsonGet(data, "data", "export", "response", "code").(string))
 	taskId := testutil.JsonGet(data, "data", "export", "taskId").(string)
-	testutil.WaitForTask(t, taskId, false, testutil.SockAddrHttp)
+	testutil.WaitForTask(t, taskId, false, testutil.GetSockAddrHttp())
 
 	params.Variables["format"] = "rdf"
 	b, err = json.Marshal(params)

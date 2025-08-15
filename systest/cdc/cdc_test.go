@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -23,9 +24,12 @@ import (
 )
 
 func TestCDC(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Skipping test on non-Linux platforms due to dgraph binary dependency")
+	}
 	defer os.RemoveAll("./cdc_logs/sink.log")
 	cmd := exec.Command("dgraph", "increment", "--num", "10",
-		"--alpha", testutil.SockAddr)
+		"--alpha", testutil.GetSockAddr())
 	if out, err := cmd.CombinedOutput(); err != nil {
 		fmt.Println(string(out))
 		t.Fatal(err)
