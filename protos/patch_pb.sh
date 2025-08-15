@@ -9,10 +9,18 @@
 # This patch script applies the necessary changes to pb.pb.go.
 PB_GEN_FILE="./pb/pb.pb.go"
 
-sed -i 's/SessionToken string/SessionToken Sensitive/' "${PB_GEN_FILE}"
-sed -i 's/SecretKey    string/SecretKey    Sensitive/' "${PB_GEN_FILE}"
+# Function to perform in-place sed that works on both macOS and Linux
+sed_inplace() {
+	local tmpfile
+	tmpfile=$(mktemp)
+	sed "$1" "$2" >"${tmpfile}" && mv "${tmpfile}" "$2"
+	rm -f "${tmpfile}"
+}
 
-sed -i 's/GetSessionToken() string {/GetSessionToken() Sensitive {/' "${PB_GEN_FILE}"
-sed -i 's/GetSecretKey() string/GetSecretKey() Sensitive/' "${PB_GEN_FILE}"
+# Apply the replacements using the cross-platform function
+sed_inplace 's/SessionToken string/SessionToken Sensitive/' "${PB_GEN_FILE}"
+sed_inplace 's/SecretKey    string/SecretKey    Sensitive/' "${PB_GEN_FILE}"
+sed_inplace 's/GetSessionToken() string {/GetSessionToken() Sensitive {/' "${PB_GEN_FILE}"
+sed_inplace 's/GetSecretKey() string/GetSecretKey() Sensitive/' "${PB_GEN_FILE}"
 
 echo "Patches applied successfully."
