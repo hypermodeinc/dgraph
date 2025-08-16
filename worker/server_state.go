@@ -92,6 +92,32 @@ func setBadgerOptions(opt badger.Options) badger.Options {
 	return opt
 }
 
+func (s *ServerState) InitPstore() {
+	// Postings directory
+	// All the writes to posting store should be synchronous. We use batched writers
+	// for posting lists, so the cost of sync writes is amortized.
+	x.Check(os.MkdirAll(Config.PostingDir, 0700))
+	opt := x.WorkerConfig.Badger.
+		WithDir(Config.PostingDir).WithValueDir(Config.PostingDir).
+		WithNumVersionsToKeep(math.MaxInt32).
+		WithNamespaceOffset(x.NamespaceOffset)
+	opt = setBadgerOptions(opt)
+
+	// Print the options w/o exposing key.
+	// TODO: Build a stringify interface in Badger options, which is used to print nicely here.
+	key := opt.EncryptionKey
+	opt.EncryptionKey = nil
+	glog.Infof("Opening postings BadgerDB with options: %+v\n", opt)
+	opt.EncryptionKey = key
+
+	var err error
+	s.Pstore, err = badger.OpenManaged(opt)
+	x.Checkf(err, "Error while creating badger KV posting store")
+
+	// zero out from memory
+	opt.EncryptionKey = nil
+}
+
 func (s *ServerState) InitStorage() {
 	var err error
 
@@ -106,28 +132,7 @@ func (s *ServerState) InitStorage() {
 		x.Check(err)
 	}
 	{
-		// Postings directory
-		// All the writes to posting store should be synchronous. We use batched writers
-		// for posting lists, so the cost of sync writes is amortized.
-		x.Check(os.MkdirAll(Config.PostingDir, 0700))
-		opt := x.WorkerConfig.Badger.
-			WithDir(Config.PostingDir).WithValueDir(Config.PostingDir).
-			WithNumVersionsToKeep(math.MaxInt32).
-			WithNamespaceOffset(x.NamespaceOffset)
-		opt = setBadgerOptions(opt)
-
-		// Print the options w/o exposing key.
-		// TODO: Build a stringify interface in Badger options, which is used to print nicely here.
-		key := opt.EncryptionKey
-		opt.EncryptionKey = nil
-		glog.Infof("Opening postings BadgerDB with options: %+v\n", opt)
-		opt.EncryptionKey = key
-
-		s.Pstore, err = badger.OpenManaged(opt)
-		x.Checkf(err, "Error while creating badger KV posting store")
-
-		// zero out from memory
-		opt.EncryptionKey = nil
+		s.InitPstore()
 	}
 	// Temp directory
 	x.Check(os.MkdirAll(x.WorkerConfig.TmpDir, 0700))
