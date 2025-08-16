@@ -49,7 +49,7 @@ func (asuite *AclTestSuite) TestCurlAuthorization() {
 		return []string{"-H", fmt.Sprintf("X-Dgraph-AccessToken:%s", jwt),
 			"--ipv4",
 			"-H", "Content-Type: application/dql",
-			"-d", query, testutil.SockAddrHttp + "/query"}
+			"-d", query, testutil.GetSockAddrHttp() + "/query"}
 	}
 	testutil.VerifyCurlCmd(t, queryArgs(hc.AccessJwt), &testutil.CurlFailureConfig{
 		ShouldFail: false,
@@ -60,7 +60,7 @@ func (asuite *AclTestSuite) TestCurlAuthorization() {
 			"-H", "Content-Type: application/rdf",
 			"-d", fmt.Sprintf(`{ set {
 	   _:a <%s>  "string" .
-	   }}`, predicateToWrite), testutil.SockAddrHttp + "/mutate"}
+	   }}`, predicateToWrite), testutil.GetSockAddrHttp() + "/mutate"}
 
 	}
 
@@ -71,7 +71,7 @@ func (asuite *AclTestSuite) TestCurlAuthorization() {
 
 	alterArgs := func(jwt string) []string {
 		return []string{"-H", fmt.Sprintf("X-Dgraph-AccessToken:%s", jwt),
-			"-d", fmt.Sprintf(`%s: int .`, predicateToAlter), testutil.SockAddrHttp + "/alter"}
+			"-d", fmt.Sprintf(`%s: int .`, predicateToAlter), testutil.GetSockAddrHttp() + "/alter"}
 	}
 	testutil.VerifyCurlCmd(t, alterArgs(hc.AccessJwt), &testutil.CurlFailureConfig{
 		ShouldFail:   true,

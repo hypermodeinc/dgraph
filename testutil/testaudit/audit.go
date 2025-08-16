@@ -53,11 +53,11 @@ func TestGenerateAuditForTestDecrypt(t *testing.T) {
 	t.Skip()
 	zeroCmd := map[string][]string{
 		"/removeNode": {`--location`, "--request", "GET", "--ipv4",
-			fmt.Sprintf("%s/removeNode?id=3&group=1", testutil.SockAddrZeroHttp)},
+			fmt.Sprintf("%s/removeNode?id=3&group=1", testutil.GetSockAddrZeroHttp())},
 		"/assign": {"--location", "--request", "GET", "--ipv4",
-			fmt.Sprintf("%s/assign?what=uids&num=100", testutil.SockAddrZeroHttp)},
+			fmt.Sprintf("%s/assign?what=uids&num=100", testutil.GetSockAddrZeroHttp())},
 		"/moveTablet": {"--location", "--request", "GET", "--ipv4",
-			fmt.Sprintf("%s/moveTablet?tablet=name&group=2", testutil.SockAddrZeroHttp)}}
+			fmt.Sprintf("%s/moveTablet?tablet=name&group=2", testutil.GetSockAddrZeroHttp())}}
 
 	for _, c := range zeroCmd {
 		cmd := exec.Command("curl", c...)

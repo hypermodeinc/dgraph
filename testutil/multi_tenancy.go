@@ -339,7 +339,8 @@ func AddRulesToGroup(t *testing.T, token *HttpToken, group string, rules []Rule,
 }
 
 func DgClientWithLogin(t *testing.T, id, password string, ns uint64) *dgo.Dgraph {
-	userClient, err := DgraphClient(SockAddr)
+	ensureAddressesInitialized()
+	userClient, err := DgraphClient(GetSockAddr())
 	require.NoError(t, err)
 
 	require.NoError(t, x.RetryUntilSuccess(10, 100*time.Millisecond, func() error {

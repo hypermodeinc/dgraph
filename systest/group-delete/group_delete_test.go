@@ -175,7 +175,7 @@ func TestNodes(t *testing.T) {
 	require.NoError(t, err)
 
 	for pred := range state1.Groups["2"].Tablets {
-		moveUrl := fmt.Sprintf("http://"+testutil.SockAddrZeroHttp+"/moveTablet?tablet=%s&group=1",
+		moveUrl := fmt.Sprintf("http://"+testutil.GetSockAddrZeroHttp()+"/moveTablet?tablet=%s&group=1",
 			url.QueryEscape(pred))
 		resp, err := http.Get(moveUrl)
 		require.NoError(t, err)
@@ -192,7 +192,7 @@ func TestNodes(t *testing.T) {
 
 	groupNodes, err = testutil.GetNodesInGroup("2")
 	require.NoError(t, err)
-	resp, err := http.Get("http://" + testutil.SockAddrZeroHttp + "/removeNode?group=2&id=" +
+	resp, err := http.Get("http://" + testutil.GetSockAddrZeroHttp() + "/removeNode?group=2&id=" +
 		groupNodes[0])
 	require.NoError(t, err)
 	require.NoError(t, getError(resp.Body))

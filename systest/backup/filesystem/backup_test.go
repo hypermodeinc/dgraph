@@ -77,7 +77,7 @@ func TestBackupOfOldRestore(t *testing.T) {
 	common.DirSetup(t)
 	common.CopyOldBackupDir(t)
 
-	conn, err := grpc.NewClient(testutil.SockAddr, grpc.WithTransportCredentials(credentials.NewTLS(testutil.GetAlphaClientConfig(t))))
+	conn, err := grpc.NewClient(testutil.GetSockAddr(), grpc.WithTransportCredentials(credentials.NewTLS(testutil.GetAlphaClientConfig(t))))
 	require.NoError(t, err)
 	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
 	require.NoError(t, err)
@@ -88,7 +88,7 @@ func TestBackupOfOldRestore(t *testing.T) {
 	_ = runBackup(t, 3, 1)
 
 	sendRestoreRequest(t, oldBackupDir1)
-	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
+	testutil.WaitForRestore(t, dg, testutil.GetSockAddrHttp())
 
 	q := `{ authors(func: has(Author.name)) { count(uid) } }`
 	resp, err := dg.NewTxn().Query(context.Background(), q)
@@ -101,7 +101,7 @@ func TestBackupOfOldRestore(t *testing.T) {
 	testutil.DropAll(t, dg)
 	time.Sleep(2 * time.Second)
 	sendRestoreRequest(t, alphaBackupDir)
-	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
+	testutil.WaitForRestore(t, dg, testutil.GetSockAddrHttp())
 
 	resp, err = dg.NewTxn().Query(context.Background(), q)
 	require.NoError(t, err)
@@ -118,7 +118,7 @@ func TestRestoreOfOldBackup(t *testing.T) {
 		common.DirSetup(t)
 		common.CopyOldBackupDir(t)
 
-		conn, err := grpc.NewClient(testutil.SockAddr,
+		conn, err := grpc.NewClient(testutil.GetSockAddr(),
 			grpc.WithTransportCredentials(credentials.NewTLS(testutil.GetAlphaClientConfig(t))))
 		require.NoError(t, err)
 		dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
@@ -128,7 +128,7 @@ func TestRestoreOfOldBackup(t *testing.T) {
 		time.Sleep(2 * time.Second)
 
 		sendRestoreRequest(t, dir)
-		testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
+		testutil.WaitForRestore(t, dg, testutil.GetSockAddrHttp())
 
 		queryAndCheck := func(pred string, cnt int) {
 			q := fmt.Sprintf(`{ me(func: has(%s)) { count(uid) } }`, pred)
@@ -148,7 +148,7 @@ func TestRestoreOfOldBackup(t *testing.T) {
 }
 
 func TestBackupFilesystem(t *testing.T) {
-	conn, err := grpc.NewClient(testutil.SockAddr,
+	conn, err := grpc.NewClient(testutil.GetSockAddr(),
 		grpc.WithTransportCredentials(credentials.NewTLS(testutil.GetAlphaClientConfig(t))))
 	require.NoError(t, err)
 	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
@@ -190,7 +190,7 @@ func TestBackupFilesystem(t *testing.T) {
 
 	// Move tablet to group 1 to avoid messes later.
 	client := testutil.GetHttpsClient(t)
-	_, err = client.Get("https://" + testutil.SockAddrZeroHttp + "/moveTablet?tablet=movie&group=1")
+	_, err = client.Get("https://" + testutil.GetSockAddrZeroHttp() + "/moveTablet?tablet=movie&group=1")
 	require.NoError(t, err)
 
 	// After the move, we need to pause a bit to give zero a chance to quorum.
@@ -403,7 +403,7 @@ func runBackupInternal(t *testing.T, forceFull bool, numExpectedFiles,
 			}
 		}`
 
-	adminUrl := "https://" + testutil.SockAddrHttp + "/admin"
+	adminUrl := "https://" + testutil.GetSockAddrHttp() + "/admin"
 	params := testutil.GraphQLParams{
 		Query: backupRequest,
 		Variables: map[string]interface{}{
@@ -424,7 +424,7 @@ func runBackupInternal(t *testing.T, forceFull bool, numExpectedFiles,
 	require.Equal(t, "Success",
 		testutil.JsonGet(data, "data", "backup", "response", "code").(string))
 	taskId := testutil.JsonGet(data, "data", "backup", "taskId").(string)
-	testutil.WaitForTask(t, taskId, true, testutil.SockAddrHttp)
+	testutil.WaitForTask(t, taskId, true, testutil.GetSockAddrHttp())
 
 	// Verify that the right amount of files and directories were created.
 	common.CopyToLocalFs(t)

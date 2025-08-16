@@ -40,14 +40,14 @@ var (
 
 func TestBackupHAClust(t *testing.T) {
 
-	backupRestoreTest(t, testutil.SockAddr, testutil.SockAddrAlpha4Http,
-		testutil.SockAddrZeroHttp, backupDstHA, testutil.SockAddrHttp)
+	backupRestoreTest(t, testutil.GetSockAddr(), testutil.GetSockAddrAlpha4Http(),
+		testutil.GetSockAddrZeroHttp(), backupDstHA, testutil.GetSockAddrHttp())
 }
 
 func TestBackupNonHAClust(t *testing.T) {
 
-	backupRestoreTest(t, testutil.SockAddrAlpha7, testutil.SockAddrAlpha8Http,
-		testutil.SockAddrZero7Http, backupDstNonHA, testutil.SockAddrAlpha7Http)
+	backupRestoreTest(t, testutil.GetSockAddrAlpha7(), testutil.GetSockAddrAlpha8Http(),
+		testutil.GetSockAddrZero7Http(), backupDstNonHA, testutil.GetSockAddrAlpha7Http())
 }
 
 func backupRestoreTest(t *testing.T, backupAlphaSocketAddr string, restoreAlphaAddr string,

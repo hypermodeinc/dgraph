@@ -22,7 +22,7 @@ import (
 func TestLivePassword(t *testing.T) {
 	wrap := func(fn func(*testing.T, *dgo.Dgraph)) func(*testing.T) {
 		return func(t *testing.T) {
-			dg, err := testutil.DgraphClientWithGroot(testutil.SockAddr)
+			dg, err := testutil.DgraphClientWithGroot(testutil.GetSockAddr())
 			if err != nil {
 				t.Fatalf("Error while getting a dgraph client: %v", err)
 			}

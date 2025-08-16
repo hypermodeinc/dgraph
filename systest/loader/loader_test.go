@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -21,6 +22,14 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/testutil"
 	"github.com/hypermodeinc/dgraph/v25/x"
 )
+
+func TestMain(m *testing.M) {
+	if runtime.GOOS != "linux" {
+		fmt.Println("Skipping loader tests on non-Linux platforms due to dgraph binary dependency")
+		os.Exit(0)
+	}
+	m.Run()
+}
 
 // TestLoaderXidmap checks that live loader re-uses xidmap on loading data from two different files
 func TestLoaderXidmap(t *testing.T) {
@@ -39,7 +48,7 @@ func TestLoaderXidmap(t *testing.T) {
 		// internal-port
 		true))
 
-	dg, err := testutil.DgraphClientWithCerts(testutil.SockAddrLocalhost, conf)
+	dg, err := testutil.DgraphClientWithCerts(testutil.GetSockAddrLocalhost(), conf)
 	require.NoError(t, err)
 	ctx := context.Background()
 	testutil.DropAll(t, dg)
@@ -67,8 +76,8 @@ func TestLoaderXidmap(t *testing.T) {
 	err = testutil.ExecWithOpts([]string{testutil.DgraphBinaryPath(), "live",
 		"--tls", tlsFlag,
 		"--files", data,
-		"--alpha", testutil.SockAddrLocalhost,
-		"--zero", testutil.SockAddrZeroLocalhost,
+		"--alpha", testutil.GetSockAddrLocalhost(),
+		"--zero", testutil.GetSockAddrZeroLocalhost(),
 		"-x", "x"}, testutil.CmdOpts{Dir: tmpDir})
 	require.NoError(t, err)
 
@@ -78,8 +87,8 @@ func TestLoaderXidmap(t *testing.T) {
 	err = testutil.ExecWithOpts([]string{testutil.DgraphBinaryPath(), "live",
 		"--tls", tlsFlag,
 		"--files", data,
-		"--alpha", testutil.SockAddrLocalhost,
-		"--zero", testutil.SockAddrZeroLocalhost,
+		"--alpha", testutil.GetSockAddrLocalhost(),
+		"--zero", testutil.GetSockAddrZeroLocalhost(),
 		"-x", "x"}, testutil.CmdOpts{Dir: tmpDir})
 	require.NoError(t, err)
 

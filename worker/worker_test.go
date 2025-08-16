@@ -148,7 +148,7 @@ func initTest(t *testing.T, schemaStr string) {
 }
 
 func initClusterTest(t *testing.T, schemaStr string) *dgo.Dgraph {
-	dg, err := testutil.DgraphClient(testutil.SockAddr)
+	dg, err := testutil.DgraphClient(testutil.GetSockAddr())
 	if err != nil {
 		t.Fatalf("Error while getting a dgraph client: %v", err)
 	}
@@ -239,7 +239,7 @@ func runQuery(dg *dgo.Dgraph, attr string, uids []uint64, srcFunc []string) (*ap
 }
 
 func BenchmarkEqFilter(b *testing.B) {
-	dg, err := testutil.DgraphClient(testutil.SockAddr)
+	dg, err := testutil.DgraphClient(testutil.GetSockAddr())
 	if err != nil {
 		panic(err)
 	}
@@ -343,7 +343,7 @@ func TestProcessTaskIndexMLayer(t *testing.T) {
 
 func TestCountReverseIndex(t *testing.T) {
 	schemaStr := "friend: [uid] @count ."
-	dg, err := testutil.DgraphClient(testutil.SockAddr)
+	dg, err := testutil.DgraphClient(testutil.GetSockAddr())
 	if err != nil {
 		t.Fatalf("Error while getting a dgraph client: %v", err)
 	}
@@ -385,7 +385,7 @@ func TestCountReverseIndex(t *testing.T) {
 
 func TestCountIndexOverwrite(t *testing.T) {
 	schemaStr := "friend: [uid] @reverse @count ."
-	dg, err := testutil.DgraphClient(testutil.SockAddr)
+	dg, err := testutil.DgraphClient(testutil.GetSockAddr())
 	if err != nil {
 		t.Fatalf("Error while getting a dgraph client: %v", err)
 	}
@@ -407,7 +407,7 @@ func TestCountIndexOverwrite(t *testing.T) {
 
 func TestCountReverseWithDeletes(t *testing.T) {
 	schemaStr := "friend: [uid] @reverse @count ."
-	dg, err := testutil.DgraphClient(testutil.SockAddr)
+	dg, err := testutil.DgraphClient(testutil.GetSockAddr())
 	if err != nil {
 		t.Fatalf("Error while getting a dgraph client: %v", err)
 	}

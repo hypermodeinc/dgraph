@@ -28,7 +28,7 @@ func TestLoginOverTLS(t *testing.T) {
 		// server-name
 		"alpha1"))
 
-	dg, err := testutil.DgraphClientWithCerts(testutil.SockAddr, conf)
+	dg, err := testutil.DgraphClientWithCerts(testutil.GetSockAddr(), conf)
 	require.NoError(t, err)
 	for i := 0; i < 30; i++ {
 		err = dg.LoginIntoNamespace(context.Background(), "groot", "password", x.RootNamespace)

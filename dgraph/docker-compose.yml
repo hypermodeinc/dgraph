@@ -11,7 +11,7 @@ services:
       service: zero
     volumes:
       - type: bind
-        source: $GOPATH/bin
+        source: ${GOPATH:?GOPATH environment variable is required but not set}/bin
         target: /gobin
         read_only: true
     command:
@@ -32,7 +32,7 @@ services:
       service: zero
     volumes:
       - type: bind
-        source: $GOPATH/bin
+        source: ${GOPATH:?GOPATH environment variable is required but not set}/bin
         target: /gobin
         read_only: true
     command:
@@ -52,7 +52,7 @@ services:
       service: zero
     volumes:
       - type: bind
-        source: $GOPATH/bin
+        source: ${GOPATH:?GOPATH environment variable is required but not set}/bin
         target: /gobin
         read_only: true
     command:
@@ -64,7 +64,7 @@ services:
     working_dir: /data/alpha1
     volumes:
       - type: bind
-        source: $GOPATH/bin
+        source: ${GOPATH:?GOPATH environment variable is required but not set}/bin
         target: /gobin
         read_only: true
       - type: bind
@@ -95,7 +95,7 @@ services:
       - alpha1
     volumes:
       - type: bind
-        source: $GOPATH/bin
+        source: ${GOPATH:?GOPATH environment variable is required but not set}/bin
         target: /gobin
         read_only: true
       - type: bind
@@ -126,7 +126,7 @@ services:
       - alpha2
     volumes:
       - type: bind
-        source: $GOPATH/bin
+        source: ${GOPATH:?GOPATH environment variable is required but not set}/bin
         target: /gobin
         read_only: true
       - type: bind
@@ -157,7 +157,7 @@ services:
       - alpha3
     volumes:
       - type: bind
-        source: $GOPATH/bin
+        source: ${GOPATH:?GOPATH environment variable is required but not set}/bin
         target: /gobin
         read_only: true
       - type: bind
@@ -188,7 +188,7 @@ services:
       - alpha4
     volumes:
       - type: bind
-        source: $GOPATH/bin
+        source: ${GOPATH:?GOPATH environment variable is required but not set}/bin
         target: /gobin
         read_only: true
       - type: bind
@@ -219,7 +219,7 @@ services:
       - alpha5
     volumes:
       - type: bind
-        source: $GOPATH/bin
+        source: ${GOPATH:?GOPATH environment variable is required but not set}/bin
         target: /gobin
         read_only: true
       - type: bind

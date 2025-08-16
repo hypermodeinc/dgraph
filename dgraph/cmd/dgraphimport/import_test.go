@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -301,6 +302,9 @@ func runImportTest(t *testing.T, tt testcase) {
 
 // setupBulkCluster creates and configures a cluster for bulk loading data
 func setupBulkCluster(t *testing.T, numAlphas int, encrypted bool) (*dgraphtest.LocalCluster, string) {
+	if runtime.GOOS != "linux" {
+		t.Skip("Skipping test on non-Linux platforms due to dgraph binary dependency")
+	}
 	baseDir := t.TempDir()
 	bulkConf := dgraphtest.NewClusterConfig().
 		WithNumAlphas(numAlphas).

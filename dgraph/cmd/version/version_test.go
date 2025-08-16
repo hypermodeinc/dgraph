@@ -6,8 +6,10 @@
 package version
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,6 +18,14 @@ import (
 )
 
 // Test `dgraph version` with an empty config file.
+func TestMain(m *testing.M) {
+	if runtime.GOOS != "linux" {
+		fmt.Println("Skipping version tests on non-Linux platforms due to dgraph binary dependency")
+		os.Exit(0)
+	}
+	m.Run()
+}
+
 func TestDgraphVersion(t *testing.T) {
 	tmpPath := t.TempDir()
 	configPath := filepath.Join(tmpPath, "config.yml")

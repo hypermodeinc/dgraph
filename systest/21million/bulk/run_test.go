@@ -69,6 +69,10 @@ func BenchmarkQueries(b *testing.B) {
 }
 
 func TestMain(m *testing.M) {
+	if runtime.GOOS != "linux" {
+		fmt.Println("Skipping 21million bulk tests on non-Linux platforms due to dgraph binary dependency")
+		os.Exit(0)
+	}
 	schemaFile := filepath.Join(testutil.TestDataDirectory, "21million.schema")
 	rdfFile := filepath.Join(testutil.TestDataDirectory, "21million.rdf.gz")
 	if err := testutil.MakeDirEmpty([]string{"out/0", "out/1", "out/2"}); err != nil {
@@ -76,7 +80,7 @@ func TestMain(m *testing.M) {
 	}
 
 	if err := testutil.BulkLoad(testutil.BulkOpts{
-		Zero:       testutil.SockAddrZero,
+		Zero:       testutil.GetSockAddrZero(),
 		Shards:     1,
 		RdfFile:    rdfFile,
 		SchemaFile: schemaFile,

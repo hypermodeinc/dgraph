@@ -251,7 +251,7 @@ func TestLiveLoadExportedSchema(t *testing.T) {
 			  }
 			}`,
 	}
-	token := testutil.GrootHttpLogin("http://" + testutil.SockAddrHttp + "/admin")
+	token := testutil.GrootHttpLogin("http://" + testutil.GetSockAddrHttp() + "/admin")
 	resp := testutil.MakeGQLRequestWithAccessJwt(t, params, token.AccessJwt)
 	require.Nilf(t, resp.Errors, resp.Errors.Error())
 
@@ -351,8 +351,13 @@ func TestLiveLoadFileNameMultipleCorrect(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
+	if runtime.GOOS != "linux" {
+		fmt.Println("Skipping live load-uids tests on non-Linux platforms due to dgraph binary dependency")
+		os.Exit(0)
+	}
+
 	alphaName = testutil.Instance
-	alphaService = testutil.SockAddr
+	alphaService = testutil.GetSockAddr()
 
 	x.AssertTrue(strings.Count(alphaName, "_") == 2)
 	left := strings.Index(alphaName, "_")
@@ -365,7 +370,7 @@ func TestMain(m *testing.M) {
 	fmt.Printf("Using test data dir: %s\n", testDataDir)
 
 	var err error
-	dg, err = testutil.DgraphClientWithGroot(testutil.SockAddr)
+	dg, err = testutil.DgraphClientWithGroot(testutil.GetSockAddr())
 	if err != nil {
 		log.Fatalf("Error while getting a dgraph client: %v", err)
 	}

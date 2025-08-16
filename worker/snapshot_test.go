@@ -28,7 +28,7 @@ import (
 func TestSnapshot(t *testing.T) {
 	snapshotTs := uint64(0)
 
-	dg1, err := testutil.DgraphClient(testutil.SockAddr)
+	dg1, err := testutil.DgraphClient(testutil.GetSockAddr())
 	if err != nil {
 		t.Fatalf("Error while getting a dgraph client: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestSnapshot(t *testing.T) {
 	const testSchema = "type Person { name: String }"
 	// uploading new schema while alpha2 is not running so we can
 	// test whether the stopped alpha gets new schema in snapshot
-	testutil.UpdateGQLSchema(t, testutil.SockAddrHttp, testSchema)
+	testutil.UpdateGQLSchema(t, testutil.GetSockAddrHttp(), testSchema)
 	_ = waitForSnapshot(t, snapshotTs)
 
 	t.Logf("Starting alpha2.\n")
@@ -161,7 +161,7 @@ func verifySnapshot(t *testing.T, dg *dgo.Dgraph, num int) {
 func waitForSnapshot(t *testing.T, prevSnapTs uint64) uint64 {
 	snapPattern := `"snapshotTs":"([0-9]*)"`
 	for {
-		res, err := http.Get("http://" + testutil.SockAddrZeroHttp + "/state")
+		res, err := http.Get("http://" + testutil.GetSockAddrZeroHttp() + "/state")
 		require.NoError(t, err)
 		body, err := io.ReadAll(res.Body)
 		res.Body.Close()
