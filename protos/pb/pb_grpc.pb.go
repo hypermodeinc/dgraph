@@ -900,6 +900,7 @@ const (
 	Worker_DeleteNamespace_FullMethodName                 = "/pb.Worker/DeleteNamespace"
 	Worker_TaskStatus_FullMethodName                      = "/pb.Worker/TaskStatus"
 	Worker_UpdateExtSnapshotStreamingState_FullMethodName = "/pb.Worker/UpdateExtSnapshotStreamingState"
+	Worker_ProposeSnapshotAndWait_FullMethodName          = "/pb.Worker/ProposeSnapshotAndWait"
 	Worker_StreamExtSnapshot_FullMethodName               = "/pb.Worker/StreamExtSnapshot"
 )
 
@@ -923,6 +924,7 @@ type WorkerClient interface {
 	DeleteNamespace(ctx context.Context, in *DeleteNsRequest, opts ...grpc.CallOption) (*Status, error)
 	TaskStatus(ctx context.Context, in *TaskStatusRequest, opts ...grpc.CallOption) (*TaskStatusResponse, error)
 	UpdateExtSnapshotStreamingState(ctx context.Context, in *api_v2.UpdateExtSnapshotStreamingStateRequest, opts ...grpc.CallOption) (*Status, error)
+	ProposeSnapshotAndWait(ctx context.Context, in *api_v2.UpdateExtSnapshotStreamingStateRequest, opts ...grpc.CallOption) (*Status, error)
 	StreamExtSnapshot(ctx context.Context, opts ...grpc.CallOption) (Worker_StreamExtSnapshotClient, error)
 }
 
@@ -1139,6 +1141,15 @@ func (c *workerClient) UpdateExtSnapshotStreamingState(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *workerClient) ProposeSnapshotAndWait(ctx context.Context, in *api_v2.UpdateExtSnapshotStreamingStateRequest, opts ...grpc.CallOption) (*Status, error) {
+	out := new(Status)
+	err := c.cc.Invoke(ctx, Worker_ProposeSnapshotAndWait_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *workerClient) StreamExtSnapshot(ctx context.Context, opts ...grpc.CallOption) (Worker_StreamExtSnapshotClient, error) {
 	stream, err := c.cc.NewStream(ctx, &Worker_ServiceDesc.Streams[3], Worker_StreamExtSnapshot_FullMethodName, opts...)
 	if err != nil {
@@ -1150,7 +1161,7 @@ func (c *workerClient) StreamExtSnapshot(ctx context.Context, opts ...grpc.CallO
 
 type Worker_StreamExtSnapshotClient interface {
 	Send(*api_v2.StreamExtSnapshotRequest) error
-	CloseAndRecv() (*api_v2.StreamExtSnapshotResponse, error)
+	Recv() (*api_v2.StreamExtSnapshotResponse, error)
 	grpc.ClientStream
 }
 
@@ -1162,10 +1173,7 @@ func (x *workerStreamExtSnapshotClient) Send(m *api_v2.StreamExtSnapshotRequest)
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *workerStreamExtSnapshotClient) CloseAndRecv() (*api_v2.StreamExtSnapshotResponse, error) {
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
+func (x *workerStreamExtSnapshotClient) Recv() (*api_v2.StreamExtSnapshotResponse, error) {
 	m := new(api_v2.StreamExtSnapshotResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
@@ -1193,6 +1201,7 @@ type WorkerServer interface {
 	DeleteNamespace(context.Context, *DeleteNsRequest) (*Status, error)
 	TaskStatus(context.Context, *TaskStatusRequest) (*TaskStatusResponse, error)
 	UpdateExtSnapshotStreamingState(context.Context, *api_v2.UpdateExtSnapshotStreamingStateRequest) (*Status, error)
+	ProposeSnapshotAndWait(context.Context, *api_v2.UpdateExtSnapshotStreamingStateRequest) (*Status, error)
 	StreamExtSnapshot(Worker_StreamExtSnapshotServer) error
 	mustEmbedUnimplementedWorkerServer()
 }
@@ -1245,6 +1254,9 @@ func (UnimplementedWorkerServer) TaskStatus(context.Context, *TaskStatusRequest)
 }
 func (UnimplementedWorkerServer) UpdateExtSnapshotStreamingState(context.Context, *api_v2.UpdateExtSnapshotStreamingStateRequest) (*Status, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateExtSnapshotStreamingState not implemented")
+}
+func (UnimplementedWorkerServer) ProposeSnapshotAndWait(context.Context, *api_v2.UpdateExtSnapshotStreamingStateRequest) (*Status, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProposeSnapshotAndWait not implemented")
 }
 func (UnimplementedWorkerServer) StreamExtSnapshot(Worker_StreamExtSnapshotServer) error {
 	return status.Errorf(codes.Unimplemented, "method StreamExtSnapshot not implemented")
@@ -1551,12 +1563,30 @@ func _Worker_UpdateExtSnapshotStreamingState_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Worker_ProposeSnapshotAndWait_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(api_v2.UpdateExtSnapshotStreamingStateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerServer).ProposeSnapshotAndWait(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Worker_ProposeSnapshotAndWait_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerServer).ProposeSnapshotAndWait(ctx, req.(*api_v2.UpdateExtSnapshotStreamingStateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Worker_StreamExtSnapshot_Handler(srv interface{}, stream grpc.ServerStream) error {
 	return srv.(WorkerServer).StreamExtSnapshot(&workerStreamExtSnapshotServer{stream})
 }
 
 type Worker_StreamExtSnapshotServer interface {
-	SendAndClose(*api_v2.StreamExtSnapshotResponse) error
+	Send(*api_v2.StreamExtSnapshotResponse) error
 	Recv() (*api_v2.StreamExtSnapshotRequest, error)
 	grpc.ServerStream
 }
@@ -1565,7 +1595,7 @@ type workerStreamExtSnapshotServer struct {
 	grpc.ServerStream
 }
 
-func (x *workerStreamExtSnapshotServer) SendAndClose(m *api_v2.StreamExtSnapshotResponse) error {
+func (x *workerStreamExtSnapshotServer) Send(m *api_v2.StreamExtSnapshotResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
@@ -1632,6 +1662,10 @@ var Worker_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "UpdateExtSnapshotStreamingState",
 			Handler:    _Worker_UpdateExtSnapshotStreamingState_Handler,
 		},
+		{
+			MethodName: "ProposeSnapshotAndWait",
+			Handler:    _Worker_ProposeSnapshotAndWait_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -1653,6 +1687,7 @@ var Worker_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "StreamExtSnapshot",
 			Handler:       _Worker_StreamExtSnapshot_Handler,
+			ServerStreams: true,
 			ClientStreams: true,
 		},
 	},

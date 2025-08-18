@@ -614,6 +614,33 @@ func (n *node) applyMutations(ctx context.Context, proposal *pb.Proposal) (rerr 
 	return errs
 }
 
+func (n *node) forceSnapshot() error {
+	if n.AmLeader() {
+		_, err := n.Store.Snapshot()
+		if err != nil {
+			glog.Errorf("[import] failed to get snapshot: %v", err)
+			return err
+		}
+
+		_, err = n.Store.Checkpoint()
+		if err != nil {
+			glog.Errorf("[import] failed to get checkpoint: %v", err)
+			return err
+		}
+
+		if snap, err := n.getSnapshotProposal(); err != nil {
+			glog.Errorf("[import] failed to propose snapshot: %v", err)
+			return err
+		} else {
+			fmt.Println("Proposing snapshot and waiting")
+			n.proposeAndWait(context.Background(), snap)
+		}
+	} else {
+		return errors.New("Node is not leader")
+	}
+	return nil
+}
+
 func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 	start := time.Now()
 	defer func() {
@@ -707,6 +734,7 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 		//   - Something went wrong with other groups/nodes
 		//   - The node needs to be brought back in sync with the cluster
 		//   - Ensures the node reaches a clean, consistent state
+		fmt.Println("HERE1 Snapshot Proposal", proposal.ExtSnapshotState, x.IsExtSnapshotStreamingStateTrue())
 		switch {
 		case proposal.ExtSnapshotState.Start:
 			x.ExtSnapshotStreamingState(true)
@@ -722,24 +750,8 @@ func (n *node) applyCommitted(proposal *pb.Proposal, key uint64) error {
 				return err
 			}
 			return nil
-		case proposal.ExtSnapshotState.Finish && x.IsExtSnapshotStreamingStateTrue():
-			lastApplied := n.Applied.LastIndex()
-			pl := groups().Leader(n.gid)
-			if pl == nil {
-				glog.Errorf("[import] failed to get connection pool for group %d", n.gid)
-				return errors.Errorf("failed to get connection pool for group %d", n.gid)
-			}
-			glog.Infof("[import] requesting snapshot from leader")
-			snap := &pb.Snapshot{
-				Context: n.RaftContext,
-				Index:   lastApplied,
-				ReadTs:  State.GetTimestamp(false),
-			}
-			// Request and populate snapshot
-			if err := n.populateSnapshot(snap, pl); err != nil {
-				glog.Errorf("[import] failed to populate snapshot for rejoining node: %v", err)
-				return errors.Wrapf(err, "failed to populate snapshot for rejoining node")
-			}
+		case proposal.ExtSnapshotState.Finish:
+			fmt.Println("HERE proposal finishing", proposal.ExtSnapshotState, n.AmLeader())
 
 			if err := postStreamProcessing(ctx); err != nil {
 				glog.Errorf("[import] failed to post stream processing for rejoining node: %v", err)
@@ -1121,7 +1133,7 @@ func (n *node) proposeCDCState(ts uint64) error {
 	return n.Raft().Propose(n.ctx, data)
 }
 
-func (n *node) proposeSnapshot() error {
+func (n *node) getSnapshotProposal() (*pb.Proposal, error) {
 	lastIdx := x.Min(n.Applied.DoneUntil(), n.cdcTracker.getSeenIndex())
 	// We can't rely upon the Raft entries to determine the minPendingStart,
 	// because there are many cases during mutations where we don't commit or
@@ -1137,19 +1149,33 @@ func (n *node) proposeSnapshot() error {
 	minPendingStart := x.Min(posting.Oracle().MinPendingStartTs(), n.cdcTracker.getTs())
 	snap, err := n.calculateSnapshot(0, lastIdx, minPendingStart)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if snap == nil {
-		return nil
+		return nil, nil
 	}
 	proposal := &pb.Proposal{
 		Snapshot: snap,
 	}
+	return proposal, nil
+}
+
+func (n *node) proposeSnapshot() error {
+	snap, err := n.getSnapshotProposal()
+	if err != nil {
+		return err
+	}
+
+	if snap == nil {
+		return nil
+	}
+
 	glog.V(2).Infof("Proposing snapshot: %+v\n", snap)
-	sz := proto.Size(proposal)
+	sz := proto.Size(snap)
 	data := make([]byte, 8+sz)
-	x.Check2(x.MarshalToSizedBuffer(data[8:], proposal))
+	x.Check2(x.MarshalToSizedBuffer(data[8:], snap))
 	data = data[:8+sz]
+
 	return n.Raft().Propose(n.ctx, data)
 }
 

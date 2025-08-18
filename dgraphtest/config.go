@@ -122,7 +122,7 @@ func NewClusterConfig() ClusterConfig {
 		numAlphas:      1,
 		numZeros:       1,
 		replicas:       1,
-		verbosity:      2,
+		verbosity:      3,
 		version:        localVersion,
 		volumes:        map[string]string{DefaultBackupDir: defaultBackupVol, DefaultExportDir: defaultExportVol},
 		refillInterval: 20 * time.Second,

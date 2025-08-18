@@ -13,6 +13,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/dgo/v250"
@@ -67,10 +68,13 @@ func initiateSnapshotStream(ctx context.Context, dc apiv2.DgraphClient) (*apiv2.
 // subdirectories named with numeric group IDs.
 func streamSnapshot(ctx context.Context, dc apiv2.DgraphClient, baseDir string, groups []uint32) error {
 	glog.Infof("[import] Starting to stream snapshot from directory: %s", baseDir)
+	var m sync.Mutex
 
 	errG, errGrpCtx := errgroup.WithContext(ctx)
 	for _, group := range groups {
 		errG.Go(func() error {
+			m.Lock()
+			defer m.Unlock()
 			pDir := filepath.Join(baseDir, fmt.Sprintf("%d", group-1), "p")
 			if _, err := os.Stat(pDir); err != nil {
 				return fmt.Errorf("p directory does not exist for group [%d]: [%s]", group, pDir)
@@ -127,23 +131,18 @@ func streamSnapshotForGroup(ctx context.Context, dc apiv2.DgraphClient, pdir str
 	if err != nil {
 		return fmt.Errorf("failed to start external snapshot stream for group %d: %w", groupId, err)
 	}
-
 	defer func() {
-		if _, err := out.CloseAndRecv(); err != nil {
-			glog.Errorf("failed to close the stream for group [%v]: %v", groupId, err)
-		}
-
-		glog.Infof("[import] Group [%v]: Received ACK ", groupId)
+		_ = out.CloseSend()
 	}()
 
 	// Open the BadgerDB instance at the specified directory
 	opt := badger.DefaultOptions(pdir)
+	opt.ReadOnly = true
 	ps, err := badger.OpenManaged(opt)
 	if err != nil {
 		glog.Errorf("failed to open BadgerDB at [%s]: %v", pdir, err)
 		return fmt.Errorf("failed to open BadgerDB at [%v]: %v", pdir, err)
 	}
-
 	defer func() {
 		if err := ps.Close(); err != nil {
 			glog.Warningf("[import] Error closing BadgerDB: %v", err)
@@ -154,17 +153,18 @@ func streamSnapshotForGroup(ctx context.Context, dc apiv2.DgraphClient, pdir str
 	glog.Infof("[import] Sending request for streaming external snapshot for group ID [%v]", groupId)
 	groupReq := &apiv2.StreamExtSnapshotRequest{GroupId: groupId}
 	if err := out.Send(groupReq); err != nil {
-		return fmt.Errorf("failed to send request for streaming external snapshot for group ID [%v] to the server: %w",
-			groupId, err)
+		return fmt.Errorf("failed to send request for group ID [%v] to the server: %w", groupId, err)
 	}
+	if _, err := out.Recv(); err != nil {
+		return fmt.Errorf("failed to receive response for group ID [%v] from the server: %w", groupId, err)
+	}
+	glog.Infof("[import] Group [%v]: Received ACK for sending group request", groupId)
 
 	// Configure and start the BadgerDB stream
 	glog.Infof("[import] Starting BadgerDB stream for group [%v]", groupId)
-
 	if err := streamBadger(ctx, ps, out, groupId); err != nil {
 		return fmt.Errorf("badger streaming failed for group [%v]: %v", groupId, err)
 	}
-
 	return nil
 }
 
@@ -172,14 +172,22 @@ func streamSnapshotForGroup(ctx context.Context, dc apiv2.DgraphClient, pdir str
 // It creates a new stream at the maximum sequence number and sends the data to the specified group.
 // It also sends a final 'done' signal to mark completion.
 func streamBadger(ctx context.Context, ps *badger.DB, out apiv2.Dgraph_StreamExtSnapshotClient, groupId uint32) error {
+	count := 0
 	stream := ps.NewStreamAt(math.MaxUint64)
 	stream.LogPrefix = "[import] Sending external snapshot to group [" + fmt.Sprintf("%d", groupId) + "]"
 	stream.KeyToList = nil
 	stream.Send = func(buf *z.Buffer) error {
 		p := &apiv2.StreamPacket{Data: buf.Bytes()}
+		count += 1
+		fmt.Println("Packets sent:", len(buf.Bytes()))
 		if err := out.Send(&apiv2.StreamExtSnapshotRequest{Pkt: p}); err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("failed to send data chunk: %w", err)
 		}
+		if _, err := out.Recv(); err != nil {
+			return fmt.Errorf("failed to receive response for group ID [%v] from the server: %w", groupId, err)
+		}
+		glog.Infof("[import] Group [%v]: Received ACK for sending data chunk", groupId)
+
 		return nil
 	}
 
@@ -196,5 +204,18 @@ func streamBadger(ctx context.Context, ps *badger.DB, out apiv2.Dgraph_StreamExt
 		return fmt.Errorf("failed to send 'done' signal for group [%d]: %w", groupId, err)
 	}
 
-	return nil
+	fmt.Println("Packets sent:", count)
+
+	var bytes *apiv2.StreamExtSnapshotResponse
+	var err error
+	for {
+		if bytes, err = out.Recv(); err != nil {
+			return fmt.Errorf("failed to receive response for group ID [%v] from the server: %w", groupId, err)
+		} else {
+			glog.Infof("[import] Group [%v]: Received ACK for sending completion signal", groupId)
+			if bytes.Finish {
+				return nil
+			}
+		}
+	}
 }
