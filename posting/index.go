@@ -1373,7 +1373,8 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 	}
 
 	dimension := indexer.Dimension()
-	if dimension == 0 {
+	// If dimension is -1, it means that the dimension is not set through options in case of partitioned hnsw.
+	if dimension == -1 {
 		numVectorsToCheck := 100
 		lenFreq := make(map[int]int, numVectorsToCheck)
 		maxFreq := 0
@@ -1410,6 +1411,48 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 
 	fmt.Println("Selecting vector dimension to be:", dimension)
 
+	norm := rebuilder{attr: rb.Attr, prefix: pk.DataPrefix(), startTs: rb.StartTs}
+	norm.fn = func(uid uint64, pl *List, txn *Txn) ([]*pb.DirectedEdge, error) {
+		val, err := pl.Value(rb.StartTs)
+		if err != nil {
+			return nil, err
+		}
+		if val.Tid == types.VFloatID {
+			return nil, nil
+		}
+
+		// Convert to VFloatID and persist as binary bytes.
+		sv, err := types.Convert(val, types.VFloatID)
+		if err != nil {
+			return nil, err
+		}
+		b := types.ValueForType(types.BinaryID)
+		if err = types.Marshal(sv, &b); err != nil {
+			return nil, err
+		}
+
+		edge := &pb.DirectedEdge{
+			Attr:      rb.Attr,
+			Entity:    uid,
+			Value:     b.Value.([]byte),
+			ValueType: types.VFloatID.Enum(),
+		}
+		inKey := x.DataKey(edge.Attr, uid)
+		p, err := txn.Get(inKey)
+		if err != nil {
+			return []*pb.DirectedEdge{}, err
+		}
+
+		if err := p.addMutation(ctx, txn, edge); err != nil {
+			return []*pb.DirectedEdge{}, err
+		}
+		return nil, nil
+	}
+
+	if err := norm.RunWithoutTemp(ctx); err != nil {
+		return err
+	}
+
 	count := 0
 
 	if indexer.NumSeedVectors() > 0 {
@@ -1426,6 +1469,22 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 				if err != nil {
 					return err
 				}
+
+				if val.Tid != types.VFloatID {
+					// Here, we convert the defaultID type vector into vfloat.
+					sv, err := types.Convert(val, types.VFloatID)
+					if err != nil {
+						return err
+					}
+					b := types.ValueForType(types.BinaryID)
+					if err = types.Marshal(sv, &b); err != nil {
+						return err
+					}
+
+					val.Value = b.Value
+					val.Tid = types.VFloatID
+				}
+
 				inVec := types.BytesAsFloatArray(val.Value.([]byte))
 				if len(inVec) != dimension {
 					return fmt.Errorf("vector dimension mismatch expected dimension %d but got %d", dimension, len(inVec))
@@ -1464,7 +1523,6 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 
 		builder := rebuilder{attr: rb.Attr, prefix: pk.DataPrefix(), startTs: rb.StartTs}
 		builder.fn = func(uid uint64, pl *List, txn *Txn) ([]*pb.DirectedEdge, error) {
-			edges := []*pb.DirectedEdge{}
 			val, err := pl.Value(rb.StartTs)
 			if err != nil {
 				return []*pb.DirectedEdge{}, err
@@ -1475,7 +1533,7 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 				return []*pb.DirectedEdge{}, nil
 			}
 			indexer.BuildInsert(ctx, uid, inVec)
-			return edges, nil
+			return []*pb.DirectedEdge{}, nil
 		}
 
 		err := builder.RunWithoutTemp(ctx)
@@ -1519,21 +1577,22 @@ func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSp
 
 		builder := rebuilder{attr: rb.Attr, prefix: pk.DataPrefix(), startTs: rb.StartTs}
 		builder.fn = func(uid uint64, pl *List, txn *Txn) ([]*pb.DirectedEdge, error) {
-			edges := []*pb.DirectedEdge{}
 			val, err := pl.Value(rb.StartTs)
 			if err != nil {
 				return []*pb.DirectedEdge{}, err
 			}
 
 			inVec := types.BytesAsFloatArray(val.Value.([]byte))
-			if len(inVec) != dimension {
+			if len(inVec) != dimension && centroids != nil {
 				if pass_idx == 0 {
 					glog.Warningf("Skipping vector with invalid dimension uid: %d, dimension: %d", uid, len(inVec))
 				}
 				return []*pb.DirectedEdge{}, nil
 			}
+
 			indexer.BuildInsert(ctx, uid, inVec)
-			return edges, nil
+
+			return []*pb.DirectedEdge{}, nil
 		}
 
 		err := builder.RunWithoutTemp(ctx)

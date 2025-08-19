@@ -39,7 +39,7 @@ type partitionedHNSW[T c.Float] struct {
 
 func (ph *partitionedHNSW[T]) applyOptions(o opt.Options) error {
 	ph.numClusters, _, _ = opt.GetOpt(o, NumClustersOpt, 1000)
-	ph.vectorDimension, _, _ = opt.GetOpt(o, vectorDimension, 0)
+	ph.vectorDimension, _, _ = opt.GetOpt(o, vectorDimension, -1)
 	ph.partitionStrat, _, _ = opt.GetOpt(o, PartitionStratOpt, "kmeans")
 
 	if ph.partitionStrat != "kmeans" && ph.partitionStrat != "query" {

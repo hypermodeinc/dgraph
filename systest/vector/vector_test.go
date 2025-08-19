@@ -31,7 +31,7 @@ const (
 
 var schemas = map[string]string{
 	"hnsw":            `project_description_v: float32vector @index(hnsw(exponent: "5", metric: "euclidean")) .`,
-	"partitionedhnsw": `project_description_v: float32vector @index(partionedhnsw(numClusters: "100", partitionStratOpt: "kmeans", vectorDimension: "10", metric: "euclidean")) .`,
+	"partitionedhnsw": `project_description_v: float32vector @index(partionedhnsw(numClusters: "1000", partitionStratOpt: "kmeans", vectorDimension: "100", metric: "euclidean")) .`,
 }
 
 func testVectorQuery(t *testing.T, gc *dgraphapi.GrpcClient, vectors [][]float32, rdfs, pred string, topk int) {
@@ -429,6 +429,48 @@ func (vsuite *VectorTestSuite) TestVectorIndexWithoutSchema() {
 	result, err := gc.Query(query)
 	require.NoError(t, err)
 	require.JSONEq(t, fmt.Sprintf(`{"vector":[{"count":%v}]}`, numVectors), string(result.GetJson()))
+}
+
+func (vsuite *VectorTestSuite) TestIndexRebuildingWithoutSchema() {
+	t := vsuite.T()
+	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
+	c, err := dgraphtest.NewLocalCluster(conf)
+	require.NoError(t, c.Start())
+
+	defer func() { c.Cleanup(t.Failed()) }()
+
+	gc, cleanup, err := c.Client()
+	require.NoError(t, err)
+	defer cleanup()
+
+	require.NoError(t, gc.LoginIntoNamespace(context.Background(),
+		dgraphapi.DefaultUser, dgraphapi.DefaultPassword, x.RootNamespace))
+
+	require.NoError(t, gc.DropAll())
+	require.NoError(t, gc.SetupSchema(testSchemaWithoutIndex))
+
+	numVectors := 1000
+	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
+	mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
+	_, err = gc.Mutate(mu)
+	require.NoError(t, err)
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
+
+	query := `{
+		vector(func: has(project_description_v)) {
+			   count(uid)
+			}
+	}`
+
+	result, err := gc.Query(query)
+	require.NoError(t, err)
+	require.JSONEq(t, fmt.Sprintf(`{"vector":[{"count":%v}]}`, numVectors), string(result.GetJson()))
+
+	for _, vect := range vectors {
+		similarVects, err := gc.QueryMultipleVectorsUsingSimilarTo(vect, pred, 100)
+		require.NoError(t, err)
+		require.Equal(t, 100, len(similarVects))
+	}
 }
 
 func (vsuite *VectorTestSuite) TestVectorIndexWithoutSchemaWithoutIndex() {

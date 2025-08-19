@@ -25,6 +25,7 @@ type Kmeans[T c.Float] struct {
 func CreateKMeans[T c.Float](floatBits int, pred string, distFunc func(a, b []T, floatBits int) (T, error)) index.VectorPartitionStrat[T] {
 	return &Kmeans[T]{
 		floatBits: floatBits,
+		numPasses: 5,
 		centroids: &vectorCentroids[T]{
 			distFunc:  distFunc,
 			floatBits: floatBits,
@@ -46,6 +47,9 @@ func (km *Kmeans[T]) GetCentroids() [][]T {
 }
 
 func (km *Kmeans[T]) FindIndexForSearch(vec []T) ([]int, error) {
+	if km.NumPasses() == 0 {
+		return []int{0}, nil
+	}
 	res := make([]int, km.NumSeedVectors())
 	for i := range res {
 		res[i] = i
