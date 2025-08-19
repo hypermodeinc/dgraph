@@ -354,7 +354,6 @@ func (ph *persistentHNSW[T]) MergeResults(ctx context.Context, c index.CacheType
 	})
 
 	uids := []uint64{}
-	// out of range error
 	for i := range maxResults {
 		if i > len(result) {
 			break

@@ -209,6 +209,11 @@ func (ph *partitionedHNSW[T]) Search(ctx context.Context, txn index.CacheType, q
 		}(index)
 	}
 	wg.Wait()
+
+	if len(res) == 0 {
+		return res, nil
+	}
+
 	return ph.clusterMap[0].MergeResults(ctx, txn, res, query, maxResults, filter)
 }
 

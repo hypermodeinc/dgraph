@@ -368,7 +368,7 @@ func (qs *queryState) handleValuePostings(ctx context.Context, args funcArgs) er
 
 		nnUids, err := indexer.Search(ctx, qc, srcFn.vectorInfo,
 			int(numNeighbors), index.AcceptAll[float32])
-		if err != nil {
+		if err != nil && !strings.Contains(err.Error(), hnsw.EmptyHNSWTreeError+": "+badger.ErrKeyNotFound.Error()) {
 			return err
 		}
 
