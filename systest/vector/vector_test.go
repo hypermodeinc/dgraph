@@ -544,7 +544,7 @@ func (vsuite *VectorTestSuite) TestPartitionedHNSWIndex() {
 		numVectors := 5000
 
 		require.NoError(t, gc.SetupSchema(schemaWithoutIndex))
-		rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 10, pred)
+		rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
 		mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
 		_, err = gc.Mutate(mu)
 		require.NoError(t, err)
@@ -562,7 +562,7 @@ func (vsuite *VectorTestSuite) TestPartitionedHNSWIndex() {
 
 		require.NoError(t, gc.SetupSchema(schemaWithoutIndex))
 
-		rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 10, pred)
+		rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
 		mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
 		_, err = gc.Mutate(mu)
 		require.NoError(t, err)
@@ -580,7 +580,7 @@ func (vsuite *VectorTestSuite) TestPartitionedHNSWIndex() {
 		numVectors := 100
 		require.NoError(t, gc.SetupSchema(schemaWithoutIndex))
 
-		rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 10, pred)
+		rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
 		mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
 		_, err = gc.Mutate(mu)
 		require.NoError(t, err)

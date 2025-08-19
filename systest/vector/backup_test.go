@@ -123,7 +123,7 @@ func (vsuite *VectorTestSuite) TestVectorBackupRestore() {
 
 	numVectors := 1000
 	pred := "project_description_v"
-	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 10, pred)
+	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
 
 	mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
 	_, err = gc.Mutate(mu)
@@ -252,7 +252,7 @@ func (vsuite *VectorTestSuite) TestVectorBackupRestoreReIndexing() {
 
 	numVectors := 1000
 	pred := "project_description_v"
-	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 10, pred)
+	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
 
 	mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
 	_, err = gc.Mutate(mu)
@@ -261,7 +261,7 @@ func (vsuite *VectorTestSuite) TestVectorBackupRestoreReIndexing() {
 	t.Log("taking backup \n")
 	require.NoError(t, hc.Backup(c, false, dgraphtest.DefaultBackupDir))
 
-	rdfs2, vectors2 := dgraphapi.GenerateRandomVectors(numVectors, numVectors+300, 10, pred)
+	rdfs2, vectors2 := dgraphapi.GenerateRandomVectors(numVectors, numVectors+300, 100, pred)
 
 	mu = &api.Mutation{SetNquads: []byte(rdfs2), CommitNow: true}
 	_, err = gc.Mutate(mu)
