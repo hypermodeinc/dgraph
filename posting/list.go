@@ -712,6 +712,14 @@ type ListOptions struct {
 	First     int
 }
 
+func NewVectorPosting(uid uint64, vec *[]byte) *pb.Posting {
+	return &pb.Posting{
+		Value:   *vec,
+		ValType: pb.Posting_BINARY,
+		Op:      Set,
+	}
+}
+
 // NewPosting takes the given edge and returns its equivalent representation as a posting.
 func NewPosting(t *pb.DirectedEdge) *pb.Posting {
 	var op uint32

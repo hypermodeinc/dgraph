@@ -300,6 +300,11 @@ func ProcessBackupRequest(ctx context.Context, req *pb.BackupRequest) error {
 			if pred.Type == "float32vector" && len(pred.IndexSpecs) != 0 {
 				vecPredMap[gid] = append(predMap[gid], pred.Predicate+hnsw.VecEntry, pred.Predicate+hnsw.VecKeyword,
 					pred.Predicate+hnsw.VecDead)
+				for i := range 1000 {
+					vecPredMap[gid] = append(vecPredMap[gid], fmt.Sprintf("%s%s_%d", pred.Predicate, hnsw.VecEntry, i))
+					vecPredMap[gid] = append(vecPredMap[gid], fmt.Sprintf("%s%s_%d", pred.Predicate, hnsw.VecKeyword, i))
+					vecPredMap[gid] = append(vecPredMap[gid], fmt.Sprintf("%s%s_%d", pred.Predicate, hnsw.VecDead, i))
+				}
 			}
 		}
 	}
