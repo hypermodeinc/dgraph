@@ -35,7 +35,7 @@ func (vsuite *VectorTestSuite) TestLiveLoadAndExportRDFFormat() {
 	defer func() { c.Cleanup(t.Failed()) }()
 	require.NoError(t, c.Start())
 
-	testExportAndLiveLoad(t, c, "rdf", vsuite.schema)
+	testExportAndLiveLoad(t, c, "rdf", vsuite.schemaVecDimesion10)
 }
 
 func testExportAndLiveLoad(t *testing.T, c *dgraphtest.LocalCluster, exportFormat string, schema string) {
@@ -54,7 +54,7 @@ func testExportAndLiveLoad(t *testing.T, c *dgraphtest.LocalCluster, exportForma
 
 	numVectors := 1000
 	pred := "project_description_v"
-	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
+	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 10, pred)
 
 	mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
 	_, err = gc.Mutate(mu)

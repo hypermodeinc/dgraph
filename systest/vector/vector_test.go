@@ -27,6 +27,7 @@ import (
 const (
 	testSchemaWithoutIndex = `project_description_v: float32vector .`
 	pred                   = "project_description_v"
+	schemaVecDimension10   = `project_description_v: float32vector @index(partionedhnsw(numClusters: "1000", partitionStratOpt: "kmeans", vectorDimension: "10", metric: "euclidean")) .`
 )
 
 var schemas = map[string]string{
@@ -619,6 +620,7 @@ func (vsuite *VectorTestSuite) TestPartitionedHNSWIndex() {
 type VectorTestSuite struct {
 	suite.Suite
 	schema                string
+	schemaVecDimesion10   string
 	isForPartitionedIndex bool
 }
 
@@ -627,7 +629,10 @@ func TestVectorSuite(t *testing.T) {
 		var ssuite VectorTestSuite
 		ssuite.schema = schema
 		if strings.Contains(schema, "partionedhnsw") {
+			ssuite.schemaVecDimesion10 = schemaVecDimension10
 			ssuite.isForPartitionedIndex = true
+		} else {
+			ssuite.schemaVecDimesion10 = schema
 		}
 		suite.Run(t, &ssuite)
 		if t.Failed() {

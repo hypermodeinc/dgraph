@@ -41,16 +41,15 @@ func (vsuite *VectorTestSuite) TestVectorIncrBackupRestore() {
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser,
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
-	require.NoError(t, gc.SetupSchema(vsuite.schema))
+	require.NoError(t, gc.SetupSchema(vsuite.schemaVecDimesion10))
 
-	numVectors := 500
-	pred := "project_description_v"
+	numVectors := 1000
 	allVectors := make([][][]float32, 0, 5)
 	allRdfs := make([]string, 0, 5)
 	for i := 1; i <= 5; i++ {
 		var rdfs string
 		var vectors [][]float32
-		rdfs, vectors = dgraphapi.GenerateRandomVectors(numVectors*(i-1), numVectors*i, 1, pred)
+		rdfs, vectors = dgraphapi.GenerateRandomVectors(numVectors*(i-1), numVectors*i, 10, pred)
 		allVectors = append(allVectors, vectors)
 		allRdfs = append(allRdfs, rdfs)
 		mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
@@ -162,9 +161,9 @@ func (vsuite *VectorTestSuite) TestVectorBackupRestoreDropIndex() {
 	// add vector predicate + index
 	require.NoError(t, gc.SetupSchema(vsuite.schema))
 	// add data to the vector predicate
-	numVectors := 3
+	numVectors := 1000
 	pred := "project_description_v"
-	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 1, pred)
+	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
 	mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
 	_, err = gc.Mutate(mu)
 	require.NoError(t, err)
@@ -176,7 +175,7 @@ func (vsuite *VectorTestSuite) TestVectorBackupRestoreDropIndex() {
 	require.NoError(t, gc.SetupSchema(testSchemaWithoutIndex))
 
 	// add more data to the vector predicate
-	rdfs, vectors2 := dgraphapi.GenerateRandomVectors(3, numVectors+3, 1, pred)
+	rdfs, vectors2 := dgraphapi.GenerateRandomVectors(numVectors, numVectors+3, 100, pred)
 	mu = &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
 	_, err = gc.Mutate(mu)
 	require.NoError(t, err)
@@ -214,7 +213,7 @@ func (vsuite *VectorTestSuite) TestVectorBackupRestoreDropIndex() {
 		}`
 	resp, err := gc.Query(query)
 	require.NoError(t, err)
-	require.JSONEq(t, `{"vectors":[{"count":4}]}`, string(resp.GetJson()))
+	require.JSONEq(t, `{"vectors":[{"count":1001}]}`, string(resp.GetJson()))
 
 	require.NoError(t, err)
 	allVec := append(vectors, vectors2...)
