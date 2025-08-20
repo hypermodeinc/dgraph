@@ -518,6 +518,7 @@ func (vsuite *VectorTestSuite) TestVectorIndexWithoutSchemaWithoutIndex() {
 	require.NoError(t, err)
 	require.JSONEq(t, fmt.Sprintf(`{"vector":[{"count":%v}]}`, numVectors), string(result.GetJson()))
 }
+
 func (vsuite *VectorTestSuite) TestPartitionedHNSWIndex() {
 	if !vsuite.isForPartitionedIndex {
 		return
