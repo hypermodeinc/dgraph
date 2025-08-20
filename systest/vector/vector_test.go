@@ -535,9 +535,6 @@ func (vsuite *VectorTestSuite) TestPartitionedHNSWIndex() {
 	require.NoError(t, err)
 
 	schemaWithoutIndex := `project_description_v: float32vector .`
-	pred := "project_description_v"
-	schemaWithIndex := `project_description_v: float32vector @index(partionedhnsw` +
-		`(numClusters:"1000", partitionStratOpt: "kmeans",metric: "euclidean",vectorDimension: "10")) .`
 
 	t.Run("with more than 1000 vectors", func(t *testing.T) {
 		require.NoError(t, gc.DropAll())
@@ -550,7 +547,7 @@ func (vsuite *VectorTestSuite) TestPartitionedHNSWIndex() {
 		_, err = gc.Mutate(mu)
 		require.NoError(t, err)
 
-		err = gc.SetupSchema(schemaWithIndex)
+		err = gc.SetupSchema(vsuite.schema)
 		require.NoError(t, err)
 
 		testVectorQuery(t, gc, vectors, rdfs, pred, 5)
@@ -586,7 +583,7 @@ func (vsuite *VectorTestSuite) TestPartitionedHNSWIndex() {
 		_, err = gc.Mutate(mu)
 		require.NoError(t, err)
 
-		err = gc.SetupSchema(schemaWithIndex)
+		err = gc.SetupSchema(vsuite.schema)
 		require.NoError(t, err)
 
 		testVectorQuery(t, gc, vectors, rdfs, pred, numVectors)
@@ -606,7 +603,7 @@ func (vsuite *VectorTestSuite) TestPartitionedHNSWIndex() {
 		_, err = gc.Mutate(mu)
 		require.NoError(t, err)
 
-		err = gc.SetupSchema(schemaWithIndex)
+		err = gc.SetupSchema(vsuite.schema)
 		require.NoError(t, err)
 
 		// here check schema it should not be changed
