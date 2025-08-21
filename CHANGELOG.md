@@ -6,10 +6,13 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/) a
 adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 
 ## Unreleased
+
 - **Core**
   - feat(DQL): add ngram (shingles indexing and search func) (#9463)
+    
 - **GraphQL**
   - feat(graphql): add ngram search directive and filter support (#9463)
+  - 
 - **Fixed**
   - fix(core): fix panic in verifyUniqueWithinMutation when mutation is conditionally pruned (#9450)
   - fix(query): return full float value in query results (#9492)
