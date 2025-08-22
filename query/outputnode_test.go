@@ -294,3 +294,13 @@ func TestMarshalTimeJson(t *testing.T) {
 		require.Equal(t, tc.out, string(out))
 	}
 }
+
+func TestMarshalFloat(t *testing.T) {
+	var (
+		in  = types.Val{Tid: types.FloatID, Value: 0.123456789012345}
+		out = "0.123456789012345"
+	)
+	result, err := valToBytes(in)
+	require.NoError(t, err)
+	require.Equal(t, out, string(result))
+}

@@ -670,7 +670,7 @@ func valToBytes(v types.Val) ([]byte, error) {
 			return nil, errors.New("Unsupported floating point number in float field")
 		}
 
-		return []byte(fmt.Sprintf("%f", f)), nil
+		return []byte(fmt.Sprintf("%g", f)), nil
 	case types.BoolID:
 		if v.Value.(bool) {
 			return boolTrue, nil

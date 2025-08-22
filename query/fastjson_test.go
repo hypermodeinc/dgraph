@@ -59,7 +59,7 @@ func TestSubgraphToFastJSON(t *testing.T) {
 
 	t.Run("With a valid float result", func(t *testing.T) {
 		sg := subgraphWithSingleResultAndSingleValue(task.FromFloat(42.0))
-		assertJSON(t, `{"query":[{"val":42.000000}]}`, sg)
+		assertJSON(t, `{"query":[{"val":42}]}`, sg)
 	})
 
 	t.Run("With invalid floating points", func(t *testing.T) {

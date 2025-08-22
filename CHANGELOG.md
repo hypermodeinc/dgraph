@@ -9,6 +9,7 @@ adhere to [Semantic Versioning](https://semver.org) starting `v22.0.0`.
 
 - **Fixed**
   - fix(core): fix panic in verifyUniqueWithinMutation when mutation is conditionally pruned (#9450)
+  - fix(query): return full float value in query results (#9492)
 
 ## [v24.X.X] - YYYY-MM-DD
 
