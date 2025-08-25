@@ -20,6 +20,7 @@ import (
 	"github.com/dgraph-io/dgo/v250/protos/api"
 	"github.com/dgraph-io/ristretto/v2/z"
 	"github.com/hypermodeinc/dgraph/v25/protos/pb"
+	"github.com/hypermodeinc/dgraph/v25/types"
 	"github.com/hypermodeinc/dgraph/v25/x"
 )
 
@@ -72,7 +73,9 @@ type LocalCache struct {
 	// The keys for these maps is a string representation of the Badger key for the posting list.
 	// deltas keep track of the updates made by txn. These must be kept around until written to disk
 	// during commit.
-	deltas map[string][]byte
+	deltas *types.LockedShardedMap[string, []byte]
+
+	globalMap map[string]*types.LockedShardedMap[string, *pb.PostingList]
 
 	// max committed timestamp of the read posting lists.
 	maxVersions map[string]uint64
@@ -135,7 +138,7 @@ func NewViLocalCache(delegate *LocalCache) *viLocalCache {
 func NewLocalCache(startTs uint64) *LocalCache {
 	return &LocalCache{
 		startTs:     startTs,
-		deltas:      make(map[string][]byte),
+		deltas:      types.NewLockedShardedMap[string, []byte](),
 		plists:      make(map[string]*List),
 		maxVersions: make(map[string]uint64),
 	}
@@ -267,6 +270,9 @@ func (lc *LocalCache) getInternal(key []byte, readFromDisk, readUids bool) (*Lis
 			return getNew(key, pstore, lc.startTs, readUids)
 		}
 		if l, ok := lc.plists[skey]; ok {
+			if delta, ok := lc.deltas.Get(skey); ok && len(delta) > 0 {
+				l.setMutation(lc.startTs, delta)
+			}
 			return l, nil
 		}
 		return nil, nil
@@ -294,7 +300,7 @@ func (lc *LocalCache) getInternal(key []byte, readFromDisk, readUids bool) (*Lis
 	// If we just brought this posting list into memory and we already have a delta for it, let's
 	// apply it before returning the list.
 	lc.RLock()
-	if delta, ok := lc.deltas[skey]; ok && len(delta) > 0 {
+	if delta, ok := lc.deltas.Get(skey); ok && len(delta) > 0 {
 		pl.setMutation(lc.startTs, delta)
 	}
 	lc.RUnlock()
@@ -338,7 +344,7 @@ func (lc *LocalCache) GetSinglePosting(key []byte) (*pb.PostingList, error) {
 		lc.RLock()
 
 		pl := &pb.PostingList{}
-		if delta, ok := lc.deltas[string(key)]; ok && len(delta) > 0 {
+		if delta, ok := lc.deltas.Get(string(key)); ok && len(delta) > 0 {
 			err := proto.Unmarshal(delta, pl)
 			lc.RUnlock()
 			return pl, err
@@ -415,7 +421,7 @@ func (lc *LocalCache) UpdateDeltasAndDiscardLists() {
 	for key, pl := range lc.plists {
 		data := pl.getMutation(lc.startTs)
 		if len(data) > 0 {
-			lc.deltas[key] = data
+			lc.deltas.Set(key, data)
 		}
 		lc.maxVersions[key] = pl.maxVersion()
 		// We can't run pl.release() here because LocalCache is still being used by other callers
@@ -428,16 +434,17 @@ func (lc *LocalCache) UpdateDeltasAndDiscardLists() {
 func (lc *LocalCache) fillPreds(ctx *api.TxnContext, gid uint32) {
 	lc.RLock()
 	defer lc.RUnlock()
-	for key := range lc.deltas {
+	lc.deltas.Iterate(func(key string, delta []byte) error {
 		pk, err := x.Parse([]byte(key))
 		x.Check(err)
 		if len(pk.Attr) == 0 {
-			continue
+			return nil
 		}
 		// Also send the group id that the predicate was being served by. This is useful when
 		// checking if Zero should allow a commit during a predicate move.
 		predKey := fmt.Sprintf("%d-%s", gid, pk.Attr)
 		ctx.Preds = append(ctx.Preds, predKey)
-	}
+		return nil
+	})
 	ctx.Preds = x.Unique(ctx.Preds)
 }

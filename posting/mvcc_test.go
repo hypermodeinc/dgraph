@@ -144,6 +144,8 @@ func BenchmarkTestCache(b *testing.B) {
 }
 
 func TestRollupTimestamp(t *testing.T) {
+	require.NoError(t, schema.ParseBytes([]byte("rollup: [uid] ."), 1))
+
 	attr := x.AttrInRootNamespace("rollup")
 	key := x.DataKey(attr, 1)
 	// 3 Delta commits.
@@ -183,6 +185,8 @@ func TestRollupTimestamp(t *testing.T) {
 }
 
 func TestPostingListRead(t *testing.T) {
+	require.NoError(t, schema.ParseBytes([]byte("emptypl: [uid] ."), 1))
+
 	attr := x.AttrInRootNamespace("emptypl")
 	key := x.DataKey(attr, 1)
 

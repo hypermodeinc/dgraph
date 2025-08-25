@@ -7,7 +7,6 @@ package worker
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"os"
 	"testing"
@@ -90,6 +89,50 @@ func TestEmptyTypeSchema(t *testing.T) {
 	x.ParseNamespaceAttr(types[0].TypeName)
 }
 
+func TestDatetime(t *testing.T) {
+	// Setup temporary directory for Badger DB
+	dir, err := os.MkdirTemp("", "storetest_")
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	opt := badger.DefaultOptions(dir)
+	ps, err := badger.OpenManaged(opt)
+	require.NoError(t, err)
+	posting.Init(ps, 0, false)
+	Init(ps)
+
+	// Set schema
+	schemaTxt := `
+		t: datetime @index(year) .
+	`
+	err = schema.ParseBytes([]byte(schemaTxt), 1)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	newRunMutation := func(startTs, commitTs uint64, edges []*pb.DirectedEdge) {
+		txn := posting.Oracle().RegisterStartTs(startTs)
+		for _, edge := range edges {
+			require.NoError(t, newRunMutation(ctx, edge, txn))
+		}
+		txn.Update()
+		writer := posting.NewTxnWriter(ps)
+		require.NoError(t, txn.CommitToDisk(writer, commitTs))
+		require.NoError(t, writer.Flush())
+		txn.UpdateCachedKeys(commitTs)
+	}
+
+	newRunMutation(1, 3, []*pb.DirectedEdge{
+		{
+			Entity:    1,
+			Attr:      x.AttrInRootNamespace("t"),
+			Value:     []byte("2020-01-01T00:00:00Z"),
+			ValueType: pb.Posting_DEFAULT,
+			Op:        pb.DirectedEdge_SET,
+		},
+	})
+
+}
+
 func TestDeleteSetWithVarEdgeCorruptsData(t *testing.T) {
 	// Setup temporary directory for Badger DB
 	dir, err := os.MkdirTemp("", "storetest_")
@@ -119,10 +162,10 @@ func TestDeleteSetWithVarEdgeCorruptsData(t *testing.T) {
 	uidRoom := uint64(1)
 	uidJohn := uint64(2)
 
-	runMutation := func(startTs, commitTs uint64, edges []*pb.DirectedEdge) {
+	newRunMutation := func(startTs, commitTs uint64, edges []*pb.DirectedEdge) {
 		txn := posting.Oracle().RegisterStartTs(startTs)
 		for _, edge := range edges {
-			require.NoError(t, runMutation(ctx, edge, txn))
+			require.NoError(t, newRunMutation(ctx, edge, txn))
 		}
 		txn.Update()
 		writer := posting.NewTxnWriter(ps)
@@ -132,7 +175,7 @@ func TestDeleteSetWithVarEdgeCorruptsData(t *testing.T) {
 	}
 
 	// Initial mutation: Set John → Leopard
-	runMutation(1, 3, []*pb.DirectedEdge{
+	newRunMutation(1, 3, []*pb.DirectedEdge{
 		{
 			Entity:    uidJohn,
 			Attr:      attrPerson,
@@ -162,7 +205,7 @@ func TestDeleteSetWithVarEdgeCorruptsData(t *testing.T) {
 	// Second mutation: Remove John from Leopard, assign Amanda
 	uidAmanda := uint64(3)
 
-	runMutation(6, 8, []*pb.DirectedEdge{
+	newRunMutation(6, 8, []*pb.DirectedEdge{
 		{
 			Entity:    uidJohn,
 			Attr:      attrOffice,
@@ -225,7 +268,7 @@ func TestGetScalarList(t *testing.T) {
 	runM := func(startTs, commitTs uint64, edges []*pb.DirectedEdge) {
 		txn := posting.Oracle().RegisterStartTs(startTs)
 		for _, edge := range edges {
-			x.Check(runMutation(context.Background(), edge, txn))
+			x.Check(newRunMutation(context.Background(), edge, txn))
 		}
 		txn.Update()
 		writer := posting.NewTxnWriter(pstore)
@@ -283,7 +326,7 @@ func TestMultipleTxnListCount(t *testing.T) {
 	runM := func(startTs, commitTs uint64, edges []*pb.DirectedEdge) {
 		txn := posting.Oracle().RegisterStartTs(startTs)
 		for _, edge := range edges {
-			x.Check(runMutation(ctx, edge, txn))
+			x.Check(newRunMutation(ctx, edge, txn))
 		}
 		txn.Update()
 		writer := posting.NewTxnWriter(pstore)
@@ -342,7 +385,7 @@ func TestScalarPredicateRevCount(t *testing.T) {
 	runM := func(startTs, commitTs uint64, edges []*pb.DirectedEdge) {
 		txn := posting.Oracle().RegisterStartTs(startTs)
 		for _, edge := range edges {
-			x.Check(runMutation(ctx, edge, txn))
+			x.Check(newRunMutation(ctx, edge, txn))
 		}
 		txn.Update()
 		writer := posting.NewTxnWriter(pstore)
@@ -423,7 +466,7 @@ func TestScalarPredicateIntCount(t *testing.T) {
 
 	runM := func(startTs, commitTs uint64, edge *pb.DirectedEdge) {
 		txn := posting.Oracle().RegisterStartTs(startTs)
-		x.Check(runMutation(ctx, edge, txn))
+		x.Check(newRunMutation(ctx, edge, txn))
 		txn.Update()
 		writer := posting.NewTxnWriter(pstore)
 		require.NoError(t, txn.CommitToDisk(writer, commitTs))
@@ -477,7 +520,7 @@ func TestScalarPredicateCount(t *testing.T) {
 
 	runM := func(startTs, commitTs uint64, edge *pb.DirectedEdge) {
 		txn := posting.Oracle().RegisterStartTs(startTs)
-		x.Check(runMutation(ctx, edge, txn))
+		x.Check(newRunMutation(ctx, edge, txn))
 		txn.Update()
 		writer := posting.NewTxnWriter(pstore)
 		require.NoError(t, txn.CommitToDisk(writer, commitTs))
@@ -531,7 +574,7 @@ func TestSingleUidReplacement(t *testing.T) {
 	attr := x.AttrInRootNamespace("singleUidReplaceTest")
 
 	// Txn 1. Set 1 -> 2
-	x.Check(runMutation(ctx, &pb.DirectedEdge{
+	x.Check(newRunMutation(ctx, &pb.DirectedEdge{
 		ValueId: 2,
 		Attr:    attr,
 		Entity:  1,
@@ -547,7 +590,7 @@ func TestSingleUidReplacement(t *testing.T) {
 	// Txn 2. Set 1 -> 3
 	txn = posting.Oracle().RegisterStartTs(9)
 
-	x.Check(runMutation(ctx, &pb.DirectedEdge{
+	x.Check(newRunMutation(ctx, &pb.DirectedEdge{
 		ValueId: 3,
 		Attr:    attr,
 		Entity:  1,
@@ -591,14 +634,14 @@ func TestSingleString(t *testing.T) {
 	attr := x.AttrInRootNamespace("singleUidTest")
 
 	// Txn 1. Set 1 -> david 2 -> blush
-	x.Check(runMutation(ctx, &pb.DirectedEdge{
+	x.Check(newRunMutation(ctx, &pb.DirectedEdge{
 		Value:  []byte("david"),
 		Attr:   attr,
 		Entity: 1,
 		Op:     pb.DirectedEdge_SET,
 	}, txn))
 
-	x.Check(runMutation(ctx, &pb.DirectedEdge{
+	x.Check(newRunMutation(ctx, &pb.DirectedEdge{
 		Value:  []byte("blush"),
 		Attr:   attr,
 		Entity: 2,
@@ -614,14 +657,14 @@ func TestSingleString(t *testing.T) {
 	// Txn 2. Set 2 -> david 1 -> blush
 	txn = posting.Oracle().RegisterStartTs(9)
 
-	x.Check(runMutation(ctx, &pb.DirectedEdge{
+	x.Check(newRunMutation(ctx, &pb.DirectedEdge{
 		Value:  []byte("david"),
 		Attr:   attr,
 		Entity: 2,
 		Op:     pb.DirectedEdge_SET,
 	}, txn))
 
-	x.Check(runMutation(ctx, &pb.DirectedEdge{
+	x.Check(newRunMutation(ctx, &pb.DirectedEdge{
 		Value:  []byte("blush"),
 		Attr:   attr,
 		Entity: 1,
@@ -693,7 +736,7 @@ func TestLangExact(t *testing.T) {
 		Lang:   "en",
 	}
 
-	x.Check(runMutation(ctx, edge, txn))
+	x.Check(newRunMutation(ctx, edge, txn))
 
 	edge = &pb.DirectedEdge{
 		Value:  []byte("hindi"),
@@ -703,7 +746,7 @@ func TestLangExact(t *testing.T) {
 		Lang:   "hi",
 	}
 
-	x.Check(runMutation(ctx, edge, txn))
+	x.Check(newRunMutation(ctx, edge, txn))
 
 	txn.Update()
 	writer := posting.NewTxnWriter(pstore)
@@ -745,7 +788,6 @@ func BenchmarkAddMutationWithIndex(b *testing.B) {
 	posting.Init(ps, 0, false)
 	Init(ps)
 	err = schema.ParseBytes([]byte("benchmarkadd: string @index(term) ."), 1)
-	fmt.Println(err)
 	if err != nil {
 		panic(err)
 	}
@@ -767,7 +809,7 @@ func BenchmarkAddMutationWithIndex(b *testing.B) {
 			Op:     pb.DirectedEdge_SET,
 		}
 
-		x.Check(runMutation(ctx, edge, txn))
+		x.Check(newRunMutation(ctx, edge, txn))
 	}
 }
 
