@@ -8,8 +8,10 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -63,6 +65,10 @@ const (
 )
 
 func TestBulkLoaderNoDqlSchema(t *testing.T) {
+	if runtime.GOOS != "linux" && os.Getenv("DGRAPH_BINARY") == "" {
+		fmt.Println("You can set the DGRAPH_BINARY environment variable to path of a native dgraph binary to run these tests")
+		t.Skip("Skipping test on non-Linux platforms due to dgraph binary dependency")
+	}
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(2).WithNumZeros(1).
 		WithACL(time.Hour).WithReplicas(1).WithBulkLoadOutDir(t.TempDir())
 	c, err := dgraphtest.NewLocalCluster(conf)

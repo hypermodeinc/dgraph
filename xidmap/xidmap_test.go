@@ -46,7 +46,7 @@ func getTestXidmapOpts(conn *grpc.ClientConn, db *badger.DB) XidMapOptions {
 }
 
 func TestXidmap(t *testing.T) {
-	conn, err := x.SetupConnection(testutil.SockAddrZero, nil, false)
+	conn, err := x.SetupConnection(testutil.GetSockAddrZero(), nil, false)
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 
@@ -108,7 +108,7 @@ func TestXidmapMemory(t *testing.T) {
 		}
 	}()
 
-	conn, err := x.SetupConnection(testutil.SockAddrZero, nil, false)
+	conn, err := x.SetupConnection(testutil.GetSockAddrZero(), nil, false)
 	require.NoError(t, err)
 	require.NotNil(t, conn)
 
@@ -154,7 +154,7 @@ func TestXidmapMemory(t *testing.T) {
 // BenchmarkXidmapReadsRandom-16		428ns ± 2%
 
 func BenchmarkXidmapWrites(b *testing.B) {
-	conn, err := x.SetupConnection(testutil.SockAddrZero, nil, false)
+	conn, err := x.SetupConnection(testutil.GetSockAddrZero(), nil, false)
 	if err != nil {
 		b.Fatalf("Error setting up connection: %s", err.Error())
 	}
@@ -173,7 +173,7 @@ func BenchmarkXidmapWrites(b *testing.B) {
 }
 
 func BenchmarkXidmapWritesRandom(b *testing.B) {
-	conn, err := x.SetupConnection(testutil.SockAddrZero, nil, false)
+	conn, err := x.SetupConnection(testutil.GetSockAddrZero(), nil, false)
 	if err != nil {
 		b.Fatalf("Error setting up connection: %s", err.Error())
 	}
@@ -194,7 +194,7 @@ func BenchmarkXidmapWritesRandom(b *testing.B) {
 }
 
 func BenchmarkXidmapReads(b *testing.B) {
-	conn, err := x.SetupConnection(testutil.SockAddrZero, nil, false)
+	conn, err := x.SetupConnection(testutil.GetSockAddrZero(), nil, false)
 	if err != nil {
 		b.Fatalf("Error setting up connection: %s", err.Error())
 	}
@@ -216,7 +216,7 @@ func BenchmarkXidmapReads(b *testing.B) {
 }
 
 func BenchmarkXidmapReadsRandom(b *testing.B) {
-	conn, err := x.SetupConnection(testutil.SockAddrZero, nil, false)
+	conn, err := x.SetupConnection(testutil.GetSockAddrZero(), nil, false)
 	if err != nil {
 		b.Fatalf("Error setting up connection: %s", err.Error())
 	}

@@ -47,7 +47,7 @@ var (
 // Test to add a large database and verify backup and restore work as expected.
 func TestBackupMinioLarge(t *testing.T) {
 	// backupDestination = "minio://" + testutil.DockerPrefix + "_minio_1:9001/dgraph-backup?secure=false"
-	conn, err := grpc.NewClient(testutil.SockAddr,
+	conn, err := grpc.NewClient(testutil.GetSockAddr(),
 		grpc.WithTransportCredentials(credentials.NewTLS(testutil.GetAlphaClientConfig(t))))
 	require.NoError(t, err)
 	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
@@ -89,13 +89,13 @@ func setupTablets(t *testing.T, dg *dgo.Dgraph) {
 				 name2: string .
 				 name3: string .`}))
 	client := testutil.GetHttpsClient(t)
-	_, err := client.Get("https://" + testutil.SockAddrZeroHttp + "/moveTablet?tablet=name1&group=1")
+	_, err := client.Get("https://" + testutil.GetSockAddrZeroHttp() + "/moveTablet?tablet=name1&group=1")
 	require.NoError(t, err)
 	time.Sleep(time.Second)
-	_, err = client.Get("https://" + testutil.SockAddrZeroHttp + "/moveTablet?tablet=name2&group=2")
+	_, err = client.Get("https://" + testutil.GetSockAddrZeroHttp() + "/moveTablet?tablet=name2&group=2")
 	require.NoError(t, err)
 	time.Sleep(time.Second)
-	_, err = client.Get("https://" + testutil.SockAddrZeroHttp + "/moveTablet?tablet=name3&group=3")
+	_, err = client.Get("https://" + testutil.GetSockAddrZeroHttp() + "/moveTablet?tablet=name3&group=3")
 	require.NoError(t, err)
 
 	// After the move, we need to pause a bit to give zero a chance to quorum.
@@ -145,7 +145,7 @@ func runBackup(t *testing.T) {
 		}
 	}`
 
-	adminUrl := "https://" + testutil.SockAddrHttp + "/admin"
+	adminUrl := "https://" + testutil.GetSockAddrHttp() + "/admin"
 	params := testutil.GraphQLParams{
 		Query: backupRequest,
 		Variables: map[string]interface{}{
@@ -165,7 +165,7 @@ func runBackup(t *testing.T) {
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&data))
 	require.Equal(t, "Success", testutil.JsonGet(data, "data", "backup", "response", "code").(string))
 	taskId := testutil.JsonGet(data, "data", "backup", "taskId").(string)
-	testutil.WaitForTask(t, taskId, true, testutil.SockAddrHttp)
+	testutil.WaitForTask(t, taskId, true, testutil.GetSockAddrHttp())
 
 	// Verify that the right amount of files and directories were created.
 	copyToLocalFs(t)

@@ -41,6 +41,14 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/x"
 )
 
+const (
+	// Cluster configuration constants
+	NumZeroNodes  = 3
+	NumAlphaNodes = 6
+	ZeroPort      = 6080
+	AlphaPort     = 8080
+)
+
 var (
 	ctxb               = context.Background()
 	oc                 = &outputCatcher{}
@@ -163,6 +171,10 @@ func command(args ...string) *exec.Cmd {
 }
 
 func startCluster(composeFile, prefix string) error {
+
+	if os.Getenv("GOPATH") == "" {
+		return fmt.Errorf("GOPATH environment variable is required but not set")
+	}
 	cmd := command(
 		"docker", "compose", "--compatibility", "-f", composeFile, "-p", prefix,
 		"up", "--force-recreate", "--build", "--remove-orphans", "--detach")
@@ -176,20 +188,35 @@ func startCluster(composeFile, prefix string) error {
 	}
 	fmt.Printf("CLUSTER UP: %s. Package: %s\n", prefix, composeFile)
 
-	// Wait for cluster to be healthy.
-	for i := 1; i <= 3; i++ {
-		in := testutil.GetContainerInstance(prefix, "zero"+strconv.Itoa(i))
-		if err := in.BestEffortWaitForHealthy(6080); err != nil {
-			fmt.Printf("Error while checking zero health %s. Error %v", in.Name, err)
-		}
+	// Wait for cluster to be healthy using concurrent health checks
+	var wg sync.WaitGroup
 
+	// Check zero nodes health concurrently
+	for i := 1; i <= NumZeroNodes; i++ {
+		wg.Add(1)
+		go func(nodeNum int) {
+			defer wg.Done()
+			in := testutil.GetContainerInstance(prefix, "zero"+strconv.Itoa(nodeNum))
+			if err := in.BestEffortWaitForHealthy(ZeroPort); err != nil {
+				fmt.Printf("Error while checking zero health %s. Error %v\n", in.Name, err)
+			}
+		}(i)
 	}
-	for i := 1; i <= 6; i++ {
-		in := testutil.GetContainerInstance(prefix, "alpha"+strconv.Itoa(i))
-		if err := in.BestEffortWaitForHealthy(8080); err != nil {
-			fmt.Printf("Error while checking alpha health %s. Error %v", in.Name, err)
-		}
+
+	// Check alpha nodes health concurrently
+	for i := 1; i <= NumAlphaNodes; i++ {
+		wg.Add(1)
+		go func(nodeNum int) {
+			defer wg.Done()
+			in := testutil.GetContainerInstance(prefix, "alpha"+strconv.Itoa(nodeNum))
+			if err := in.BestEffortWaitForHealthy(AlphaPort); err != nil {
+				fmt.Printf("Error while checking alpha health %s. Error %v\n", in.Name, err)
+			}
+		}(i)
 	}
+
+	// Wait for all health checks to complete
+	wg.Wait()
 	return nil
 }
 
@@ -447,15 +474,17 @@ func runTests(taskCh chan task, closer *z.Closer) error {
 	prefix := getClusterPrefix()
 
 	var started, stopped bool
-	start := func() {
+	start := func() error {
 		if len(*useExisting) > 0 || started {
-			return
+			return nil
 		}
 		err := startCluster(defaultCompose, prefix)
 		if err != nil {
 			closer.Signal()
+			return err
 		}
 		started = true
+		return nil
 	}
 
 	stop := func() {
@@ -508,7 +537,9 @@ func runTests(taskCh chan task, closer *z.Closer) error {
 				// If we only need to run custom cluster tests, then skip this one.
 				continue
 			}
-			start()
+			if err := start(); err != nil {
+				return err
+			}
 			if err = runTestsFor(ctx, task.pkg.ID, prefix, xmlFile); err != nil {
 				// fmt.Printf("ERROR for package: %s. Err: %v\n", task.pkg.ID, err)
 				return err

@@ -101,7 +101,7 @@ func TestAclCacheRestore(t *testing.T) {
 	dg := gc.Dgraph
 
 	sendRestoreRequest(t, "/backups", "vibrant_euclid5", 1)
-	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
+	testutil.WaitForRestore(t, dg, testutil.GetSockAddrHttp())
 
 	token, err := testutil.Login(t,
 		&testutil.LoginParams{UserID: "alice1", Passwd: "password", Namespace: 0})

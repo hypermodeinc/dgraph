@@ -41,7 +41,7 @@ func TestRemoveNode(t *testing.T) {
 
 func TestIdLeaseOverflow(t *testing.T) {
 	dialOpts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
-	con, err := grpc.NewClient(testutil.SockAddrZero, dialOpts...)
+	con, err := grpc.NewClient(testutil.GetSockAddrZero(), dialOpts...)
 	require.NoError(t, err)
 	zc := pb.NewZeroClient(con)
 
@@ -55,7 +55,7 @@ func TestIdLeaseOverflow(t *testing.T) {
 
 func TestIdBump(t *testing.T) {
 	dialOpts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
-	con, err := grpc.NewClient(testutil.SockAddrZero, dialOpts...)
+	con, err := grpc.NewClient(testutil.GetSockAddrZero(), dialOpts...)
 	require.NoError(t, err)
 	zc := pb.NewZeroClient(con)
 

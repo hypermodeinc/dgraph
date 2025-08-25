@@ -22,7 +22,7 @@ import (
 )
 
 func TestAccessOverPlaintext(t *testing.T) {
-	dg, err := testutil.DgraphClient(testutil.SockAddr)
+	dg, err := testutil.DgraphClient(testutil.GetSockAddr())
 	if err != nil {
 		t.Fatalf("Error while getting a dgraph client: %v", err)
 	}
@@ -37,7 +37,7 @@ func TestAccessWithCaCert(t *testing.T) {
 		// server-name
 		"node"))
 
-	dg, err := testutil.DgraphClientWithCerts(testutil.SockAddr, conf)
+	dg, err := testutil.DgraphClientWithCerts(testutil.GetSockAddr(), conf)
 	require.NoError(t, err, "Unable to get dgraph client: %v", err)
 	for i := 0; i < 20; i++ {
 		err := dg.Alter(context.Background(), &api.Operation{DropAll: true})
@@ -56,7 +56,7 @@ func TestCurlAccessWithCaCert(t *testing.T) {
 	// curl over plaintext should fail
 	curlPlainTextArgs := []string{
 		"--ipv4",
-		"https://" + testutil.SockAddrHttpLocalhost + "/alter",
+		"https://" + testutil.GetSockAddrHttpLocalhost() + "/alter",
 		"-d", "name: string @index(exact) .",
 	}
 	testutil.VerifyCurlCmd(t, curlPlainTextArgs, &testutil.CurlFailureConfig{
@@ -66,7 +66,7 @@ func TestCurlAccessWithCaCert(t *testing.T) {
 
 	curlArgs := []string{
 		"--cacert", "../tls/ca.crt", "--ipv4",
-		"https://" + testutil.SockAddrHttpLocalhost + "/alter",
+		"https://" + testutil.GetSockAddrHttpLocalhost() + "/alter",
 		"-d", "name: string @index(exact) .",
 	}
 	testutil.VerifyCurlCmd(t, curlArgs, &testutil.CurlFailureConfig{

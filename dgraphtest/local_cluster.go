@@ -545,7 +545,7 @@ func (c *LocalCluster) containerHealthCheck(url func(c *LocalCluster) (string, e
 		return errors.Wrapf(err, "error getting health URL %v", endpoint)
 	}
 
-	for range 60 {
+	for attempt := range 60 {
 		time.Sleep(waitDurBeforeRetry)
 
 		endpoint, err = url(c)
@@ -555,12 +555,16 @@ func (c *LocalCluster) containerHealthCheck(url func(c *LocalCluster) (string, e
 
 		req, err := http.NewRequest(http.MethodGet, endpoint, nil)
 		if err != nil {
-			log.Printf("[WARNING] error building req for endpoint [%v], err: [%v]", endpoint, err)
+			if attempt > 10 {
+				log.Printf("[WARNING] error building req for endpoint [%v], err: [%v]", endpoint, err)
+			}
 			continue
 		}
 		body, err := dgraphapi.DoReq(req)
 		if err != nil {
-			log.Printf("[WARNING] error hitting health endpoint [%v], err: [%v]", endpoint, err)
+			if attempt > 10 {
+				log.Printf("[WARNING] error hitting health endpoint [%v], err: [%v]", endpoint, err)
+			}
 			continue
 		}
 		resp := string(body)
@@ -602,13 +606,15 @@ func (c *LocalCluster) waitUntilLogin() error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
-	for range 10 {
+	for attempt := range 10 {
 		err := client.Login(ctx, dgraphapi.DefaultUser, dgraphapi.DefaultPassword)
 		if err == nil {
 			log.Printf("[INFO] login succeeded")
 			return nil
 		}
-		log.Printf("[WARNING] error trying to login: %v", err)
+		if attempt > 10 {
+			log.Printf("[WARNING] error trying to login: %v", err)
+		}
 		time.Sleep(waitDurBeforeRetry)
 	}
 	return errors.New("error during login")

@@ -10,9 +10,11 @@ package checkupgrade
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"testing"
 	"time"
 
@@ -26,6 +28,11 @@ import (
 )
 
 func TestCheckUpgrade(t *testing.T) {
+	if runtime.GOOS != "linux" && os.Getenv("DGRAPH_BINARY") == "" {
+		fmt.Println("Skipping live load-uids tests on non-Linux platforms due to dgraph binary dependency")
+		fmt.Println("You can set the DGRAPH_BINARY environment variable to path of a native dgraph binary to run these tests")
+		os.Exit(0)
+	}
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).
 		WithACL(time.Hour).WithVersion("57aa5c4ac")
 	c, err := dgraphtest.NewLocalCluster(conf)

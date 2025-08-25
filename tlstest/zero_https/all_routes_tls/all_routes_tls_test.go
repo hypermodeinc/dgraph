@@ -53,7 +53,7 @@ func TestZeroWithAllRoutesTLSWithHTTPClient(t *testing.T) {
 	}
 	defer client.CloseIdleConnections()
 	for _, test := range testCasesHttp {
-		request, err := http.NewRequest("GET", "http://"+testutil.SockAddrZeroHttp+test.url, nil)
+		request, err := http.NewRequest("GET", "http://"+testutil.GetSockAddrZeroHttp()+test.url, nil)
 		require.NoError(t, err)
 		do, err := client.Do(request)
 		require.NoError(t, err)
@@ -97,7 +97,7 @@ func TestZeroWithAllRoutesTLSWithTLSClient(t *testing.T) {
 
 	defer client.CloseIdleConnections()
 	for _, test := range testCasesHttps {
-		request, err := http.NewRequest("GET", "https://"+testutil.SockAddrZeroHttp+test.url, nil)
+		request, err := http.NewRequest("GET", "https://"+testutil.GetSockAddrZeroHttp()+test.url, nil)
 		require.NoError(t, err)
 		do, err := client.Do(request)
 		require.NoError(t, err)

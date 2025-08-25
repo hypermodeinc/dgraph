@@ -34,7 +34,7 @@ var (
 	groupOneHTTP   = testutil.ContainerAddr("alpha1", 8080)
 	groupTwoHTTP   = testutil.ContainerAddr("alpha2", 8080)
 	groupThreeHTTP = testutil.ContainerAddr("alpha3", 8080)
-	groupOnegRPC   = testutil.SockAddr
+	groupOnegRPC   = testutil.GetSockAddr()
 
 	groupOneGraphQLServer   = "http://" + groupOneHTTP + "/graphql"
 	groupTwoGraphQLServer   = "http://" + groupTwoHTTP + "/graphql"
@@ -681,7 +681,7 @@ func TestDeleteSchemaAndExport(t *testing.T) {
 
 	require.Equal(t, "Success", testutil.JsonGet(data, "export", "response", "code").(string))
 	taskId := testutil.JsonGet(data, "export", "taskId").(string)
-	testutil.WaitForTask(t, taskId, false, testutil.SockAddrHttp)
+	testutil.WaitForTask(t, taskId, false, testutil.GetSockAddrHttp())
 
 	// applying a new schema should still work
 	newSchemaResp := common.AssertUpdateGQLSchemaSuccess(t, groupOneHTTP, schema, nil)

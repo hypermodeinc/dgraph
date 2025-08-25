@@ -350,7 +350,7 @@ type DispatchBoardCard {
 
 `
 
-const ngramVersionHash = "5d9fd2ed444b9ca1d3b03e7a51f5f92fc407cbaa"
+const ngramVersionHash = "d7dfe3b4282fa3543e811c5538f86d39268961ba"
 
 func populateCluster(dc dgraphapi.Cluster) {
 	x.Panic(client.Alter(context.Background(), &api.Operation{DropAll: true}))

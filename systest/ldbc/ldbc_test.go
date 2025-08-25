@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -71,6 +72,11 @@ func TestQueries(t *testing.T) {
 }
 
 func TestMain(m *testing.M) {
+	if runtime.GOOS != "linux" && os.Getenv("DGRAPH_BINARY") == "" {
+		fmt.Println("Skipping LDBC tests on non-Linux platforms due to dgraph binary dependency")
+		fmt.Println("You can set the DGRAPH_BINARY environment variable to path of a native dgraph binary to run these tests")
+		os.Exit(0)
+	}
 	noschemaFile := filepath.Join(testutil.TestDataDirectory, "ldbcTypes.schema")
 	rdfFile := testutil.TestDataDirectory
 	if err := testutil.MakeDirEmpty([]string{"out/0"}); err != nil {
@@ -80,7 +86,7 @@ func TestMain(m *testing.M) {
 	start := time.Now()
 	fmt.Println("Bulkupload started")
 	if err := testutil.BulkLoad(testutil.BulkOpts{
-		Zero:       testutil.SockAddrZero,
+		Zero:       testutil.GetSockAddrZero(),
 		Shards:     1,
 		RdfFile:    rdfFile,
 		SchemaFile: noschemaFile,

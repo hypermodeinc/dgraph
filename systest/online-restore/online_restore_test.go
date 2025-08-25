@@ -205,7 +205,7 @@ func runMutations(t *testing.T, dg *dgo.Dgraph) {
 func TestBasicRestore(t *testing.T) {
 	disableDraining(t)
 
-	conn, err := grpc.NewClient(testutil.SockAddr,
+	conn, err := grpc.NewClient(testutil.GetSockAddr(),
 		grpc.WithTransportCredentials(credentials.NewTLS(testutil.GetAlphaClientConfig(t))))
 	require.NoError(t, err)
 	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
@@ -216,7 +216,7 @@ func TestBasicRestore(t *testing.T) {
 	snapshotTs := getSnapshotTs(t)
 	req := &restoreReq{location: backupLocation, backupId: "youthful_rhodes3", encKeyFile: encKeyFile}
 	sendRestoreRequest(t, req)
-	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
+	testutil.WaitForRestore(t, dg, testutil.GetSockAddrHttp())
 
 	// Snapshot must be taken just after the restore and hence the snapshotTs be updated.
 	require.NoError(t, x.RetryUntilSuccess(3, 2*time.Second, func() error {
@@ -244,7 +244,7 @@ func TestBasicRestore(t *testing.T) {
 // drop all
 // Take backup b6
 func TestIncrementalRestore(t *testing.T) {
-	conn, err := grpc.NewClient(testutil.SockAddr,
+	conn, err := grpc.NewClient(testutil.GetSockAddr(),
 		grpc.WithTransportCredentials(credentials.NewTLS(testutil.GetAlphaClientConfig(t))))
 	require.NoError(t, err)
 	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
@@ -257,7 +257,7 @@ func TestIncrementalRestore(t *testing.T) {
 		backupNum: 1,
 	}
 	sendRestoreRequest(t, req)
-	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
+	testutil.WaitForRestore(t, dg, testutil.GetSockAddrHttp())
 
 	query := `{ q(func: has(name)) { name age } }`
 	runQuery := func(query, expectedResp string) {
@@ -273,7 +273,7 @@ func TestIncrementalRestore(t *testing.T) {
 		incrementalFrom: 2,
 	}
 	sendRestoreRequest(t, req)
-	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
+	testutil.WaitForRestore(t, dg, testutil.GetSockAddrHttp())
 	runQuery(query, `{"q":[{"name":"alice"}, {"name":"bob", "age": "12"}]}`)
 
 	req = &restoreReq{
@@ -282,7 +282,7 @@ func TestIncrementalRestore(t *testing.T) {
 		incrementalFrom: 3,
 	}
 	sendRestoreRequest(t, req)
-	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
+	testutil.WaitForRestore(t, dg, testutil.GetSockAddrHttp())
 	runQuery(query, `{"q":[]}`)
 	runQuery(`{ q(func: has(age)) {age} }`, `{"q":[{"age": "12"}]}`)
 
@@ -292,7 +292,7 @@ func TestIncrementalRestore(t *testing.T) {
 		incrementalFrom: 4,
 	}
 	sendRestoreRequest(t, req)
-	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
+	testutil.WaitForRestore(t, dg, testutil.GetSockAddrHttp())
 	runQuery(query, `{"q":[{"name":"alice"}]}`)
 
 	req = &restoreReq{
@@ -302,7 +302,7 @@ func TestIncrementalRestore(t *testing.T) {
 	}
 
 	sendRestoreRequest(t, req)
-	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
+	testutil.WaitForRestore(t, dg, testutil.GetSockAddrHttp())
 	runQuery(query, `{"q":[]}`)
 	runQuery(`{ q(func: has(age)) {age} }`, `{"q":[]}`)
 
@@ -320,7 +320,7 @@ func TestIncrementalRestore(t *testing.T) {
 
 	// after drop all
 	sendRestoreRequest(t, req)
-	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
+	testutil.WaitForRestore(t, dg, testutil.GetSockAddrHttp())
 	runQuery(query, `{"q":[]}`)
 	runQuery(`{ q(func: has(age)) {age} }`, `{"q":[]}`)
 
@@ -334,7 +334,7 @@ func TestRestoreBackupNum(t *testing.T) {
 	disableDraining(t)
 
 	conn, err := grpc.NewClient(
-		testutil.SockAddr,
+		testutil.GetSockAddr(),
 		grpc.WithTransportCredentials(credentials.NewTLS(testutil.GetAlphaClientConfig(t))),
 	)
 	require.NoError(t, err)
@@ -346,7 +346,7 @@ func TestRestoreBackupNum(t *testing.T) {
 
 	req := &restoreReq{location: backupLocation, backupId: "youthful_rhodes3", backupNum: 1, encKeyFile: encKeyFile}
 	sendRestoreRequest(t, req)
-	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
+	testutil.WaitForRestore(t, dg, testutil.GetSockAddrHttp())
 
 	runQueries(t, dg, true)
 	runMutations(t, dg)
@@ -356,7 +356,7 @@ func TestRestoreBackupNumInvalid(t *testing.T) {
 	disableDraining(t)
 
 	conn, err := grpc.NewClient(
-		testutil.SockAddr,
+		testutil.GetSockAddr(),
 		grpc.WithTransportCredentials(credentials.NewTLS(testutil.GetAlphaClientConfig(t))),
 	)
 	require.NoError(t, err)
@@ -416,7 +416,7 @@ func TestMoveTablets(t *testing.T) {
 	disableDraining(t)
 
 	conn, err := grpc.NewClient(
-		testutil.SockAddr,
+		testutil.GetSockAddr(),
 		grpc.WithTransportCredentials(credentials.NewTLS(testutil.GetAlphaClientConfig(t))),
 	)
 	require.NoError(t, err)
@@ -427,14 +427,14 @@ func TestMoveTablets(t *testing.T) {
 
 	req := &restoreReq{location: backupLocation, backupId: "youthful_rhodes3", encKeyFile: encKeyFile}
 	sendRestoreRequest(t, req)
-	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
+	testutil.WaitForRestore(t, dg, testutil.GetSockAddrHttp())
 	runQueries(t, dg, false)
 
 	// Send another restore request with a different backup. This backup has some of the
 	// same predicates as the previous one but they are stored in different groups.
 	req = &restoreReq{location: backupLocation, backupId: "blissful_hermann1", encKeyFile: encKeyFile}
 	sendRestoreRequest(t, req)
-	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
+	testutil.WaitForRestore(t, dg, testutil.GetSockAddrHttp())
 
 	resp, err := dg.NewTxn().Query(context.Background(), `{
 	  q(func: has(name), orderasc: name) {
@@ -514,7 +514,7 @@ func TestListBackups(t *testing.T) {
 }
 
 func TestRestoreWithDropOperations(t *testing.T) {
-	conn, err := grpc.NewClient(testutil.SockAddr,
+	conn, err := grpc.NewClient(testutil.GetSockAddr(),
 		grpc.WithTransportCredentials(credentials.NewTLS(testutil.GetAlphaClientConfig(t))))
 	require.NoError(t, err)
 	dg := dgo.NewDgraphClient(api.NewDgraphClient(conn))
@@ -713,7 +713,7 @@ func backupRestoreAndVerify(t *testing.T, dg *dgo.Dgraph, backupDir, queryToVeri
 	backup(t, backupDir)
 	req := &restoreReq{location: backupDir, encKeyFile: encKeyFile}
 	sendRestoreRequest(t, req)
-	testutil.WaitForRestore(t, dg, testutil.SockAddrHttp)
+	testutil.WaitForRestore(t, dg, testutil.GetSockAddrHttp())
 	testutil.VerifyQueryResponse(t, dg, queryToVerify, expectedResponse)
 	testutil.VerifySchema(t, dg, schemaVerificationOpts)
 }
