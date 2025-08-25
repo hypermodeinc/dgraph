@@ -41,9 +41,7 @@ func (vsuite *VectorTestSuite) TestVectorIncrBackupRestore() {
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser,
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
-	require.NoError(t, gc.SetupSchema(vsuite.schemaVecDimesion10))
-
-	numVectors := 1000
+	numVectors := 1500
 	allVectors := make([][][]float32, 0, 5)
 	allRdfs := make([]string, 0, 5)
 	for i := 1; i <= 5; i++ {
@@ -55,6 +53,7 @@ func (vsuite *VectorTestSuite) TestVectorIncrBackupRestore() {
 		mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
 		_, err := gc.Mutate(mu)
 		require.NoError(t, err)
+		require.NoError(t, gc.SetupSchema(vsuite.schemaVecDimesion10))
 
 		t.Logf("taking backup #%v\n", i)
 		require.NoError(t, hc.Backup(c, i == 1, dgraphtest.DefaultBackupDir))
@@ -76,10 +75,8 @@ func (vsuite *VectorTestSuite) TestVectorIncrBackupRestore() {
 
 		require.JSONEq(t, fmt.Sprintf(`{"vector":[{"count":%v}]}`, numVectors*i), string(result.GetJson()))
 		var allSpredVec [][]float32
-		for i, vecArr := range allVectors {
-			if i <= i {
-				allSpredVec = append(allSpredVec, vecArr...)
-			}
+		for _, vecArr := range allVectors {
+			allSpredVec = append(allSpredVec, vecArr...)
 		}
 		for p, vector := range allVectors[i-1] {
 			triple := strings.Split(allRdfs[i-1], "\n")[p]
@@ -88,7 +85,6 @@ func (vsuite *VectorTestSuite) TestVectorIncrBackupRestore() {
 			require.NoError(t, err)
 
 			require.Equal(t, allVectors[i-1][p], queriedVector[0])
-
 			similarVectors, err := gc.QueryMultipleVectorsUsingSimilarTo(vector, pred, numVectors)
 			require.NoError(t, err)
 			require.GreaterOrEqual(t, len(similarVectors), 10)
@@ -99,7 +95,7 @@ func (vsuite *VectorTestSuite) TestVectorIncrBackupRestore() {
 	}
 }
 
-func (vsuite *VectorTestSuite) TestVectorBackupRestore() {
+func (vsuite *VectorTestSuite) TestVectorBackupRestore12() {
 	t := vsuite.T()
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
@@ -118,15 +114,13 @@ func (vsuite *VectorTestSuite) TestVectorBackupRestore() {
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser,
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
-	require.NoError(t, gc.SetupSchema(vsuite.schema))
-
-	numVectors := 1000
-	pred := "project_description_v"
+	numVectors := 1001
 	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
 
 	mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
 	_, err = gc.Mutate(mu)
 	require.NoError(t, err)
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 
 	t.Log("taking backup \n")
 	require.NoError(t, hc.Backup(c, false, dgraphtest.DefaultBackupDir))
@@ -135,7 +129,14 @@ func (vsuite *VectorTestSuite) TestVectorBackupRestore() {
 	require.NoError(t, hc.Restore(c, dgraphtest.DefaultBackupDir, "", 0, 0))
 	require.NoError(t, dgraphapi.WaitForRestore(c))
 
-	testVectorQuery(t, gc, vectors, rdfs, pred, numVectors)
+	for _, vector := range vectors {
+		similarVectors, err := gc.QueryMultipleVectorsUsingSimilarTo(vector, pred, 100)
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(similarVectors), 100)
+		for _, similarVector := range similarVectors {
+			require.Contains(t, vectors, similarVector)
+		}
+	}
 }
 
 func (vsuite *VectorTestSuite) TestVectorBackupRestoreDropIndex() {
