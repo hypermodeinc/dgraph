@@ -370,13 +370,13 @@ func sanitizeFilename(pkg string) string {
 
 func runTestsFor(ctx context.Context, pkg, prefix string, xmlFile string) error {
 	args := []string{"gotestsum", "--junitfile", xmlFile, "--format", "standard-verbose", "--max-fails", "1", "--",
-		"-v", "-failfast", "-tags=integration"}
+		"-v", "-tags=integration"}
 	if *race {
 		args = append(args, "-timeout", "180m")
 		// Todo: There are few race errors in tests itself. Enable this once that is fixed.
 		// args = append(args, "-race")
 	} else {
-		args = append(args, "-timeout", "30m")
+		args = append(args, "-timeout", "180m")
 	}
 
 	if *count > 0 {

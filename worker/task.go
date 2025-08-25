@@ -363,22 +363,18 @@ func (qs *queryState) handleValuePostings(ctx context.Context, args funcArgs) er
 			posting.NewViLocalCache(qs.cache),
 			args.q.ReadTs,
 		)
+
 		indexer, err := cspec.CreateIndex(args.q.Attr)
 		if err != nil {
 			return err
 		}
-		var nnUids []uint64
-		if srcFn.vectorInfo != nil {
-			nnUids, err = indexer.Search(ctx, qc, srcFn.vectorInfo,
-				int(numNeighbors), index.AcceptAll[float32])
-		} else {
-			nnUids, err = indexer.SearchWithUid(ctx, qc, srcFn.vectorUid,
-				int(numNeighbors), index.AcceptAll[float32])
-		}
 
+		nnUids, err := indexer.Search(ctx, qc, srcFn.vectorInfo,
+			int(numNeighbors), index.AcceptAll[float32])
 		if err != nil && !strings.Contains(err.Error(), hnsw.EmptyHNSWTreeError+": "+badger.ErrKeyNotFound.Error()) {
 			return err
 		}
+
 		sort.Slice(nnUids, func(i, j int) bool { return nnUids[i] < nnUids[j] })
 		args.out.UidMatrix = append(args.out.UidMatrix, &pb.List{Uids: nnUids})
 		return nil

@@ -8,10 +8,12 @@ package hnsw
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/hypermodeinc/dgraph/v25/protos/pb"
 	c "github.com/hypermodeinc/dgraph/v25/tok/constraints"
 	"github.com/hypermodeinc/dgraph/v25/tok/index"
 	opt "github.com/hypermodeinc/dgraph/v25/tok/options"
@@ -32,6 +34,7 @@ type persistentHNSW[T c.Float] struct {
 	// layer for uuid 65443. The result will be a neighboring uuid.
 	nodeAllEdges map[uint64][][]uint64
 	deadNodes    map[uint64]struct{}
+	cache        index.CacheType
 }
 
 func GetPersistantOptions[T c.Float](o opt.Options) string {
@@ -109,6 +112,66 @@ func (ph *persistentHNSW[T]) applyOptions(o opt.Options) error {
 			insortHeap: insortPersistentHeapAscending[T], isBetterScore: isBetterScoreForDistance[T]}
 	}
 	return nil
+}
+
+func (ph *persistentHNSW[T]) NumBuildPasses() int {
+	return 0
+}
+
+func (ph *persistentHNSW[T]) SetNumPasses(int) {
+	return
+}
+
+func (ph *persistentHNSW[T]) Dimension() int {
+	return 0
+}
+
+func (ph *persistentHNSW[T]) SetDimension(schema *pb.SchemaUpdate, dimension int) {
+	glog.Info("not implemented")
+}
+
+func (ph *persistentHNSW[T]) NumIndexPasses() int {
+	return 1
+}
+
+func (ph *persistentHNSW[T]) NumSeedVectors() int {
+	return 0
+}
+
+func (ph *persistentHNSW[T]) StartBuild(caches []index.CacheType) {
+	ph.nodeAllEdges = make(map[uint64][][]uint64)
+	ph.cache = caches[0]
+}
+
+func (ph *persistentHNSW[T]) EndBuild() []int {
+	ph.nodeAllEdges = nil
+	ph.cache = nil
+	return []int{0}
+}
+
+func (ph *persistentHNSW[T]) NumThreads() int {
+	return 1
+}
+
+func (ph *persistentHNSW[T]) BuildInsert(ctx context.Context, uid uint64, vec []T) error {
+	newPh := &persistentHNSW[T]{
+		maxLevels:      ph.maxLevels,
+		efConstruction: ph.efConstruction,
+		efSearch:       ph.efSearch,
+		pred:           ph.pred,
+		vecEntryKey:    ph.vecEntryKey,
+		vecKey:         ph.vecKey,
+		vecDead:        ph.vecDead,
+		simType:        ph.simType,
+		floatBits:      ph.floatBits,
+		nodeAllEdges:   make(map[uint64][][]uint64),
+		cache:          ph.cache,
+	}
+	_, err := newPh.Insert(ctx, ph.cache, uid, vec)
+	return err
+}
+
+func (ph *persistentHNSW[T]) AddSeedVector(vec []T) {
 }
 
 func (ph *persistentHNSW[T]) emptyFinalResultWithError(e error) (
@@ -252,6 +315,53 @@ func (ph *persistentHNSW[T]) Search(ctx context.Context, c index.CacheType, quer
 	maxResults int, filter index.SearchFilter[T]) (nnUids []uint64, err error) {
 	r, err := ph.SearchWithPath(ctx, c, query, maxResults, filter)
 	return r.Neighbors, err
+}
+
+type resultRow[T c.Float] struct {
+	uid  uint64
+	dist T
+}
+
+// MergeResults takes a list of UIDs and returns the maxResults nearest neighbors
+// in order of increasing distance. It returns an error if any of the UIDs are
+// not present in the index.
+//
+// The filter parameter is not used by this method.
+//
+// This method is part of the index.MultipleIndex interface.
+func (ph *persistentHNSW[T]) MergeResults(ctx context.Context, c index.CacheType, list []uint64, query []T, maxResults int, filter index.SearchFilter[T]) ([]uint64, error) {
+	var result []resultRow[T]
+
+	for i := range list {
+		var vec []T
+		err := ph.getVecFromUid(list[i], c, &vec)
+		if err != nil {
+			return nil, err
+		}
+
+		dist, err := ph.simType.distanceScore(vec, query, ph.floatBits)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, resultRow[T]{
+			uid:  list[i],
+			dist: dist,
+		})
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].dist < result[j].dist
+	})
+
+	uids := []uint64{}
+	for i := range maxResults {
+		if i > len(result) {
+			break
+		}
+		uids = append(uids, result[i].uid)
+	}
+
+	return uids, nil
 }
 
 // SearchWithUid searches the hnsw graph for the nearest neighbors of the query uid
@@ -399,6 +509,9 @@ func (ph *persistentHNSW[T]) Insert(ctx context.Context, c index.CacheType,
 	}
 	_, edges, err := ph.insertHelper(ctx, tc, inUuid, inVec)
 	return edges, err
+}
+func (ph *persistentHNSW[T]) GetCentroids() [][]T {
+	return nil
 }
 
 // InsertToPersistentStorage inserts a node into the hnsw graph and returns the
