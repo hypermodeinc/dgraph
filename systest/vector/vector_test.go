@@ -333,7 +333,6 @@ func (vsuite *VectorTestSuite) TestVectorIndexDropPredicate() {
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser,
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
-	require.NoError(t, gc.SetupSchema(vsuite.schema))
 	numVectors := 1000
 
 	// add vectors
