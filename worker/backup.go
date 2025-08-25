@@ -301,12 +301,10 @@ func ProcessBackupRequest(ctx context.Context, req *pb.BackupRequest) error {
 
 		for _, pred := range schema {
 			if pred.Type == "float32vector" && len(pred.IndexSpecs) != 0 {
-				vecPredMap[gid] = append(predMap[gid], pred.Predicate+hnsw.VecEntry, pred.Predicate+hnsw.VecKeyword,
-					pred.Predicate+hnsw.VecDead, pred.Predicate+kmeans.CentroidPrefix)
 				for _, spec := range pred.IndexSpecs {
 					if spec.Name == partitioned_hnsw.PartitionedHNSW {
+						vecPredMap[gid] = append(predMap[gid], pred.Predicate+kmeans.CentroidPrefix)
 						for _, opt := range spec.Options {
-
 							if opt.Key == partitioned_hnsw.NumClustersOpt {
 								numClusters, err := strconv.Atoi(opt.Value)
 								if err != nil {
@@ -321,6 +319,9 @@ func ProcessBackupRequest(ctx context.Context, req *pb.BackupRequest) error {
 								}
 							}
 						}
+					} else {
+						vecPredMap[gid] = append(predMap[gid], pred.Predicate+hnsw.VecEntry, pred.Predicate+hnsw.VecKeyword,
+							pred.Predicate+hnsw.VecDead)
 					}
 				}
 			}
