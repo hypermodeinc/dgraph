@@ -27,6 +27,9 @@ func (c *LocalCluster) dgraphImage() string {
 	return "dgraph/dgraph:local"
 }
 
+// setupBinary sets up the dgraph binary. The binary is expected to be a version
+// compiled that is compatible with the host OS and architecture. Search this repo
+// for DGRAPH_BINARY to learn its use.
 func (c *LocalCluster) setupBinary() error {
 	if err := ensureDgraphClone(); err != nil {
 		panic(err)
@@ -87,7 +90,7 @@ func runGitClone() error {
 	// a copy of this folder by running git clone using this already cloned dgraph
 	// repo. After the quick clone, we update the original URL to point to the
 	// GitHub dgraph repo and perform a "git fetch".
-	log.Printf("[INFO] cloning dgraph repo from [%v]", baseRepoDir)
+	log.Printf("[INFO] cloning dgraph repo from [%v] to [%v]", baseRepoDir, repoDir)
 	cmd := exec.Command("git", "clone", baseRepoDir, repoDir)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return errors.Wrapf(err, "error cloning dgraph repo\noutput:%v", string(out))
@@ -166,14 +169,29 @@ func buildDgraphBinary(dir, binaryDir, version string) error {
 }
 
 func copyBinary(fromDir, toDir, version string) error {
-	binaryName := "dgraph"
-	if version != localVersion {
-		binaryName = fmt.Sprintf(binaryNameFmt, version)
+	binaries := []string{"dgraph"}
+	if nativeBinary := os.Getenv("DGRAPH_BINARY"); nativeBinary != "" {
+		binaries = append(binaries, filepath.Base(nativeBinary))
 	}
-	fromPath := filepath.Join(fromDir, binaryName)
-	toPath := filepath.Join(toDir, "dgraph")
-	if err := copy(fromPath, toPath); err != nil {
-		return errors.Wrapf(err, "error while copying binary into tempBinDir [%v], from [%v]", toPath, fromPath)
+	for _, binary := range binaries {
+		binaryName := binary
+		if version != localVersion {
+			binaryName = fmt.Sprintf(binaryNameFmt, version)
+		}
+		fromPath := filepath.Join(fromDir, binaryName)
+		if _, err := os.Stat(fromPath); err != nil {
+			return errors.Wrapf(err, "error while copying binary into tempBinDir [%v], from [%v]", toDir, fromPath)
+		}
+		toPath := filepath.Join(toDir, binaryName)
+
+		// Skip copying if binary already exists in destination
+		if _, err := os.Stat(toPath); err == nil {
+			continue
+		}
+		log.Printf("[INFO] copying binary from [%v] to [%v]", fromPath, toPath)
+		if err := copy(fromPath, toPath); err != nil {
+			return errors.Wrapf(err, "error while copying binary into tempBinDir [%v], from [%v]", toPath, fromPath)
+		}
 	}
 	return nil
 }
