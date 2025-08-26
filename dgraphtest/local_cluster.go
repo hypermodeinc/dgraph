@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -208,20 +209,40 @@ func (c *LocalCluster) setupBeforeCluster() error {
 }
 
 func (c *LocalCluster) createContainers() error {
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(c.zeros)+len(c.alphas))
+
 	for _, zo := range c.zeros {
-		cid, err := c.createContainer(zo)
-		if err != nil {
-			return err
-		}
-		zo.containerID = cid
+		wg.Add(1)
+		go func(z *zero) {
+			defer wg.Done()
+			cid, err := c.createContainer(z)
+			if err != nil {
+				errChan <- err
+				return
+			}
+			z.containerID = cid
+		}(zo)
 	}
 
 	for _, aa := range c.alphas {
-		cid, err := c.createContainer(aa)
-		if err != nil {
-			return err
-		}
-		aa.containerID = cid
+		wg.Add(1)
+		go func(a *alpha) {
+			defer wg.Done()
+			cid, err := c.createContainer(a)
+			if err != nil {
+				errChan <- err
+				return
+			}
+			a.containerID = cid
+		}(aa)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		return err
 	}
 
 	return nil
@@ -260,17 +281,35 @@ func (c *LocalCluster) destroyContainers() error {
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
 
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(c.zeros)+len(c.alphas))
 	ro := container.RemoveOptions{RemoveVolumes: true, Force: true}
+
 	for _, zo := range c.zeros {
-		if err := c.dcli.ContainerRemove(ctx, zo.cid(), ro); err != nil {
-			return errors.Wrapf(err, "error removing zero [%v]", zo.cname())
-		}
+		wg.Add(1)
+		go func(z *zero) {
+			defer wg.Done()
+			if err := c.dcli.ContainerRemove(ctx, z.cid(), ro); err != nil {
+				errChan <- errors.Wrapf(err, "error removing zero [%v]", z.cname())
+			}
+		}(zo)
 	}
 
 	for _, aa := range c.alphas {
-		if err := c.dcli.ContainerRemove(ctx, aa.cid(), ro); err != nil {
-			return errors.Wrapf(err, "error removing alpha [%v]", aa.cname())
-		}
+		wg.Add(1)
+		go func(a *alpha) {
+			defer wg.Done()
+			if err := c.dcli.ContainerRemove(ctx, a.cid(), ro); err != nil {
+				errChan <- errors.Wrapf(err, "error removing alpha [%v]", a.cname())
+			}
+		}(aa)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		return err
 	}
 
 	return nil
@@ -506,36 +545,56 @@ func (c *LocalCluster) killContainer(dc dnode) error {
 
 func (c *LocalCluster) HealthCheck(zeroOnly bool) error {
 	log.Printf("[INFO] checking health of containers")
+	var wg sync.WaitGroup
+	errChan := make(chan error, len(c.zeros)+len(c.alphas))
+
 	for _, zo := range c.zeros {
 		if !zo.isRunning {
 			break
 		}
-		if err := c.containerHealthCheck(zo.healthURL); err != nil {
-			return err
-		}
-		log.Printf("[INFO] container [%v] passed health check", zo.containerName)
+		wg.Add(1)
+		go func(z *zero) {
+			defer wg.Done()
+			if err := c.containerHealthCheck(z.healthURL); err != nil {
+				errChan <- err
+				return
+			}
+			log.Printf("[INFO] container [%v] passed health check", z.containerName)
 
-		if err := c.checkDgraphVersion(zo.containerName); err != nil {
-			return err
+			if err := c.checkDgraphVersion(z.containerName); err != nil {
+				errChan <- err
+			}
+		}(zo)
+	}
+
+	if !zeroOnly {
+		for _, aa := range c.alphas {
+			if !aa.isRunning {
+				break
+			}
+			wg.Add(1)
+			go func(a *alpha) {
+				defer wg.Done()
+				if err := c.containerHealthCheck(a.healthURL); err != nil {
+					errChan <- err
+					return
+				}
+				log.Printf("[INFO] container [%v] passed health check", a.containerName)
+
+				if err := c.checkDgraphVersion(a.containerName); err != nil {
+					errChan <- err
+				}
+			}(aa)
 		}
 	}
-	if zeroOnly {
-		return nil
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		return err
 	}
 
-	for _, aa := range c.alphas {
-		if !aa.isRunning {
-			break
-		}
-		if err := c.containerHealthCheck(aa.healthURL); err != nil {
-			return err
-		}
-		log.Printf("[INFO] container [%v] passed health check", aa.containerName)
-
-		if err := c.checkDgraphVersion(aa.containerName); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -637,7 +696,7 @@ func (c *LocalCluster) waitUntilGraphqlHealthCheck() error {
 		// starting to serve graphql schema.
 		err := hc.DeleteUser("nonexistent")
 		if err == nil {
-			log.Printf("[INFO] graphql health check succeeded")
+			log.Printf("[INFO] graphql health check succeeded for %v", c.conf.prefix)
 			return nil
 		} else if strings.Contains(err.Error(), "this indicates a resolver or validation bug") {
 			time.Sleep(waitDurBeforeRetry)

@@ -231,8 +231,8 @@ func runImportTest(t *testing.T, tt testcase) {
 	defer func() { targetCluster.Cleanup(t.Failed()) }()
 	defer gcCleanup()
 
-	_, err := gc.Query("schema{}")
-	require.NoError(t, err)
+	// Wait for cluster to be fully ready before proceeding
+	require.NoError(t, waitForClusterReady(t, targetCluster, gc, 30*time.Second))
 
 	url, err := targetCluster.GetAlphaGrpcEndpoint(0)
 	require.NoError(t, err)
@@ -268,7 +268,12 @@ func runImportTest(t *testing.T, tt testcase) {
 			alphaID := alphas[i]
 			t.Logf("Shutting down alpha %v from group %v", alphaID, group)
 			require.NoError(t, targetCluster.StopAlpha(alphaID))
+			time.Sleep(500 * time.Millisecond) // Brief pause between shutdowns
 		}
+	}
+
+	if tt.downAlphas > 0 && tt.err == "" {
+		require.NoError(t, waitForClusterStable(t, targetCluster, 30*time.Second))
 	}
 
 	if tt.err != "" {
@@ -285,10 +290,11 @@ func runImportTest(t *testing.T, tt testcase) {
 			alphaID := alphas[i]
 			t.Logf("Starting alpha %v from group %v", alphaID, group)
 			require.NoError(t, targetCluster.StartAlpha(alphaID))
+			require.NoError(t, waitForAlphaReady(t, targetCluster, alphaID, 30*time.Second))
 		}
 	}
 
-	require.NoError(t, targetCluster.HealthCheck(false))
+	require.NoError(t, retryHealthCheck(t, targetCluster, 60*time.Second))
 
 	t.Log("Import completed")
 
@@ -297,6 +303,8 @@ func runImportTest(t *testing.T, tt testcase) {
 		gc, cleanup, err := targetCluster.AlphaClient(i)
 		require.NoError(t, err)
 		defer cleanup()
+
+		require.NoError(t, validateClientConnection(t, gc, 10*time.Second))
 		verifyImportResults(t, gc, tt.downAlphas)
 	}
 }
@@ -307,6 +315,7 @@ func setupBulkCluster(t *testing.T, numAlphas int, encrypted bool) (*dgraphtest.
 		fmt.Println("You can set the DGRAPH_BINARY environment variable to path of a native dgraph binary to run these tests")
 		t.Skip("Skipping test on non-Linux platforms due to dgraph binary dependency")
 	}
+
 	baseDir := t.TempDir()
 	bulkConf := dgraphtest.NewClusterConfig().
 		WithNumAlphas(numAlphas).
@@ -321,7 +330,7 @@ func setupBulkCluster(t *testing.T, numAlphas int, encrypted bool) (*dgraphtest.
 	cluster, err := dgraphtest.NewLocalCluster(bulkConf)
 	require.NoError(t, err)
 
-	require.NoError(t, cluster.StartZero(0))
+	require.NoError(t, retryStartZero(t, cluster, 0, 30*time.Second))
 
 	// Perform bulk load
 	oneMillion := dgraphtest.GetDataset(dgraphtest.OneMillionDataset)
@@ -430,4 +439,146 @@ func getPredicateMap(schema map[string]interface{}) map[string]interface{} {
 	}
 
 	return predicatesMap
+}
+
+// waitForClusterReady ensures the cluster is fully operational before proceeding
+func waitForClusterReady(t *testing.T, cluster *dgraphtest.LocalCluster, gc *dgraphapi.GrpcClient, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	retryDelay := 500 * time.Millisecond
+
+	for time.Now().Before(deadline) {
+		if _, err := gc.Query("schema{}"); err != nil {
+			t.Logf("Cluster not ready yet: %v, retrying in %v", err, retryDelay)
+			time.Sleep(retryDelay)
+			retryDelay = min(retryDelay*2, 5*time.Second)
+			continue
+		}
+
+		if err := cluster.HealthCheck(false); err != nil {
+			t.Logf("Health check failed: %v, retrying in %v", err, retryDelay)
+			time.Sleep(retryDelay)
+			retryDelay = min(retryDelay*2, 5*time.Second)
+			continue
+		}
+
+		t.Log("Cluster is ready")
+		return nil
+	}
+
+	return fmt.Errorf("cluster not ready within %v timeout", timeout)
+}
+
+// waitForClusterStable ensures remaining alphas are accessible after some are shut down
+func waitForClusterStable(t *testing.T, cluster *dgraphtest.LocalCluster, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	retryDelay := 1 * time.Second
+
+	for time.Now().Before(deadline) {
+		if err := cluster.HealthCheck(false); err != nil {
+			t.Logf("Cluster not stable yet: %v, retrying in %v", err, retryDelay)
+			time.Sleep(retryDelay)
+			retryDelay = min(retryDelay*2, 5*time.Second)
+			continue
+		}
+
+		t.Log("Cluster is stable")
+		return nil
+	}
+
+	return fmt.Errorf("cluster not stable within %v timeout", timeout)
+}
+
+// waitForAlphaReady waits for a specific alpha to be ready after startup
+func waitForAlphaReady(t *testing.T, cluster *dgraphtest.LocalCluster, alphaID int, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	retryDelay := 500 * time.Millisecond
+
+	for time.Now().Before(deadline) {
+		gc, cleanup, err := cluster.AlphaClient(alphaID)
+		if err != nil {
+			t.Logf("Alpha %d not ready yet: %v, retrying in %v", alphaID, err, retryDelay)
+			time.Sleep(retryDelay)
+			retryDelay = min(retryDelay*2, 3*time.Second)
+			continue
+		}
+
+		_, queryErr := gc.Query("schema{}")
+		cleanup()
+
+		if queryErr != nil {
+			t.Logf("Alpha %d query failed: %v, retrying in %v", alphaID, queryErr, retryDelay)
+			time.Sleep(retryDelay)
+			retryDelay = min(retryDelay*2, 3*time.Second)
+			continue
+		}
+
+		t.Logf("Alpha %d is ready", alphaID)
+		return nil
+	}
+
+	return fmt.Errorf("alpha %d not ready within %v timeout", alphaID, timeout)
+}
+
+// retryHealthCheck performs health check with retry logic
+func retryHealthCheck(t *testing.T, cluster *dgraphtest.LocalCluster, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	retryDelay := 1 * time.Second
+
+	for time.Now().Before(deadline) {
+		if err := cluster.HealthCheck(false); err != nil {
+			t.Logf("Health check failed: %v, retrying in %v", err, retryDelay)
+			time.Sleep(retryDelay)
+			retryDelay = min(retryDelay*2, 5*time.Second)
+			continue
+		}
+
+		t.Log("Health check passed")
+		return nil
+	}
+
+	return fmt.Errorf("health check failed within %v timeout", timeout)
+}
+
+// validateClientConnection ensures the client connection is working before use
+func validateClientConnection(t *testing.T, gc *dgraphapi.GrpcClient, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	retryDelay := 200 * time.Millisecond
+
+	for time.Now().Before(deadline) {
+		if _, err := gc.Query("schema{}"); err != nil {
+			t.Logf("Client connection validation failed: %v, retrying in %v", err, retryDelay)
+			time.Sleep(retryDelay)
+			retryDelay = min(retryDelay*2, 2*time.Second)
+			continue
+		}
+
+		return nil
+	}
+
+	return fmt.Errorf("client connection validation failed within %v timeout", timeout)
+}
+
+// retryStartZero attempts to start zero with retry logic for port conflicts
+func retryStartZero(t *testing.T, cluster *dgraphtest.LocalCluster, zeroID int, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	retryDelay := 1 * time.Second
+
+	for time.Now().Before(deadline) {
+		err := cluster.StartZero(zeroID)
+		if err == nil {
+			t.Logf("Zero %d started successfully", zeroID)
+			return nil
+		}
+
+		if strings.Contains(err.Error(), "bind: address already in use") {
+			t.Logf("Port conflict starting zero %d: %v, retrying in %v", zeroID, err, retryDelay)
+			time.Sleep(retryDelay)
+			retryDelay = min(retryDelay*2, 10*time.Second)
+			continue
+		}
+
+		return fmt.Errorf("failed to start zero %d: %v", zeroID, err)
+	}
+
+	return fmt.Errorf("failed to start zero %d within %v timeout due to port conflicts", zeroID, timeout)
 }
