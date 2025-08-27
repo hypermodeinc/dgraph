@@ -42,6 +42,9 @@ func (c *LocalCluster) setupBinary() error {
 		}
 	}
 	if c.conf.version == localVersion {
+		if os.Getenv("GOPATH") == "" {
+			return errors.New("GOPATH is not set")
+		}
 		fromDir := filepath.Join(os.Getenv("GOPATH"), "bin")
 		return copyBinary(fromDir, c.tempBinDir, c.conf.version)
 	}
@@ -169,29 +172,14 @@ func buildDgraphBinary(dir, binaryDir, version string) error {
 }
 
 func copyBinary(fromDir, toDir, version string) error {
-	binaries := []string{"dgraph"}
-	if nativeBinary := os.Getenv("DGRAPH_BINARY"); nativeBinary != "" {
-		binaries = append(binaries, filepath.Base(nativeBinary))
+	binaryName := "dgraph"
+	if version != localVersion {
+		binaryName = fmt.Sprintf(binaryNameFmt, version)
 	}
-	for _, binary := range binaries {
-		binaryName := binary
-		if version != localVersion {
-			binaryName = fmt.Sprintf(binaryNameFmt, version)
-		}
-		fromPath := filepath.Join(fromDir, binaryName)
-		if _, err := os.Stat(fromPath); err != nil {
-			return errors.Wrapf(err, "error while copying binary into tempBinDir [%v], from [%v]", toDir, fromPath)
-		}
-		toPath := filepath.Join(toDir, binaryName)
-
-		// Skip copying if binary already exists in destination
-		if _, err := os.Stat(toPath); err == nil {
-			continue
-		}
-		log.Printf("[INFO] copying binary from [%v] to [%v]", fromPath, toPath)
-		if err := copy(fromPath, toPath); err != nil {
-			return errors.Wrapf(err, "error while copying binary into tempBinDir [%v], from [%v]", toPath, fromPath)
-		}
+	fromPath := filepath.Join(fromDir, binaryName)
+	toPath := filepath.Join(toDir, "dgraph")
+	if err := copy(fromPath, toPath); err != nil {
+		return errors.Wrapf(err, "error while copying binary into tempBinDir [%v], from [%v]", toPath, fromPath)
 	}
 	return nil
 }
