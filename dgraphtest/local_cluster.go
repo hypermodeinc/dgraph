@@ -666,7 +666,7 @@ func (c *LocalCluster) waitUntilLogin() error {
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
 	for attempt := range 10 {
-		err := client.Login(ctx, dgraphapi.DefaultUser, dgraphapi.DefaultPassword)
+		err = client.Login(ctx, dgraphapi.DefaultUser, dgraphapi.DefaultPassword)
 		if err == nil {
 			log.Printf("[INFO] login succeeded")
 			return nil
@@ -676,7 +676,7 @@ func (c *LocalCluster) waitUntilLogin() error {
 		}
 		time.Sleep(waitDurBeforeRetry)
 	}
-	return errors.New("error during login")
+	return errors.Wrap(err, "error during login")
 }
 
 func (c *LocalCluster) waitUntilGraphqlHealthCheck() error {
