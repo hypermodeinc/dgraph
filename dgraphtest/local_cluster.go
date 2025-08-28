@@ -411,13 +411,33 @@ func (c *LocalCluster) cleanupDocker() error {
 func (c *LocalCluster) Start() error {
 	log.Printf("[INFO] starting cluster with prefix [%v]", c.conf.prefix)
 	startAll := func() error {
+		var wg sync.WaitGroup
+		errCh := make(chan error, c.conf.numZeros+c.conf.numAlphas)
+
 		for i := range c.conf.numZeros {
-			if err := c.StartZero(i); err != nil {
-				return err
-			}
+			wg.Add(1)
+			go func(id int) {
+				defer wg.Done()
+				if err := c.StartZero(id); err != nil {
+					errCh <- fmt.Errorf("failed to start zero %d: %w", id, err)
+				}
+			}(i)
 		}
+
 		for i := range c.conf.numAlphas {
-			if err := c.StartAlpha(i); err != nil {
+			wg.Add(1)
+			go func(id int) {
+				defer wg.Done()
+				if err := c.StartAlpha(id); err != nil {
+					errCh <- fmt.Errorf("failed to start alpha %d: %w", id, err)
+				}
+			}(i)
+		}
+
+		wg.Wait()
+		close(errCh)
+		for err := range errCh {
+			if err != nil {
 				return err
 			}
 		}
