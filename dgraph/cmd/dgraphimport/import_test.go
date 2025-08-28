@@ -379,17 +379,6 @@ func verifyImportResults(t *testing.T, gc *dgraphapi.GrpcClient, downAlphas int)
 
 	for i := 0; i < maxRetries; i++ {
 		schemaResp, err := gc.Query("schema{}")
-		if err != nil {
-			// Check if error is due to draining mode
-			if strings.Contains(err.Error(), "draining mode") {
-				t.Logf("Cluster in draining mode, waiting %v before retry (attempt %d/%d)", retryDelay, i+1, maxRetries)
-				if i < maxRetries-1 {
-					time.Sleep(retryDelay)
-					retryDelay *= 2
-					continue
-				}
-			}
-		}
 		require.NoError(t, err)
 
 		// Parse schema response
