@@ -714,19 +714,13 @@ func (c *LocalCluster) waitUntilGraphqlHealthCheck() error {
 		// we do this because before v21, we used to propose the initial schema to the cluster.
 		// This results in schema being applied and indexes being built which could delay alpha
 		// starting to serve graphql schema.
-		err := hc.DeleteUser("nonexistent")
+		err = hc.DeleteUser("nonexistent")
 		if err == nil {
 			log.Printf("[INFO] graphql health check succeeded for %v", c.conf.prefix)
 			return nil
-		} else if strings.Contains(err.Error(), "this indicates a resolver or validation bug") {
-			time.Sleep(waitDurBeforeRetry)
-			continue
-		} else {
-			return errors.Wrapf(err, "error during graphql health check")
 		}
 	}
-
-	return errors.New("error during graphql health check")
+	return errors.Wrap(err, "error during graphql health check")
 }
 
 // Upgrades the cluster to the provided dgraph version
