@@ -27,17 +27,18 @@ type Node struct {
 	Vtest     []float32 `json:"vtest"`
 }
 
-func TestLiveLoadAndExportRDFFormat(t *testing.T) {
+func (vsuite *VectorTestSuite) TestLiveLoadAndExportRDFFormat() {
+	t := vsuite.T()
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
 	require.NoError(t, err)
 	defer func() { c.Cleanup(t.Failed()) }()
 	require.NoError(t, c.Start())
 
-	testExportAndLiveLoad(t, c, "rdf")
+	testExportAndLiveLoad(t, c, "rdf", vsuite.schemaVecDimesion10)
 }
 
-func testExportAndLiveLoad(t *testing.T, c *dgraphtest.LocalCluster, exportFormat string) {
+func testExportAndLiveLoad(t *testing.T, c *dgraphtest.LocalCluster, exportFormat string, schema string) {
 	gc, cleanup, err := c.Client()
 	require.NoError(t, err)
 	defer cleanup()
@@ -49,9 +50,9 @@ func testExportAndLiveLoad(t *testing.T, c *dgraphtest.LocalCluster, exportForma
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser,
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetupSchema(schema))
 
-	numVectors := 100
+	numVectors := 1000
 	pred := "project_description_v"
 	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 10, pred)
 

@@ -26,7 +26,7 @@ jobs:
   dgraph-vector-tests:
     if: github.event.pull_request.draft == false
     runs-on: warp-ubuntu-latest-x64-4x
-    timeout-minutes: 30
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
       - name: Set up Go

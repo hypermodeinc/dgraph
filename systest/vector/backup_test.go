@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -23,7 +22,12 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/x"
 )
 
-func TestVectorIncrBackupRestore(t *testing.T) {
+func (vsuite *VectorTestSuite) TestVectorIncrBackupRestore() {
+	t := vsuite.T()
+	if vsuite.isForPartitionedIndex {
+		t.Skip("Skipping TestVectorIncrBackupRestore for partitioned index")
+	}
+
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
 	require.NoError(t, err)
@@ -41,21 +45,19 @@ func TestVectorIncrBackupRestore(t *testing.T) {
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser,
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
-	require.NoError(t, gc.SetupSchema(testSchema))
-
-	numVectors := 500
-	pred := "project_description_v"
+	numVectors := 1500
 	allVectors := make([][][]float32, 0, 5)
 	allRdfs := make([]string, 0, 5)
 	for i := 1; i <= 5; i++ {
 		var rdfs string
 		var vectors [][]float32
-		rdfs, vectors = dgraphapi.GenerateRandomVectors(numVectors*(i-1), numVectors*i, 1, pred)
+		rdfs, vectors = dgraphapi.GenerateRandomVectors(numVectors*(i-1), numVectors*i, 10, pred)
 		allVectors = append(allVectors, vectors)
 		allRdfs = append(allRdfs, rdfs)
 		mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
 		_, err := gc.Mutate(mu)
 		require.NoError(t, err)
+		require.NoError(t, gc.SetupSchema(vsuite.schemaVecDimesion10))
 
 		t.Logf("taking backup #%v\n", i)
 		require.NoError(t, hc.Backup(c, i == 1, dgraphtest.DefaultBackupDir))
@@ -77,10 +79,8 @@ func TestVectorIncrBackupRestore(t *testing.T) {
 
 		require.JSONEq(t, fmt.Sprintf(`{"vector":[{"count":%v}]}`, numVectors*i), string(result.GetJson()))
 		var allSpredVec [][]float32
-		for i, vecArr := range allVectors {
-			if i <= i {
-				allSpredVec = append(allSpredVec, vecArr...)
-			}
+		for _, vecArr := range allVectors {
+			allSpredVec = append(allSpredVec, vecArr...)
 		}
 		for p, vector := range allVectors[i-1] {
 			triple := strings.Split(allRdfs[i-1], "\n")[p]
@@ -89,7 +89,6 @@ func TestVectorIncrBackupRestore(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, allVectors[i-1][p], queriedVector[0])
-
 			similarVectors, err := gc.QueryMultipleVectorsUsingSimilarTo(vector, pred, numVectors)
 			require.NoError(t, err)
 			require.GreaterOrEqual(t, len(similarVectors), 10)
@@ -100,7 +99,8 @@ func TestVectorIncrBackupRestore(t *testing.T) {
 	}
 }
 
-func TestVectorBackupRestore(t *testing.T) {
+func (vsuite *VectorTestSuite) TestVectorBackupRestore() {
+	t := vsuite.T()
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
 	require.NoError(t, err)
@@ -118,15 +118,13 @@ func TestVectorBackupRestore(t *testing.T) {
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser,
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
-	require.NoError(t, gc.SetupSchema(testSchema))
-
-	numVectors := 1000
-	pred := "project_description_v"
-	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 10, pred)
+	numVectors := 1001
+	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
 
 	mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
 	_, err = gc.Mutate(mu)
 	require.NoError(t, err)
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 
 	t.Log("taking backup \n")
 	require.NoError(t, hc.Backup(c, false, dgraphtest.DefaultBackupDir))
@@ -135,10 +133,22 @@ func TestVectorBackupRestore(t *testing.T) {
 	require.NoError(t, hc.Restore(c, dgraphtest.DefaultBackupDir, "", 0, 0))
 	require.NoError(t, dgraphapi.WaitForRestore(c))
 
-	testVectorQuery(t, gc, vectors, rdfs, pred, numVectors)
+	for _, vector := range vectors {
+		similarVectors, err := gc.QueryMultipleVectorsUsingSimilarTo(vector, pred, 100)
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(similarVectors), 100)
+		for _, similarVector := range similarVectors {
+			require.Contains(t, vectors, similarVector)
+		}
+	}
 }
 
-func TestVectorBackupRestoreDropIndex(t *testing.T) {
+func (vsuite *VectorTestSuite) TestVectorBackupRestoreDropIndex() {
+
+	t := vsuite.T()
+	if vsuite.isForPartitionedIndex {
+		t.Skip("Skipping TestVectorBackupRestoreDropIndex for partitioned index")
+	}
 	// setup cluster
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
@@ -158,11 +168,11 @@ func TestVectorBackupRestoreDropIndex(t *testing.T) {
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
 	// add vector predicate + index
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 	// add data to the vector predicate
-	numVectors := 3
+	numVectors := 1000
 	pred := "project_description_v"
-	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 1, pred)
+	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
 	mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
 	_, err = gc.Mutate(mu)
 	require.NoError(t, err)
@@ -174,7 +184,7 @@ func TestVectorBackupRestoreDropIndex(t *testing.T) {
 	require.NoError(t, gc.SetupSchema(testSchemaWithoutIndex))
 
 	// add more data to the vector predicate
-	rdfs, vectors2 := dgraphapi.GenerateRandomVectors(3, numVectors+3, 1, pred)
+	rdfs, vectors2 := dgraphapi.GenerateRandomVectors(numVectors, numVectors+3, 100, pred)
 	mu = &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
 	_, err = gc.Mutate(mu)
 	require.NoError(t, err)
@@ -195,7 +205,7 @@ func TestVectorBackupRestoreDropIndex(t *testing.T) {
 	require.NoError(t, hc.Backup(c, false, dgraphtest.DefaultBackupDir))
 
 	// add index
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 
 	t.Log("taking second incr backup \n")
 	require.NoError(t, hc.Backup(c, false, dgraphtest.DefaultBackupDir))
@@ -212,7 +222,7 @@ func TestVectorBackupRestoreDropIndex(t *testing.T) {
 		}`
 	resp, err := gc.Query(query)
 	require.NoError(t, err)
-	require.JSONEq(t, `{"vectors":[{"count":4}]}`, string(resp.GetJson()))
+	require.JSONEq(t, `{"vectors":[{"count":1001}]}`, string(resp.GetJson()))
 
 	require.NoError(t, err)
 	allVec := append(vectors, vectors2...)
@@ -227,7 +237,11 @@ func TestVectorBackupRestoreDropIndex(t *testing.T) {
 	}
 }
 
-func TestVectorBackupRestoreReIndexing(t *testing.T) {
+func (vsuite *VectorTestSuite) TestVectorBackupRestoreReIndexing() {
+	t := vsuite.T()
+	if vsuite.isForPartitionedIndex {
+		t.Skip("Skipping TestVectorBackupRestoreReIndexing for partitioned index")
+	}
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
 	require.NoError(t, err)
@@ -245,11 +259,11 @@ func TestVectorBackupRestoreReIndexing(t *testing.T) {
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser,
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 
 	numVectors := 1000
 	pred := "project_description_v"
-	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 10, pred)
+	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
 
 	mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
 	_, err = gc.Mutate(mu)
@@ -258,7 +272,7 @@ func TestVectorBackupRestoreReIndexing(t *testing.T) {
 	t.Log("taking backup \n")
 	require.NoError(t, hc.Backup(c, false, dgraphtest.DefaultBackupDir))
 
-	rdfs2, vectors2 := dgraphapi.GenerateRandomVectors(numVectors, numVectors+300, 10, pred)
+	rdfs2, vectors2 := dgraphapi.GenerateRandomVectors(numVectors, numVectors+300, 100, pred)
 
 	mu = &api.Mutation{SetNquads: []byte(rdfs2), CommitNow: true}
 	_, err = gc.Mutate(mu)
@@ -271,7 +285,7 @@ func TestVectorBackupRestoreReIndexing(t *testing.T) {
 		// drop index
 		require.NoError(t, gc.SetupSchema(testSchemaWithoutIndex))
 		// add index
-		require.NoError(t, gc.SetupSchema(testSchema))
+		require.NoError(t, gc.SetupSchema(vsuite.schema))
 	}
 	vectors = append(vectors, vectors2...)
 	rdfs = rdfs + rdfs2

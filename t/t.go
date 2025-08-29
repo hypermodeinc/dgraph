@@ -376,7 +376,7 @@ func runTestsFor(ctx context.Context, pkg, prefix string, xmlFile string) error 
 		// Todo: There are few race errors in tests itself. Enable this once that is fixed.
 		// args = append(args, "-race")
 	} else {
-		args = append(args, "-timeout", "30m")
+		args = append(args, "-timeout", "90m")
 	}
 
 	if *count > 0 {

@@ -15,7 +15,7 @@
         "--security",
         "whitelist=0.0.0.0/0;"
       ],
-      "showLog": true
+      "showLog": false
     },
     {
       "name": "Zero",
@@ -25,7 +25,7 @@
       "program": "${workspaceRoot}/dgraph/",
       "env": {},
       "args": ["zero"],
-      "showLog": true
+      "showLog": false
     },
     {
       "name": "AlphaACL",

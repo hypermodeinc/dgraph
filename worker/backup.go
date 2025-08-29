@@ -14,6 +14,7 @@ import (
 	"math"
 	"net/url"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +33,8 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/posting"
 	"github.com/hypermodeinc/dgraph/v25/protos/pb"
 	"github.com/hypermodeinc/dgraph/v25/tok/hnsw"
+	"github.com/hypermodeinc/dgraph/v25/tok/kmeans"
+	"github.com/hypermodeinc/dgraph/v25/tok/partitioned_hnsw"
 	"github.com/hypermodeinc/dgraph/v25/x"
 )
 
@@ -298,8 +301,29 @@ func ProcessBackupRequest(ctx context.Context, req *pb.BackupRequest) error {
 
 		for _, pred := range schema {
 			if pred.Type == "float32vector" && len(pred.IndexSpecs) != 0 {
-				vecPredMap[gid] = append(predMap[gid], pred.Predicate+hnsw.VecEntry, pred.Predicate+hnsw.VecKeyword,
-					pred.Predicate+hnsw.VecDead)
+				for _, spec := range pred.IndexSpecs {
+					if spec.Name == partitioned_hnsw.PartitionedHNSW {
+						vecPredMap[gid] = append(predMap[gid], pred.Predicate+kmeans.CentroidPrefix)
+						for _, opt := range spec.Options {
+							if opt.Key == partitioned_hnsw.NumClustersOpt {
+								numClusters, err := strconv.Atoi(opt.Value)
+								if err != nil {
+									return fmt.Errorf(`unable to parse number of clusters %s for predicate %s: %w`,
+										opt.Value, pred.Predicate, err)
+								}
+								for i := range numClusters {
+									vecEntryKey := hnsw.ConcatStrings(pred.Predicate, fmt.Sprintf("%s_%d", hnsw.VecEntry, i))
+									vecKey := hnsw.ConcatStrings(pred.Predicate, fmt.Sprintf("%s_%d", hnsw.VecKeyword, i))
+									vecDead := hnsw.ConcatStrings(pred.Predicate, fmt.Sprintf("%s_%d", hnsw.VecDead, i))
+									vecPredMap[gid] = append(vecPredMap[gid], vecEntryKey, vecKey, vecDead)
+								}
+							}
+						}
+					} else {
+						vecPredMap[gid] = append(predMap[gid], pred.Predicate+hnsw.VecEntry, pred.Predicate+hnsw.VecKeyword,
+							pred.Predicate+hnsw.VecDead)
+					}
+				}
 			}
 		}
 	}
@@ -602,6 +626,9 @@ func (pr *BackupProcessor) WriteBackup(ctx context.Context) (*pb.BackupResponse,
 					err, hex.EncodeToString(item.Key()))
 				continue
 			}
+
+			fmt.Println("Backup key:", parsedKey.Attr, "isType:", parsedKey.IsType())
+
 			// This check makes sense only for the schema keys. The types are not stored in it.
 			if _, ok := predMap[parsedKey.Attr]; !parsedKey.IsType() && !ok {
 				continue

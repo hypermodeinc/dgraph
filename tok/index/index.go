@@ -8,6 +8,7 @@ package index
 import (
 	"context"
 
+	"github.com/hypermodeinc/dgraph/v25/protos/pb"
 	c "github.com/hypermodeinc/dgraph/v25/tok/constraints"
 	opts "github.com/hypermodeinc/dgraph/v25/tok/options"
 )
@@ -89,9 +90,25 @@ type OptionalIndexSupport[T c.Float] interface {
 		filter SearchFilter[T]) (*SearchPathResult, error)
 }
 
+type VectorPartitionStrat[T c.Float] interface {
+	FindIndexForSearch(vec []T) ([]int, error)
+	FindIndexForInsert(vec []T) (int, error)
+	NumPasses() int
+	SetNumPasses(int)
+	NumSeedVectors() int
+	StartBuildPass()
+	EndBuildPass()
+	AddSeedVector(vec []T)
+	AddVector(vec []T) error
+	GetCentroids() [][]T
+}
+
 // A VectorIndex can be used to Search for vectors and add vectors to an index.
 type VectorIndex[T c.Float] interface {
 	OptionalIndexSupport[T]
+
+	MergeResults(ctx context.Context, c CacheType, list []uint64, query []T, maxResults int,
+		filter SearchFilter[T]) ([]uint64, error)
 
 	// Search will find the uids for a given set of vectors based on the
 	// input query, limiting to the specified maximum number of results.
@@ -116,6 +133,19 @@ type VectorIndex[T c.Float] interface {
 	// Insert will add a vector and uuid into the existing VectorIndex. If
 	// uuid already exists, it should throw an error to not insert duplicate uuids
 	Insert(ctx context.Context, c CacheType, uuid uint64, vec []T) ([]*KeyValue, error)
+
+	BuildInsert(ctx context.Context, uuid uint64, vec []T) error
+	GetCentroids() [][]T
+	AddSeedVector(vec []T)
+	NumBuildPasses() int
+	SetNumPasses(int)
+	NumIndexPasses() int
+	NumSeedVectors() int
+	StartBuild(caches []CacheType)
+	EndBuild() []int
+	NumThreads() int
+	Dimension() int
+	SetDimension(schema *pb.SchemaUpdate, dimension int)
 }
 
 // A Txn is an interface representation of a persistent storage transaction,

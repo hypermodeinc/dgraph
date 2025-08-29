@@ -9,12 +9,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 
 	"github.com/dgraph-io/dgo/v250/protos/api"
 	"github.com/hypermodeinc/dgraph/v25/dgraphapi"
@@ -23,10 +25,15 @@ import (
 )
 
 const (
-	testSchema             = `project_description_v: float32vector @index(hnsw(exponent: "5", metric: "euclidean")) .`
 	testSchemaWithoutIndex = `project_description_v: float32vector .`
 	pred                   = "project_description_v"
+	schemaVecDimension10   = `project_description_v: float32vector @index(partionedhnsw(numClusters: "1000", partitionStratOpt: "kmeans", vectorDimension: "10", metric: "euclidean")) .`
 )
+
+var schemas = map[string]string{
+	"hnsw":            `project_description_v: float32vector @index(hnsw(exponent: "5", metric: "euclidean")) .`,
+	"partitionedhnsw": `project_description_v: float32vector @index(partionedhnsw(numClusters: "1000", partitionStratOpt: "kmeans", vectorDimension: "100", metric: "euclidean")) .`,
+}
 
 func testVectorQuery(t *testing.T, gc *dgraphapi.GrpcClient, vectors [][]float32, rdfs, pred string, topk int) {
 	for i, vector := range vectors {
@@ -44,7 +51,11 @@ func testVectorQuery(t *testing.T, gc *dgraphapi.GrpcClient, vectors [][]float32
 	}
 }
 
-func TestVectorDropAll(t *testing.T) {
+func (vsuite *VectorTestSuite) TestVectorDropAll() {
+	t := vsuite.T()
+	if vsuite.isForPartitionedIndex {
+		t.Skip("Skipping TestVectorDropAll for partitioned index")
+	}
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
 	require.NoError(t, err)
@@ -62,7 +73,7 @@ func TestVectorDropAll(t *testing.T) {
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser,
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
-	numVectors := 100
+	numVectors := 10
 
 	testVectorSimilarTo := func(vectors [][]float32) {
 		for _, vector := range vectors {
@@ -73,7 +84,7 @@ func TestVectorDropAll(t *testing.T) {
 	}
 
 	for i := 0; i < 10; i++ {
-		require.NoError(t, gc.SetupSchema(testSchema))
+		require.NoError(t, gc.SetupSchema(vsuite.schema))
 		rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
 		mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
 		_, err = gc.Mutate(mu)
@@ -100,7 +111,11 @@ func TestVectorDropAll(t *testing.T) {
 	}
 }
 
-func TestVectorSnapshot(t *testing.T) {
+func (vsuite *VectorTestSuite) TestVectorSnapshot() {
+	t := vsuite.T()
+	if vsuite.isForPartitionedIndex {
+		t.Skip("Skipping TestVectorSnapshot for partitioned index")
+	}
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(3).WithNumZeros(3).WithReplicas(3).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
 	require.NoError(t, err)
@@ -131,7 +146,7 @@ func TestVectorSnapshot(t *testing.T) {
 	require.NoError(t, gc.LoginIntoNamespace(context.Background(),
 		dgraphapi.DefaultUser, dgraphapi.DefaultPassword, x.RootNamespace))
 
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 
 	prevSnapshotTs, err := hc.GetCurrentSnapshotTs(1)
 	require.NoError(t, err)
@@ -173,7 +188,11 @@ func TestVectorSnapshot(t *testing.T) {
 	testVectorQuery(t, gc, vectors, rdfs, pred, numVectors)
 }
 
-func TestVectorDropNamespace(t *testing.T) {
+func (vsuite *VectorTestSuite) TestVectorDropNamespace() {
+	t := vsuite.T()
+	if vsuite.isForPartitionedIndex {
+		t.Skip("Skipping TestVectorDropNamespace for partitioned index")
+	}
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
 	require.NoError(t, err)
@@ -195,7 +214,7 @@ func TestVectorDropNamespace(t *testing.T) {
 	for i := 0; i < 6; i++ {
 		ns, err := hc.AddNamespace()
 		require.NoError(t, err)
-		require.NoError(t, gc.SetupSchema(testSchema))
+		require.NoError(t, gc.SetupSchema(vsuite.schema))
 		rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
 		mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
 		_, err = gc.Mutate(mu)
@@ -223,7 +242,8 @@ func TestVectorDropNamespace(t *testing.T) {
 	}
 }
 
-func TestVectorIndexRebuilding(t *testing.T) {
+func (vsuite *VectorTestSuite) TestVectorIndexRebuilding() {
+	t := vsuite.T()
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
 	require.NoError(t, err)
@@ -241,7 +261,7 @@ func TestVectorIndexRebuilding(t *testing.T) {
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser,
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 
 	numVectors := 1000
 	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
@@ -265,7 +285,7 @@ func TestVectorIndexRebuilding(t *testing.T) {
 
 	time.Sleep(5 * time.Second)
 	// rebuild index
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 	time.Sleep(5 * time.Second)
 
 	result, err = gc.Query(query)
@@ -275,7 +295,8 @@ func TestVectorIndexRebuilding(t *testing.T) {
 	testVectorQuery(t, gc, vectors, rdfs, pred, numVectors)
 }
 
-func TestVectorIndexOnVectorPredWithoutData(t *testing.T) {
+func (vsuite *VectorTestSuite) TestVectorIndexOnVectorPredWithoutData() {
+	t := vsuite.T()
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
 	require.NoError(t, err)
@@ -293,14 +314,15 @@ func TestVectorIndexOnVectorPredWithoutData(t *testing.T) {
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser,
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 
 	vector := []float32{1.0, 2.0, 3.0}
 	_, err = gc.QueryMultipleVectorsUsingSimilarTo(vector, pred, 10)
 	require.NoError(t, err)
 }
 
-func TestVectorIndexDropPredicate(t *testing.T) {
+func (vsuite *VectorTestSuite) TestVectorIndexDropPredicate() {
+	t := vsuite.T()
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
 
@@ -320,7 +342,6 @@ func TestVectorIndexDropPredicate(t *testing.T) {
 	require.NoError(t, hc.LoginIntoNamespace(dgraphapi.DefaultUser,
 		dgraphapi.DefaultPassword, x.RootNamespace))
 
-	require.NoError(t, gc.SetupSchema(testSchema))
 	numVectors := 1000
 
 	// add vectors
@@ -329,7 +350,7 @@ func TestVectorIndexDropPredicate(t *testing.T) {
 	_, err = gc.Mutate(mu)
 	require.NoError(t, err)
 
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 
 	for _, vect := range vectors {
 		similarVects, err := gc.QueryMultipleVectorsUsingSimilarTo(vect, pred, 2)
@@ -363,7 +384,7 @@ func TestVectorIndexDropPredicate(t *testing.T) {
 	require.NoError(t, err)
 
 	// add index back
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 
 	result, err = gc.Query(query)
 	require.NoError(t, err)
@@ -376,7 +397,8 @@ func TestVectorIndexDropPredicate(t *testing.T) {
 	}
 }
 
-func TestVectorIndexWithoutSchema(t *testing.T) {
+func (vsuite *VectorTestSuite) TestVectorIndexWithoutSchema() {
+	t := vsuite.T()
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
 
@@ -399,7 +421,7 @@ func TestVectorIndexWithoutSchema(t *testing.T) {
 	_, err = gc.Mutate(mu)
 	require.NoError(t, err)
 
-	require.NoError(t, gc.SetupSchema(testSchema))
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 
 	for _, vect := range vectors {
 		similarVects, err := gc.QueryMultipleVectorsUsingSimilarTo(vect, pred, 100)
@@ -418,7 +440,50 @@ func TestVectorIndexWithoutSchema(t *testing.T) {
 	require.JSONEq(t, fmt.Sprintf(`{"vector":[{"count":%v}]}`, numVectors), string(result.GetJson()))
 }
 
-func TestVectorIndexWithoutSchemaWithoutIndex(t *testing.T) {
+func (vsuite *VectorTestSuite) TestIndexRebuildingWithoutSchema() {
+	t := vsuite.T()
+	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
+	c, err := dgraphtest.NewLocalCluster(conf)
+	require.NoError(t, c.Start())
+
+	defer func() { c.Cleanup(t.Failed()) }()
+
+	gc, cleanup, err := c.Client()
+	require.NoError(t, err)
+	defer cleanup()
+
+	require.NoError(t, gc.LoginIntoNamespace(context.Background(),
+		dgraphapi.DefaultUser, dgraphapi.DefaultPassword, x.RootNamespace))
+
+	require.NoError(t, gc.DropAll())
+	require.NoError(t, gc.SetupSchema(testSchemaWithoutIndex))
+
+	numVectors := 1000
+	rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
+	mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
+	_, err = gc.Mutate(mu)
+	require.NoError(t, err)
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
+
+	query := `{
+		vector(func: has(project_description_v)) {
+			   count(uid)
+			}
+	}`
+
+	result, err := gc.Query(query)
+	require.NoError(t, err)
+	require.JSONEq(t, fmt.Sprintf(`{"vector":[{"count":%v}]}`, numVectors), string(result.GetJson()))
+
+	for _, vect := range vectors {
+		similarVects, err := gc.QueryMultipleVectorsUsingSimilarTo(vect, pred, 100)
+		require.NoError(t, err)
+		require.Equal(t, 100, len(similarVects))
+	}
+}
+
+func (vsuite *VectorTestSuite) TestVectorIndexWithoutSchemaWithoutIndex() {
+	t := vsuite.T()
 	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1).WithACL(time.Hour)
 	c, err := dgraphtest.NewLocalCluster(conf)
 
@@ -441,7 +506,7 @@ func TestVectorIndexWithoutSchemaWithoutIndex(t *testing.T) {
 	_, err = gc.Mutate(mu)
 	require.NoError(t, err)
 
-	require.NoError(t, gc.SetupSchema(testSchemaWithoutIndex))
+	require.NoError(t, gc.SetupSchema(vsuite.schema))
 
 	for i, vect := range vectors {
 		triple := strings.Split(rdfs, "\n")[i]
@@ -460,4 +525,125 @@ func TestVectorIndexWithoutSchemaWithoutIndex(t *testing.T) {
 	result, err := gc.Query(query)
 	require.NoError(t, err)
 	require.JSONEq(t, fmt.Sprintf(`{"vector":[{"count":%v}]}`, numVectors), string(result.GetJson()))
+}
+
+func (vsuite *VectorTestSuite) TestPartitionedHNSWIndex() {
+	t := vsuite.T()
+
+	if !vsuite.isForPartitionedIndex {
+		t.Skip("Skipping TestPartitionedHNSWIndex for non partitioned index")
+	}
+	conf := dgraphtest.NewClusterConfig().WithNumAlphas(1).WithNumZeros(1).WithReplicas(1)
+	c, err := dgraphtest.NewLocalCluster(conf)
+
+	require.NoError(t, err)
+	defer func() { c.Cleanup(t.Failed()) }()
+	require.NoError(t, c.Start())
+
+	gc, cleanup, err := c.Client()
+	defer cleanup()
+	require.NoError(t, err)
+
+	schemaWithoutIndex := `project_description_v: float32vector .`
+
+	t.Run("with more than 1000 vectors", func(t *testing.T) {
+		require.NoError(t, gc.DropAll())
+
+		numVectors := 5000
+
+		require.NoError(t, gc.SetupSchema(schemaWithoutIndex))
+		rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
+		mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
+		_, err = gc.Mutate(mu)
+		require.NoError(t, err)
+
+		err = gc.SetupSchema(vsuite.schema)
+		require.NoError(t, err)
+
+		testVectorQuery(t, gc, vectors, rdfs, pred, 5)
+	})
+
+	t.Run("without providing vector dimension", func(t *testing.T) {
+		require.NoError(t, gc.DropAll())
+
+		numVectors := 1001
+
+		require.NoError(t, gc.SetupSchema(schemaWithoutIndex))
+
+		rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
+		mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
+		_, err = gc.Mutate(mu)
+		require.NoError(t, err)
+
+		s := `project_description_v: float32vector @index(partionedhnsw` +
+			`(numClusters:"1000", partitionStratOpt: "kmeans",metric: "euclidean")) .`
+		err = gc.SetupSchema(s)
+		require.NoError(t, err)
+
+		testVectorQuery(t, gc, vectors, rdfs, pred, 1000)
+	})
+
+	t.Run("with less than 1000 vectors", func(t *testing.T) {
+		require.NoError(t, gc.DropAll())
+		numVectors := 100
+		require.NoError(t, gc.SetupSchema(schemaWithoutIndex))
+
+		rdfs, vectors := dgraphapi.GenerateRandomVectors(0, numVectors, 100, pred)
+		mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
+		_, err = gc.Mutate(mu)
+		require.NoError(t, err)
+
+		err = gc.SetupSchema(vsuite.schema)
+		require.NoError(t, err)
+
+		testVectorQuery(t, gc, vectors, rdfs, pred, numVectors)
+	})
+
+	t.Run("with different length of vectors", func(t *testing.T) {
+		require.NoError(t, gc.DropAll())
+		numVectors := 1100
+		require.NoError(t, gc.SetupSchema(schemaWithoutIndex))
+
+		q := `schema {}`
+		result, err := gc.Query(q)
+		require.NoError(t, err)
+
+		rdfs, _ := dgraphapi.GenerateRandomVectors(0, numVectors, 8, pred)
+		mu := &api.Mutation{SetNquads: []byte(rdfs), CommitNow: true}
+		_, err = gc.Mutate(mu)
+		require.NoError(t, err)
+
+		err = gc.SetupSchema(vsuite.schema)
+		require.NoError(t, err)
+
+		// here check schema it should not be changed
+		q = `schema {}`
+		result1, err := gc.Query(q)
+		require.NoError(t, err)
+		require.JSONEq(t, string(result.GetJson()), string(result1.GetJson()))
+	})
+}
+
+type VectorTestSuite struct {
+	suite.Suite
+	schema                string
+	schemaVecDimesion10   string
+	isForPartitionedIndex bool
+}
+
+func TestVectorSuite(t *testing.T) {
+	for _, schema := range schemas {
+		var ssuite VectorTestSuite
+		ssuite.schema = schema
+		if strings.Contains(schema, "partionedhnsw") {
+			ssuite.schemaVecDimesion10 = schemaVecDimension10
+			ssuite.isForPartitionedIndex = true
+		} else {
+			ssuite.schemaVecDimesion10 = schema
+		}
+		suite.Run(t, &ssuite)
+		if t.Failed() {
+			x.Panic(errors.New("vector tests failed"))
+		}
+	}
 }

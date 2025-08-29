@@ -114,6 +114,10 @@ func euclideanDistanceSq[T c.Float](a, b []T, floatBits int) (T, error) {
 	return applyDistanceFunction(a, b, floatBits, "euclidean distance", vek32.Distance, vek.Distance)
 }
 
+func EuclideanDistanceSq[T c.Float](a, b []T, floatBits int) (T, error) {
+	return applyDistanceFunction(a, b, floatBits, "euclidean distance", vek32.Distance, vek.Distance)
+}
+
 // Used for distance, since shorter distance is better
 func insortPersistentHeapAscending[T c.Float](
 	slice []minPersistentHeapElement[T],
