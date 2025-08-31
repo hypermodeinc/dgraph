@@ -306,7 +306,7 @@ func parseTokenOrVectorIndexSpec(
 	tokenizer, has := tok.GetTokenizer(tokenOrFactoryName)
 	if !has {
 		return tokenOrFactoryName, nil, false,
-			next.Errorf("Invalid tokenizer %s", next.Val)
+			next.Errorf("Invalid tokenizer 1 %s", next.Val)
 	}
 	tokenizerType, ok := types.TypeForName(tokenizer.Type())
 	x.AssertTrue(ok) // Type is validated during tokenizer loading.

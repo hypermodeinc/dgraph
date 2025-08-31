@@ -33,7 +33,6 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/schema"
 	ctask "github.com/hypermodeinc/dgraph/v25/task"
 	"github.com/hypermodeinc/dgraph/v25/tok"
-	"github.com/hypermodeinc/dgraph/v25/tok/hnsw"
 	"github.com/hypermodeinc/dgraph/v25/tok/index"
 	"github.com/hypermodeinc/dgraph/v25/types"
 	"github.com/hypermodeinc/dgraph/v25/types/facets"
@@ -358,27 +357,25 @@ func (qs *queryState) handleValuePostings(ctx context.Context, args funcArgs) er
 		if err != nil {
 			return err
 		}
+
 		//TODO: generate maxLevels from schema, filter, etc.
-		qc := hnsw.NewQueryCache(
-			posting.NewViLocalCache(qs.cache),
-			args.q.ReadTs,
-		)
 		indexer, err := cspec.CreateIndex(args.q.Attr)
 		if err != nil {
 			return err
 		}
-		var nnUids []uint64
-		if srcFn.vectorInfo != nil {
-			nnUids, err = indexer.Search(ctx, qc, srcFn.vectorInfo,
-				int(numNeighbors), index.AcceptAll[float32])
-		} else {
-			nnUids, err = indexer.SearchWithUid(ctx, qc, srcFn.vectorUid,
-				int(numNeighbors), index.AcceptAll[float32])
-		}
 
-		if err != nil && !strings.Contains(err.Error(), hnsw.EmptyHNSWTreeError+": "+badger.ErrKeyNotFound.Error()) {
+		caches := posting.GetVectorTransactions(indexer.NumThreads(), q.ReadTs, args.q.Attr)
+		for i := range caches {
+			caches[i].(*posting.VectorTransaction).SetCache(qs.cache)
+		}
+		indexer.SetCaches(caches)
+
+		nnUids, err := indexer.Search(ctx, srcFn.vectorInfo,
+			int(numNeighbors), index.AcceptAll[float32])
+		if err != nil {
 			return err
 		}
+
 		sort.Slice(nnUids, func(i, j int) bool { return nnUids[i] < nnUids[j] })
 		args.out.UidMatrix = append(args.out.UidMatrix, &pb.List{Uids: nnUids})
 		return nil

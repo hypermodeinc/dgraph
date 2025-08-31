@@ -33,6 +33,8 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/schema"
 	"github.com/hypermodeinc/dgraph/v25/tok"
 	"github.com/hypermodeinc/dgraph/v25/tok/hnsw"
+	tokIndex "github.com/hypermodeinc/dgraph/v25/tok/index"
+
 	"github.com/hypermodeinc/dgraph/v25/types"
 	"github.com/hypermodeinc/dgraph/v25/x"
 )
@@ -161,21 +163,19 @@ func (txn *Txn) addIndexMutations(ctx context.Context, info *indexMutationInfo) 
 			len(info.factorySpecs) > 0 {
 			// retrieve vector from inUuid save as inVec
 			inVec := types.BytesAsFloatArray(data[0].Value.([]byte))
-			tc := hnsw.NewTxnCache(NewViTxn(txn), txn.StartTs)
 			indexer, err := info.factorySpecs[0].CreateIndex(attr)
 			if err != nil {
 				return []*pb.DirectedEdge{}, err
 			}
-			edges, err := indexer.Insert(ctx, tc, uid, inVec)
-			if err != nil {
+			caches := GetVectorTransactions(indexer.NumThreads(), txn.StartTs, attr)
+			for i := range caches {
+				caches[i].(*VectorTransaction).txn = txn
+			}
+			indexer.SetCaches(caches)
+			if err := indexer.Insert(ctx, uid, inVec); err != nil {
 				return []*pb.DirectedEdge{}, err
 			}
-			pbEdges := []*pb.DirectedEdge{}
-			for _, e := range edges {
-				pbe := indexEdgeToPbEdge(e)
-				pbEdges = append(pbEdges, pbe)
-			}
-			return pbEdges, nil
+			return []*pb.DirectedEdge{}, nil
 		}
 	}
 
@@ -792,6 +792,54 @@ func (r *rebuilder) RunWithoutTemp(ctx context.Context) error {
 			}
 			return err
 		})
+}
+
+func printTreeStatsDeltas(txn *Txn) {
+	txn.cache.Lock()
+
+	numLevels := 20
+	numNodes := make([]int, numLevels)
+	numConnections := make([]int, numLevels)
+
+	var temp [][]uint64
+	for key, plMarshalled := range txn.cache.deltas {
+		pk, _ := x.Parse([]byte(key))
+		var data pb.PostingList
+		proto.Unmarshal(plMarshalled, &data)
+		if strings.Contains(pk.Attr, "__vector_") && !strings.Contains(pk.Attr, hnsw.VecEntry) {
+			err := decodeUint64MatrixUnsafe(data.Postings[0].Value, &temp)
+			if err != nil {
+				fmt.Println("Error while decoding", err)
+			}
+
+			for i := range temp {
+				if len(temp[i]) > 0 {
+					numNodes[i] += 1
+				}
+				numConnections[i] += len(temp[i])
+			}
+
+		}
+	}
+
+	for i := range numLevels {
+		fmt.Printf("%d, ", numNodes[i])
+	}
+	fmt.Println("")
+	for i := range numLevels {
+		fmt.Printf("%d, ", numConnections[i])
+	}
+	fmt.Println("")
+	for i := range numLevels {
+		if numNodes[i] == 0 {
+			fmt.Printf("0, ")
+			continue
+		}
+		fmt.Printf("%d, ", numConnections[i]/numNodes[i])
+	}
+	fmt.Println("")
+
+	txn.cache.Unlock()
 }
 
 func printTreeStats(txn *Txn) {
@@ -1412,6 +1460,438 @@ func (rb *indexRebuildInfo) prefixesForTokIndexes() ([][]byte, error) {
 	return prefixes, nil
 }
 
+const numCentroids = 1000
+
+func GetVectorTransactions(n int, startTs uint64, pred string) []tokIndex.CacheType {
+	retVal := make([]tokIndex.CacheType, n)
+	for i := 0; i < n; i++ {
+		retVal[i] = &VectorTransaction{}
+		retVal[i].(*VectorTransaction).NewVT(startTs)
+		if n > 1 {
+			retVal[i].(*VectorTransaction).UpdateSplit(i, pred)
+		}
+	}
+	return retVal
+}
+
+type VectorTransaction struct {
+	txn      *Txn
+	startTs  uint64
+	vecPred  string
+	edgePred string
+	vector   map[uint64]*[]byte
+	edges    map[uint64]*[]byte
+	others   map[string]*[]byte
+
+	readDisk bool
+}
+
+func (vt *VectorTransaction) SetCache(cache *LocalCache) {
+	vt.txn = NewTxn(vt.startTs)
+	vt.txn.cache = cache
+}
+
+func (vt *VectorTransaction) UpdateSplit(i int, pred string) {
+	vt.vecPred = pred
+	vt.edgePred = fmt.Sprintf("%s%s_%d", pred, hnsw.VecKeyword, i)
+}
+
+func (vt *VectorTransaction) NewVT(startTs uint64) {
+	vt.txn = &Txn{
+		StartTs: startTs,
+		cache:   NewLocalCache(startTs),
+	}
+	vt.startTs = startTs
+	vt.vector = make(map[uint64]*[]byte)
+	vt.edges = make(map[uint64]*[]byte)
+	vt.others = make(map[string]*[]byte)
+	vt.readDisk = true
+}
+
+func (vt *VectorTransaction) Find(prefix []byte, filter func(val []byte) bool) (uint64, error) {
+	return vt.txn.cache.Find(prefix, filter)
+}
+
+func (vt *VectorTransaction) SetVector(uid uint64, vec *[]byte) {
+	vt.vector[uid] = vec
+}
+
+func (vt *VectorTransaction) SetEdge(uid uint64, edge *[]byte) {
+	//fmt.Println("SETTING EDGE", uid, edge)
+	vt.edges[uid] = edge
+}
+
+func (vt *VectorTransaction) SetOther(key string, val *[]byte) {
+	vt.others[key] = val
+}
+
+func (vt *VectorTransaction) GetVector(uid uint64) *[]byte {
+	val, ok := vt.vector[uid]
+	if ok {
+		return val
+	}
+	if !vt.readDisk {
+		return nil
+	}
+	pl, err := vt.txn.Get(x.DataKey(vt.vecPred, uid))
+	if err != nil {
+		return nil
+	}
+	rval, err := pl.Value(vt.startTs)
+	if err != nil {
+		return nil
+	}
+	value := rval.Value.([]byte)
+	//fmt.Println("GET VECTOR: ", uid, value, vt.vecPred)
+	vt.vector[uid] = &value
+	return &value
+}
+
+func (vt *VectorTransaction) GetEdge(uid uint64) *[]byte {
+	val, ok := vt.edges[uid]
+	if ok {
+		return val
+	}
+	if !vt.readDisk {
+		return nil
+	}
+	pl, err := vt.txn.Get(x.DataKey(vt.edgePred, uid))
+	if err != nil {
+		return nil
+	}
+	rval, err := pl.Value(vt.startTs)
+	//fmt.Println("GET EDGE: ", uid, pl, err, vt.edgePred, rval)
+	if err != nil {
+		return nil
+	}
+	value := rval.Value.([]byte)
+	if len(value) == 0 {
+		return nil
+	}
+	vt.edges[uid] = &value
+	return &value
+}
+
+func (vt *VectorTransaction) GetOther(key string) *[]byte {
+	val, ok := vt.others[key]
+	if ok {
+		return val
+	}
+	if !vt.readDisk {
+		return nil
+	}
+	pl, err := vt.txn.Get(x.DataKey(key, 1))
+	if err != nil {
+		return nil
+	}
+	rval, err := pl.Value(vt.startTs)
+	//fmt.Println("GET OTHER: ", key, pl, rval, err)
+	if err != nil {
+		return nil
+	}
+	value := rval.Value.([]byte)
+	//fmt.Println("GET OTHER: ", key, value)
+	if len(value) == 0 {
+		return nil
+	}
+	vt.others[key] = &value
+	return &value
+}
+
+func (vt *VectorTransaction) Update() {
+	for uid, edges := range vt.edges {
+		posting := &pb.Posting{
+			Op:      Set,
+			Value:   *edges,
+			ValType: pb.Posting_BINARY,
+			Uid:     math.MaxUint64,
+		}
+		pl := &pb.PostingList{
+			Postings: []*pb.Posting{posting},
+		}
+		data, err := proto.Marshal(pl)
+		if err != nil {
+			return
+		}
+		vt.txn.cache.deltas[string(x.DataKey(vt.edgePred, uid))] = data
+	}
+
+	for str, edges := range vt.others {
+		posting := &pb.Posting{
+			Op:      Set,
+			Value:   *edges,
+			ValType: pb.Posting_BINARY,
+			Uid:     math.MaxUint64,
+		}
+		pl := &pb.PostingList{
+			Postings: []*pb.Posting{posting},
+		}
+		data, err := proto.Marshal(pl)
+		if err != nil {
+			return
+		}
+		vt.txn.cache.deltas[string(x.DataKey(str, 1))] = data
+	}
+
+	fmt.Println("AFTER UPDATE", len(vt.txn.cache.deltas))
+
+	vt.vector = nil
+	vt.edges = nil
+	vt.others = nil
+}
+
+func (vt *VectorTransaction) LockKey(key []byte) {
+}
+
+func (vt *VectorTransaction) UnlockKey(key []byte) {
+}
+
+func (vt *VectorTransaction) Ts() uint64 {
+	return vt.startTs
+}
+
+func rebuildVectorIndex(ctx context.Context, factorySpecs []*tok.FactoryCreateSpec, rb *IndexRebuild) error {
+	pk := x.ParsedKey{Attr: rb.Attr}
+
+	indexer, err := factorySpecs[0].CreateIndex(pk.Attr)
+	if err != nil {
+		return err
+	}
+
+	if indexer.NumSeedVectors() > 0 {
+		count := 0
+		MemLayerInstance.IterateDisk(ctx, IterateDiskArgs{
+			Prefix:      pk.DataPrefix(),
+			ReadTs:      rb.StartTs,
+			AllVersions: false,
+			Reverse:     false,
+			CheckInclusion: func(uid uint64) error {
+				return nil
+			},
+			Function: func(l *List, pk x.ParsedKey) error {
+				val, err := l.Value(rb.StartTs)
+				if err != nil {
+					return err
+				}
+				inVec := types.BytesAsFloatArray(val.Value.([]byte))
+				count += 1
+				indexer.AddSeedVector(inVec)
+				if count == indexer.NumSeedVectors() {
+					return ErrStopIteration
+				}
+				return nil
+			},
+			StartKey: x.DataKey(rb.Attr, 0),
+		})
+	}
+
+	txns := make([]*Txn, indexer.NumThreads())
+	for i := range txns {
+		txns[i] = NewTxn(rb.StartTs)
+	}
+	caches := GetVectorTransactions(indexer.NumThreads(), rb.StartTs, rb.Attr)
+	for i := range len(caches) {
+		caches[i].(*VectorTransaction).txn = txns[i]
+		caches[i].(*VectorTransaction).readDisk = false
+	}
+	indexer.SetCaches(caches)
+
+	for pass_idx := range indexer.NumBuildPasses() {
+		fmt.Println("Building pass", pass_idx)
+
+		indexer.StartBuild()
+
+		builder := rebuilder{attr: rb.Attr, prefix: pk.DataPrefix(), startTs: rb.StartTs}
+		builder.fn = func(uid uint64, pl *List, txn *Txn) ([]*pb.DirectedEdge, error) {
+			edges := []*pb.DirectedEdge{}
+			val, err := pl.Value(rb.StartTs)
+			if err != nil {
+				return []*pb.DirectedEdge{}, err
+			}
+
+			inVec := types.BytesAsFloatArray(val.Value.([]byte))
+			indexer.BuildInsert(ctx, uid, inVec)
+			return edges, nil
+		}
+
+		err := builder.RunWithoutTemp(ctx)
+		if err != nil {
+			return err
+		}
+
+		indexer.EndBuild()
+	}
+
+	for pass_idx := range indexer.NumIndexPasses() {
+		fmt.Println("Indexing pass", pass_idx)
+
+		indexer.StartBuild()
+
+		builder := rebuilder{attr: rb.Attr, prefix: pk.DataPrefix(), startTs: rb.StartTs}
+		builder.fn = func(uid uint64, pl *List, txn *Txn) ([]*pb.DirectedEdge, error) {
+			edges := []*pb.DirectedEdge{}
+			val, err := pl.Value(rb.StartTs)
+			if err != nil {
+				return []*pb.DirectedEdge{}, err
+			}
+
+			inVec := types.BytesAsFloatArray(val.Value.([]byte))
+			indexer.BuildInsert(ctx, uid, inVec)
+			return edges, nil
+		}
+
+		err := builder.RunWithoutTemp(ctx)
+		if err != nil {
+			return err
+		}
+
+		for _, idx := range indexer.EndBuild() {
+			txns[idx].Update()
+			caches[idx].(*VectorTransaction).Update()
+			writer := NewTxnWriter(pstore)
+
+			x.ExponentialRetry(int(x.Config.MaxRetries),
+				20*time.Millisecond, func() error {
+					err := txns[idx].CommitToDisk(writer, rb.StartTs)
+					if err == badger.ErrBannedKey {
+						glog.Errorf("Error while writing to banned namespace.")
+						return nil
+					}
+					return err
+				})
+
+			printTreeStatsDeltas(txns[idx])
+			txns[idx].cache.deltas = nil
+			txns[idx].cache.plists = nil
+			txns[idx] = nil
+		}
+	}
+
+	return nil
+
+	// MemLayerInstance.IterateDisk(ctx, IterateDiskArgs{
+	// 	Prefix:      pk.DataPrefix(),
+	// 	ReadTs:      rb.StartTs,
+	// 	AllVersions: false,
+	// 	Reverse:     false,
+	// 	CheckInclusion: func(uid uint64) error {
+	// 		return nil
+	// 	},
+	// 	Function: func(l *List, pk x.ParsedKey) error {
+	// 		val, err := l.Value(rb.StartTs)
+	// 		if err != nil {
+	// 			return err
+	// 		}
+	// 		inVec := types.BytesAsFloatArray(val.Value.([]byte))
+	// 		vc.addSeedCentroid(inVec)
+	// 		if len(vc.centroids) == numCentroids {
+	// 			return ErrStopIteration
+	// 		}
+	// 		return nil
+	// 	},
+	// 	StartKey: x.DataKey(rb.Attr, 0),
+	// })
+
+	// vc.randomInit()
+
+	// fmt.Println("Clustering Vectors")
+	// for range 5 {
+	// 	builder := rebuilder{attr: rb.Attr, prefix: pk.DataPrefix(), startTs: rb.StartTs}
+	// 	builder.fn = func(uid uint64, pl *List, txn *Txn) ([]*pb.DirectedEdge, error) {
+	// 		edges := []*pb.DirectedEdge{}
+	// 		val, err := pl.Value(txn.StartTs)
+	// 		if err != nil {
+	// 			return []*pb.DirectedEdge{}, err
+	// 		}
+
+	// 		inVec := types.BytesAsFloatArray(val.Value.([]byte))
+	// 		vc.addVector(inVec)
+	// 		return edges, nil
+	// 	}
+
+	// 	err := builder.RunWithoutTemp(ctx)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+
+	// 	vc.updateCentroids()
+	// }
+
+	// tcs := make([]*hnsw.TxnCache, vc.numCenters)
+	// txns := make([]*Txn, vc.numCenters)
+	// indexers := make([]index.VectorIndex[float32], vc.numCenters)
+	// for i := 0; i < vc.numCenters; i++ {
+	// 	txns[i] = NewTxn(rb.StartTs)
+	// 	tcs[i] = hnsw.NewTxnCache(NewViTxn(txns[i]), rb.StartTs)
+	// 	indexers_i, err := factorySpecs[0].CreateIndex(pk.Attr, i)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// 	vc.mutexs[i] = &sync.Mutex{}
+	// 	indexers[i] = indexers_i
+	// }
+
+	// var edgesCreated atomic.Int64
+
+	// numPasses := vc.numCenters / 100
+	// for pass_idx := range numPasses {
+	// 	builder := rebuilder{attr: rb.Attr, prefix: pk.DataPrefix(), startTs: rb.StartTs}
+	// 	builder.fn = func(uid uint64, pl *List, txn *Txn) ([]*pb.DirectedEdge, error) {
+	// 		val, err := pl.Value(txn.StartTs)
+	// 		if err != nil {
+	// 			return []*pb.DirectedEdge{}, err
+	// 		}
+
+	// 		inVec := types.BytesAsFloatArray(val.Value.([]byte))
+	// 		idx := vc.findCentroid(inVec)
+	// 		if idx%numPasses != pass_idx {
+	// 			return []*pb.DirectedEdge{}, nil
+	// 		}
+	// 		vc.mutexs[idx].Lock()
+	// 		defer vc.mutexs[idx].Unlock()
+	// 		_, err = indexers[idx].Insert(ctx, tcs[idx], uid, inVec)
+	// 		if err != nil {
+	// 			return []*pb.DirectedEdge{}, err
+	// 		}
+
+	// 		edgesCreated.Add(int64(1))
+	// 		return nil, nil
+	// 	}
+
+	// 	err := builder.RunWithoutTemp(ctx)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+
+	// 	for idx := range vc.counts {
+	// 		if idx%numPasses != pass_idx {
+	// 			continue
+	// 		}
+	// 		txns[idx].Update()
+	// 		writer := NewTxnWriter(pstore)
+
+	// 		x.ExponentialRetry(int(x.Config.MaxRetries),
+	// 			20*time.Millisecond, func() error {
+	// 				err := txns[idx].CommitToDisk(writer, rb.StartTs)
+	// 				if err == badger.ErrBannedKey {
+	// 					glog.Errorf("Error while writing to banned namespace.")
+	// 					return nil
+	// 				}
+	// 				return err
+	// 			})
+
+	// 		txns[idx].cache.plists = nil
+	// 		txns[idx] = nil
+	// 		tcs[idx] = nil
+	// 		indexers[idx] = nil
+	// 	}
+
+	// 	fmt.Printf("Created %d edges in pass %d out of %d\n", edgesCreated.Load(), pass_idx, numPasses)
+	// }
+
+	// return nil
+}
+
 // rebuildTokIndex rebuilds index for a given attribute.
 // We commit mutations with startTs and ignore the errors.
 func rebuildTokIndex(ctx context.Context, rb *IndexRebuild) error {
@@ -1443,6 +1923,9 @@ func rebuildTokIndex(ctx context.Context, rb *IndexRebuild) error {
 	}
 
 	runForVectors := (len(factorySpecs) != 0)
+	if runForVectors {
+		return rebuildVectorIndex(ctx, factorySpecs, rb)
+	}
 
 	pk := x.ParsedKey{Attr: rb.Attr}
 	builder := rebuilder{attr: rb.Attr, prefix: pk.DataPrefix(), startTs: rb.StartTs}
@@ -1703,10 +2186,11 @@ func prefixesToDropVectorIndexEdges(ctx context.Context, rb *IndexRebuild) [][]b
 	prefixes = append(prefixes, x.PredicatePrefix(hnsw.ConcatStrings(rb.Attr, hnsw.VecDead)))
 	prefixes = append(prefixes, x.PredicatePrefix(hnsw.ConcatStrings(rb.Attr, hnsw.VecKeyword)))
 
-	for i := range hnsw.VectorIndexMaxLevels {
-		prefixes = append(prefixes, x.PredicatePrefix(hnsw.ConcatStrings(rb.Attr, hnsw.VecKeyword, fmt.Sprint(i))))
+	for i := range 1000 {
+		prefixes = append(prefixes, x.PredicatePrefix(hnsw.ConcatStrings(rb.Attr, hnsw.VecKeyword, fmt.Sprintf("_%d", i))))
+		prefixes = append(prefixes, x.PredicatePrefix(hnsw.ConcatStrings(rb.Attr, hnsw.VecDead, fmt.Sprintf("_%d", i))))
+		prefixes = append(prefixes, x.PredicatePrefix(hnsw.ConcatStrings(rb.Attr, hnsw.VecEntry, fmt.Sprintf("_%d", i))))
 	}
-
 	return prefixes
 }
 
