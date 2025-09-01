@@ -9,7 +9,7 @@ import (
 	"context"
 	"fmt"
 
-	apiv2 "github.com/dgraph-io/dgo/v250/protos/api.v2"
+	"github.com/dgraph-io/dgo/v250/protos/api"
 	"github.com/hypermodeinc/dgraph/v25/protos/pb"
 	"github.com/hypermodeinc/dgraph/v25/worker"
 
@@ -17,8 +17,8 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func (s *ServerV25) AllocateIDs(ctx context.Context, req *apiv2.AllocateIDsRequest) (
-	*apiv2.AllocateIDsResponse, error) {
+func (s *Server) AllocateIDs(ctx context.Context, req *api.AllocateIDsRequest) (
+	*api.AllocateIDsResponse, error) {
 
 	// For now, we only allow users in superadmin group to do this operation in v25
 	if err := AuthSuperAdmin(ctx); err != nil {
@@ -29,11 +29,11 @@ func (s *ServerV25) AllocateIDs(ctx context.Context, req *apiv2.AllocateIDsReque
 
 	num := &pb.Num{Val: req.HowMany}
 	switch req.LeaseType {
-	case apiv2.LeaseType_NS:
+	case api.LeaseType_NS:
 		num.Type = pb.Num_NS_ID
-	case apiv2.LeaseType_UID:
+	case api.LeaseType_UID:
 		num.Type = pb.Num_UID
-	case apiv2.LeaseType_TS:
+	case api.LeaseType_TS:
 		num.Type = pb.Num_TXN_TS
 	default:
 		return nil, fmt.Errorf("invalid lease type: %v", req.LeaseType)
@@ -44,5 +44,5 @@ func (s *ServerV25) AllocateIDs(ctx context.Context, req *apiv2.AllocateIDsReque
 		return nil, errors.Wrapf(err, "Failed to allocate IDs")
 	}
 
-	return &apiv2.AllocateIDsResponse{Start: resp.StartId, End: resp.EndId}, nil
+	return &api.AllocateIDsResponse{Start: resp.StartId, End: resp.EndId}, nil
 }

@@ -11,7 +11,7 @@ import (
 	"io"
 	"sync"
 
-	apiv2 "github.com/dgraph-io/dgo/v250/protos/api.v2"
+	"github.com/dgraph-io/dgo/v250/protos/api"
 	"github.com/dgraph-io/ristretto/v2/z"
 	"github.com/hypermodeinc/dgraph/v25/conn"
 	"github.com/hypermodeinc/dgraph/v25/posting"
@@ -25,20 +25,20 @@ import (
 )
 
 type pubSub struct {
-	subscribers []chan *apiv2.StreamExtSnapshotRequest
+	subscribers []chan *api.StreamExtSnapshotRequest
 	sync.RWMutex
 }
 
 // Subscribe returns a new channel to receive published messages
-func (ps *pubSub) subscribe() <-chan *apiv2.StreamExtSnapshotRequest {
-	ch := make(chan *apiv2.StreamExtSnapshotRequest, 20)
+func (ps *pubSub) subscribe() <-chan *api.StreamExtSnapshotRequest {
+	ch := make(chan *api.StreamExtSnapshotRequest, 20)
 	ps.Lock()
 	defer ps.Unlock()
 	ps.subscribers = append(ps.subscribers, ch)
 	return ch
 }
 
-func (ps *pubSub) publish(msg *apiv2.StreamExtSnapshotRequest) {
+func (ps *pubSub) publish(msg *api.StreamExtSnapshotRequest) {
 	// Send message to all subscribers without dropping any
 	ps.RLock()
 	defer ps.RUnlock()
@@ -56,7 +56,7 @@ func (ps *pubSub) close() {
 	ps.subscribers = nil
 }
 
-func (ps *pubSub) handlePublisher(ctx context.Context, stream apiv2.Dgraph_StreamExtSnapshotServer) error {
+func (ps *pubSub) handlePublisher(ctx context.Context, stream api.Dgraph_StreamExtSnapshotServer) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -77,7 +77,7 @@ func (ps *pubSub) handlePublisher(ctx context.Context, stream apiv2.Dgraph_Strea
 
 }
 
-func (ps *pubSub) runForwardSubscriber(ctx context.Context, out apiv2.Dgraph_StreamExtSnapshotClient, peerId string) error {
+func (ps *pubSub) runForwardSubscriber(ctx context.Context, out api.Dgraph_StreamExtSnapshotClient, peerId string) error {
 	buffer := ps.subscribe()
 	size := 0
 Loop:
@@ -92,12 +92,12 @@ Loop:
 				break Loop
 			}
 
-			data := &apiv2.StreamExtSnapshotRequest{Pkt: &apiv2.StreamPacket{Data: msg.Pkt.Data}}
+			data := &api.StreamExtSnapshotRequest{Pkt: &api.StreamPacket{Data: msg.Pkt.Data}}
 
 			if msg.Pkt.Done {
 				glog.Infof("[import] received done signal from [%v]", peerId)
-				d := apiv2.StreamPacket{Done: true}
-				if err := out.Send(&apiv2.StreamExtSnapshotRequest{Pkt: &d}); err != nil {
+				d := api.StreamPacket{Done: true}
+				if err := out.Send(&api.StreamExtSnapshotRequest{Pkt: &d}); err != nil {
 					return err
 				}
 				break Loop
@@ -154,7 +154,7 @@ Loop:
 	return postStreamProcessing(ctx)
 }
 
-func ProposeDrain(ctx context.Context, drainMode *apiv2.UpdateExtSnapshotStreamingStateRequest) ([]uint32, error) {
+func ProposeDrain(ctx context.Context, drainMode *api.UpdateExtSnapshotStreamingStateRequest) ([]uint32, error) {
 	memState := GetMembershipState()
 	currentGroups := make([]uint32, 0)
 	for gid := range memState.GetGroups() {
@@ -195,8 +195,7 @@ func ProposeDrain(ctx context.Context, drainMode *apiv2.UpdateExtSnapshotStreami
 // with the leader of that group and streams data to it. The function returns an error if
 // there are any issues in the process, such as a broken connection or failure to establish
 // a stream with the leader.
-func InStream(stream apiv2.Dgraph_StreamExtSnapshotServer) error {
-
+func InStream(stream api.Dgraph_StreamExtSnapshotServer) error {
 	req, err := stream.Recv()
 	if err != nil {
 		return fmt.Errorf("failed to receive initial stream message: %v", err)
@@ -223,7 +222,7 @@ func InStream(stream apiv2.Dgraph_StreamExtSnapshotServer) error {
 	}
 
 	glog.Infof("[import] sending forward true to leader of group [%v]", groupId)
-	forwardReq := &apiv2.StreamExtSnapshotRequest{Forward: true}
+	forwardReq := &api.StreamExtSnapshotRequest{Forward: true}
 	if err := alphaStream.Send(forwardReq); err != nil {
 		return fmt.Errorf("failed streamInGroupto send forward request: %w", err)
 	}
@@ -231,14 +230,14 @@ func InStream(stream apiv2.Dgraph_StreamExtSnapshotServer) error {
 	return pipeTwoStream(stream, alphaStream, groupId)
 }
 
-func pipeTwoStream(in apiv2.Dgraph_StreamExtSnapshotServer, out pb.Worker_StreamExtSnapshotClient,
+func pipeTwoStream(in api.Dgraph_StreamExtSnapshotServer, out pb.Worker_StreamExtSnapshotClient,
 	groupId uint32) error {
 
 	currentGroup := groups().Node.gid
 	glog.Infof("[import] [forward from group-%v to group-%v] forwarding stream", currentGroup, groupId)
 
 	defer func() {
-		if err := in.SendAndClose(&apiv2.StreamExtSnapshotResponse{}); err != nil {
+		if err := in.SendAndClose(&api.StreamExtSnapshotResponse{}); err != nil {
 			glog.Errorf("[import] [forward from group %v to group %v] failed to send close on in"+
 				" stream for group [%v]: %v", currentGroup, groupId, groupId, err)
 		}
@@ -279,7 +278,7 @@ func pipeTwoStream(in apiv2.Dgraph_StreamExtSnapshotServer, out pb.Worker_Stream
 }
 
 func (w *grpcWorker) UpdateExtSnapshotStreamingState(ctx context.Context,
-	req *apiv2.UpdateExtSnapshotStreamingStateRequest) (*pb.Status, error) {
+	req *api.UpdateExtSnapshotStreamingStateRequest) (*pb.Status, error) {
 	if req == nil {
 		return nil, errors.New("UpdateExtSnapshotStreamingStateRequest must not be nil")
 	}
@@ -362,7 +361,7 @@ func postStreamProcessing(ctx context.Context) error {
 // Returns:
 // - nil: If streaming completes successfully
 // - error: If there's an issue receiving data or if majority consensus isn't achieved (for leader)
-func streamInGroup(stream apiv2.Dgraph_StreamExtSnapshotServer, forward bool) error {
+func streamInGroup(stream api.Dgraph_StreamExtSnapshotServer, forward bool) error {
 	node := groups().Node
 	glog.Infof("[import] got stream,forwarding in group [%v]", forward)
 
@@ -414,7 +413,7 @@ func streamInGroup(stream apiv2.Dgraph_StreamExtSnapshotServer, forward bool) er
 					}
 				}()
 
-				forwardReq := &apiv2.StreamExtSnapshotRequest{Forward: false}
+				forwardReq := &api.StreamExtSnapshotRequest{Forward: false}
 				if err := peerStream.Send(forwardReq); err != nil {
 					updateNodeStatus(&ps.RWMutex, successfulNodes, member.Addr, false)
 					glog.Errorf("failed to send forward request: %v", err)
@@ -437,7 +436,7 @@ func streamInGroup(stream apiv2.Dgraph_StreamExtSnapshotServer, forward bool) er
 	eg.Go(func() error {
 		defer ps.close()
 		defer func() {
-			if err := stream.SendAndClose(&apiv2.StreamExtSnapshotResponse{}); err != nil {
+			if err := stream.SendAndClose(&api.StreamExtSnapshotResponse{}); err != nil {
 				glog.Errorf("[import] failed to send close on in: %v", err)
 			}
 		}()

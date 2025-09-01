@@ -182,7 +182,7 @@ func NewMCPServer(connectionString string, readOnly bool) (*server.MCPServer, er
 			if err != nil {
 				return mcp.NewToolResultErrorFromErr("Error opening connection with Dgraph Alpha", err), nil
 			}
-			if err = conn.SetSchema(ctx, dgo.RootNamespace, schema); err != nil {
+			if err = conn.SetSchema(ctx, schema); err != nil {
 				return mcp.NewToolResultErrorFromErr("Schema alteration failed", err), nil
 			}
 

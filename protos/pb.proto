@@ -13,7 +13,6 @@ syntax = "proto3";
 package pb;
 
 import "github.com/dgraph-io/dgo/v250/protos/api.proto";
-import "github.com/dgraph-io/dgo/v250/protos/api.v2.proto";
 import "github.com/dgraph-io/badger/v4/pb/pb.proto";
 import "google/protobuf/descriptor.proto";
 
@@ -322,7 +321,7 @@ message Proposal {
   DeleteNsRequest delete_ns = 14;  // Used to delete namespace.
   // Skipping 15 as it is used for uint64 key in master and might be needed later here.
   uint64 start_ts = 16;
- api.v2.UpdateExtSnapshotStreamingStateRequest ext_snapshot_state = 17;
+ api.UpdateExtSnapshotStreamingStateRequest ext_snapshot_state = 17;
 }
 
 message CDCState {
@@ -599,8 +598,8 @@ service Worker {
       returns (UpdateGraphQLSchemaResponse) {}
   rpc DeleteNamespace(DeleteNsRequest) returns (Status) {}
   rpc TaskStatus(TaskStatusRequest) returns (TaskStatusResponse) {}
-  rpc UpdateExtSnapshotStreamingState(api.v2.UpdateExtSnapshotStreamingStateRequest) returns (Status) {}
-  rpc StreamExtSnapshot(stream api.v2.StreamExtSnapshotRequest) returns (api.v2.StreamExtSnapshotResponse) {}
+  rpc UpdateExtSnapshotStreamingState(api.UpdateExtSnapshotStreamingStateRequest) returns (Status) {}
+  rpc StreamExtSnapshot(stream api.StreamExtSnapshotRequest) returns (api.StreamExtSnapshotResponse) {}
 }
 
 message TabletResponse {
