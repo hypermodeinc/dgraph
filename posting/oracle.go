@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/hex"
 	"math"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/dgraph-io/badger/v4"
 	"github.com/golang/glog"
 	ostats "go.opencensus.io/stats"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/hypermodeinc/dgraph/v25/protos/pb"
 	"github.com/hypermodeinc/dgraph/v25/tok/index"
@@ -54,6 +56,84 @@ type Txn struct {
 	lastUpdate time.Time
 
 	cache *LocalCache // This pointer does not get modified.
+
+	pointers [](*[]byte)
+}
+
+func (txn *Txn) AddPointer(p *[]byte) {
+	if txn.pointers == nil {
+		txn.pointers = make([](*[]byte), 1)
+		txn.pointers[0] = p
+	}
+	txn.pointers = append(txn.pointers, p)
+}
+
+func (txn *Txn) GetPointers() [](*[]byte) {
+	return txn.pointers
+}
+
+func SortAndDedupPostings(postings []*pb.Posting) []*pb.Posting {
+	// Sort postings by UID
+	sort.Slice(postings, func(i, j int) bool {
+		return postings[i].Uid < postings[j].Uid
+	})
+
+	//In-place filtering: keep only the last occurrence for each UID
+	n := 0 // write index
+	for i := 0; i < len(postings); {
+		j := i + 1
+		// Skip all postings with same UID
+		for j < len(postings) && postings[j].Uid == postings[i].Uid {
+			j++
+		}
+		// Keep only the last posting for this UID
+		postings[n] = postings[j-1]
+		n++
+		i = j
+	}
+	return postings[:n]
+}
+
+func (txn *Txn) AddDelta(key string, input *pb.PostingList, doSortAndDedup bool, addToList bool) (*pb.PostingList, error) {
+	txn.cache.Lock()
+	defer txn.cache.Unlock()
+
+	pl := new(pb.PostingList)
+
+	if addToList {
+		prevDelta, ok := txn.cache.deltas.Get(key)
+		if ok {
+			pl.Postings = append(pl.Postings, prevDelta.Postings...)
+		}
+	}
+
+	pl.Postings = append(pl.Postings, input.Postings...)
+
+	if doSortAndDedup {
+		pl.Postings = SortAndDedupPostings(pl.Postings)
+	}
+
+	newPl, err := proto.Marshal(pl)
+	if err != nil {
+		glog.Errorf("Error marshalling posting list: %v", err)
+		return nil, err
+	}
+
+	txn.cache.deltas.AddToDeltas(key, newPl)
+
+	list, listOk := txn.cache.plists[key]
+	if listOk {
+		list.setMutation(txn.StartTs, newPl)
+	}
+	return pl, nil
+}
+
+func (txn *Txn) LockCache() {
+	txn.cache.Lock()
+}
+
+func (txn *Txn) UnlockCache() {
+	txn.cache.Unlock()
 }
 
 // struct to implement Txn interface from vector-indexer
@@ -324,8 +404,11 @@ func (o *oracle) ProcessDelta(delta *pb.OracleDelta) {
 	for _, status := range delta.Txns {
 		txn := o.pendingTxns[status.StartTs]
 		if txn != nil && status.CommitTs > 0 {
-			for k := range txn.cache.deltas {
-				IncrRollup.addKeyToBatch([]byte(k), 0)
+			if err := txn.cache.deltas.IterateBytes(func(key string, value []byte) error {
+				IncrRollup.addKeyToBatch([]byte(key), 0)
+				return nil
+			}); err != nil {
+				glog.Errorf("ProcessDelta: error while iterating deltas for txn %d: %v", status.StartTs, err)
 			}
 		}
 		delete(o.pendingTxns, status.StartTs)
@@ -379,17 +462,6 @@ func (o *oracle) GetTxn(startTs uint64) *Txn {
 	return o.pendingTxns[startTs]
 }
 
-func (txn *Txn) matchesDelta(ok func(key []byte) bool) bool {
-	txn.Lock()
-	defer txn.Unlock()
-	for key := range txn.cache.deltas {
-		if ok([]byte(key)) {
-			return true
-		}
-	}
-	return false
-}
-
 // IterateTxns returns a list of start timestamps for currently pending transactions, which match
 // the provided function.
 func (o *oracle) IterateTxns(ok func(key []byte) bool) []uint64 {
@@ -397,8 +469,13 @@ func (o *oracle) IterateTxns(ok func(key []byte) bool) []uint64 {
 	defer o.RUnlock()
 	var timestamps []uint64
 	for startTs, txn := range o.pendingTxns {
-		if txn.matchesDelta(ok) {
-			timestamps = append(timestamps, startTs)
+		if err := txn.cache.deltas.IterateBytes(func(key string, value []byte) error {
+			if ok([]byte(key)) {
+				timestamps = append(timestamps, startTs)
+			}
+			return nil
+		}); err != nil {
+			glog.Errorf("IterateTxns: error while iterating deltas for txn %d: %v", startTs, err)
 		}
 	}
 	return timestamps

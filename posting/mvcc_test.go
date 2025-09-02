@@ -72,7 +72,7 @@ func TestCacheAfterDeltaUpdateRecieved(t *testing.T) {
 
 	// Write delta to disk and call update
 	txn := Oracle().RegisterStartTs(5)
-	txn.cache.deltas[string(key)] = delta
+	txn.cache.deltas.AddToDeltas(string(key), delta)
 
 	writer := NewTxnWriter(pstore)
 	require.NoError(t, txn.CommitToDisk(writer, 15))
@@ -144,6 +144,8 @@ func BenchmarkTestCache(b *testing.B) {
 }
 
 func TestRollupTimestamp(t *testing.T) {
+	require.NoError(t, schema.ParseBytes([]byte("rollup: [uid] ."), 1))
+
 	attr := x.AttrInRootNamespace("rollup")
 	key := x.DataKey(attr, 1)
 	// 3 Delta commits.
@@ -183,6 +185,8 @@ func TestRollupTimestamp(t *testing.T) {
 }
 
 func TestPostingListRead(t *testing.T) {
+	require.NoError(t, schema.ParseBytes([]byte("emptypl: [uid] ."), 1))
+
 	attr := x.AttrInRootNamespace("emptypl")
 	key := x.DataKey(attr, 1)
 
