@@ -41,8 +41,6 @@ copy-protos:
 	 ${TMPDIR}/src/${BADGER_PATH}/pb/pb.proto
 	@cp $(shell go list -m -f "{{.Dir}}" ${DGO_PATH})/protos/api.proto \
 	 ${TMPDIR}/src/${DGO_PATH}/protos/api.proto
-	@cp $(shell go list -m -f "{{.Dir}}" ${DGO_PATH})/protos/api.v2.proto \
-	 ${TMPDIR}/src/${DGO_PATH}/protos/api.v2.proto
 
 .PHONY: patch-pb
 patch-pb:
@@ -50,15 +48,16 @@ patch-pb:
 
 .PHONY: regenerate
 regenerate: tidy-deps copy-protos check clean
+	echo ${DGO_PATH}
 	@protoc \
 		--proto_path=/usr/local/include \
 		--proto_path=/usr/include \
+		--proto_path=/opt/homebrew/include/google/protobuf \
 		--proto_path=${PROTO_PATH} \
 		--go_out=pb --go-grpc_out=pb \
 		--go_opt=paths=source_relative \
 		--go-grpc_opt=paths=source_relative \
 		--go_opt=M{DGO_PATH}/protos/api.proto={DGO_PATH}/protos/api \
-		--go_opt=M{DGO_PATH}/protos/api.v2.proto={DGO_PATH}/protos/api.v2 \
 		pb.proto
 	@$(MAKE) patch-pb
 	@rm -rf ${TMPDIR}
