@@ -53,6 +53,7 @@ regenerate: tidy-deps copy-protos check clean
 	@protoc \
 		--proto_path=/usr/local/include \
 		--proto_path=/usr/include \
+		--proto_path=/opt/homebrew/include/google/protobuf \
 		--proto_path=${PROTO_PATH} \
 		--go_out=pb --go-grpc_out=pb \
 		--go_opt=paths=source_relative \
