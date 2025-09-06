@@ -39,7 +39,7 @@ services:
       cluster: test
     command: >
       /gobin/dgraph alpha --my=dg1:7180 --zero=zero1:5180 -o 100 --logtostderr
-                          --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+                          --security "whitelist=0.0.0.0/0;"
 
 volumes:
   data:

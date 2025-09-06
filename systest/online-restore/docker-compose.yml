@@ -31,9 +31,9 @@ services:
         read_only: true
     command:
       /gobin/dgraph ${COVERAGE_OUTPUT} alpha --my=alpha1:7080 --zero=zero1:5080 --logtostderr -v=2
-      --raft "idx=1;" --encryption "key-file=/data/keys/enc_key;" --security
-      "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;" --tls "ca-cert=/dgraph-tls/ca.crt;
-      server-cert=/dgraph-tls/node.crt; server-key=/dgraph-tls/node.key; internal-port=true;
+      --raft "idx=1;" --encryption "key-file=/data/keys/enc_key;" --security "whitelist=0.0.0.0/0;"
+      --tls "ca-cert=/dgraph-tls/ca.crt; server-cert=/dgraph-tls/node.crt;
+      server-key=/dgraph-tls/node.key; internal-port=true;
       client-cert=/dgraph-tls/client.alpha1.crt; client-key=/dgraph-tls/client.alpha1.key;"
   alpha2:
     image: dgraph/dgraph:local
@@ -68,9 +68,9 @@ services:
         read_only: true
     command:
       /gobin/dgraph ${COVERAGE_OUTPUT} alpha --my=alpha2:7080 --zero=zero1:5080 --logtostderr -v=2
-      --raft "idx=2;" --encryption "key-file=/data/keys/enc_key;" --security
-      "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;" --tls "ca-cert=/dgraph-tls/ca.crt;
-      server-cert=/dgraph-tls/node.crt; server-key=/dgraph-tls/node.key; internal-port=true;
+      --raft "idx=2;" --encryption "key-file=/data/keys/enc_key;" --security "whitelist=0.0.0.0/0;"
+      --tls "ca-cert=/dgraph-tls/ca.crt; server-cert=/dgraph-tls/node.crt;
+      server-key=/dgraph-tls/node.key; internal-port=true;
       client-cert=/dgraph-tls/client.alpha2.crt; client-key=/dgraph-tls/client.alpha2.key;"
   alpha3:
     image: dgraph/dgraph:local
@@ -105,9 +105,9 @@ services:
         read_only: true
     command:
       /gobin/dgraph ${COVERAGE_OUTPUT} alpha --my=alpha3:7080 --zero=zero1:5080 --logtostderr -v=2
-      --raft "idx=3;" --encryption "key-file=/data/keys/enc_key;" --security
-      "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;" --tls "ca-cert=/dgraph-tls/ca.crt;
-      server-cert=/dgraph-tls/node.crt; server-key=/dgraph-tls/node.key; internal-port=true;
+      --raft "idx=3;" --encryption "key-file=/data/keys/enc_key;" --security "whitelist=0.0.0.0/0;"
+      --tls "ca-cert=/dgraph-tls/ca.crt; server-cert=/dgraph-tls/node.crt;
+      server-key=/dgraph-tls/node.key; internal-port=true;
       client-cert=/dgraph-tls/client.alpha3.crt; client-key=/dgraph-tls/client.alpha3.key;"
   alpha4:
     image: dgraph/dgraph:local
@@ -142,9 +142,9 @@ services:
         read_only: true
     command:
       /gobin/dgraph ${COVERAGE_OUTPUT} alpha --my=alpha4:7080 --zero=zero1:5080 --logtostderr -v=2
-      --raft "idx=4;" --encryption "key-file=/data/keys/enc_key;" --security
-      "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;" --tls "ca-cert=/dgraph-tls/ca.crt;
-      server-cert=/dgraph-tls/node.crt; server-key=/dgraph-tls/node.key; internal-port=true;
+      --raft "idx=4;" --encryption "key-file=/data/keys/enc_key;" --security "whitelist=0.0.0.0/0;"
+      --tls "ca-cert=/dgraph-tls/ca.crt; server-cert=/dgraph-tls/node.crt;
+      server-key=/dgraph-tls/node.key; internal-port=true;
       client-cert=/dgraph-tls/client.alpha4.crt; client-key=/dgraph-tls/client.alpha4.key;"
   alpha5:
     image: dgraph/dgraph:local
@@ -179,9 +179,9 @@ services:
         read_only: true
     command:
       /gobin/dgraph ${COVERAGE_OUTPUT} alpha --my=alpha5:7080 --zero=zero1:5080 --logtostderr -v=2
-      --raft "idx=5;" --encryption "key-file=/data/keys/enc_key;" --security
-      "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;" --tls "ca-cert=/dgraph-tls/ca.crt;
-      server-cert=/dgraph-tls/node.crt; server-key=/dgraph-tls/node.key; internal-port=true;
+      --raft "idx=5;" --encryption "key-file=/data/keys/enc_key;" --security "whitelist=0.0.0.0/0;"
+      --tls "ca-cert=/dgraph-tls/ca.crt; server-cert=/dgraph-tls/node.crt;
+      server-key=/dgraph-tls/node.key; internal-port=true;
       client-cert=/dgraph-tls/client.alpha5.crt; client-key=/dgraph-tls/client.alpha5.key;"
   alpha6:
     image: dgraph/dgraph:local
@@ -216,9 +216,9 @@ services:
         read_only: true
     command:
       /gobin/dgraph ${COVERAGE_OUTPUT} alpha --my=alpha6:7080 --zero=zero1:5080 --logtostderr -v=2
-      --raft "idx=6;" --encryption "key-file=/data/keys/enc_key;" --security
-      "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;" --tls "ca-cert=/dgraph-tls/ca.crt;
-      server-cert=/dgraph-tls/node.crt; server-key=/dgraph-tls/node.key; internal-port=true;
+      --raft "idx=6;" --encryption "key-file=/data/keys/enc_key;" --security "whitelist=0.0.0.0/0;"
+      --tls "ca-cert=/dgraph-tls/ca.crt; server-cert=/dgraph-tls/node.crt;
+      server-key=/dgraph-tls/node.key; internal-port=true;
       client-cert=/dgraph-tls/client.alpha6.crt; client-key=/dgraph-tls/client.alpha6.key;"
   zero1:
     image: dgraph/dgraph:local

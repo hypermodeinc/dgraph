@@ -21,7 +21,7 @@ services:
         read_only: true
     command:
       /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --my=alpha1:7080 --zero=zero1:5080 --logtostderr -v=2
-      --raft "idx=1;" --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+      --raft "idx=1;" --security "whitelist=0.0.0.0/0;"
   alpha2:
     image: dgraph/dgraph:local
     working_dir: /data/alpha2
@@ -43,7 +43,7 @@ services:
         read_only: true
     command:
       /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --my=alpha2:7080 --zero=zero1:5080 --logtostderr -v=2
-      --raft "idx=2;" --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+      --raft "idx=2;" --security "whitelist=0.0.0.0/0;"
   alpha3:
     image: dgraph/dgraph:local
     working_dir: /data/alpha3
@@ -65,7 +65,7 @@ services:
         read_only: true
     command:
       /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --my=alpha3:7080 --zero=zero1:5080 --logtostderr -v=2
-      --raft "idx=3;" --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+      --raft "idx=3;" --security "whitelist=0.0.0.0/0;"
   zero1:
     image: dgraph/dgraph:local
     working_dir: /data/zero1

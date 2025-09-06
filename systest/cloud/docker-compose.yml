@@ -40,9 +40,8 @@ services:
       service: alpha
     command:
       /gobin/dgraph alpha --my=alpha1:7080 --zero=zero1:5080,zero2:5080,zero3:5080 --expose_trace
-      --profile_mode block --block_rate 10 --logtostderr -v=2 --security
-      "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;" --acl
-      "secret-file=/dgraph-acl/hmac-secret; access-ttl=20s;" --limit "shared-instance=true"
+      --profile_mode block --block_rate 10 --logtostderr -v=2 --security "whitelist=0.0.0.0/0;"
+      --acl "secret-file=/dgraph-acl/hmac-secret; access-ttl=20s;" --limit "shared-instance=true"
 
   minio:
     image: minio/minio:latest

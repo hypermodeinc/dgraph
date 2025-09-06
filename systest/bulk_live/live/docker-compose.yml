@@ -17,7 +17,7 @@ services:
         read_only: true
     command:
       /gobin/dgraph alpha --my=alpha1:7080 --zero=zero1:5080 --logtostderr -v=2 --raft='idx=1;
-      group=1;' --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+      group=1;' --security "whitelist=0.0.0.0/0;"
     deploy:
       resources:
         limits:

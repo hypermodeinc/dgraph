@@ -21,7 +21,7 @@ services:
         read_only: true
     command:
       /gobin/dgraph alpha --my=alpha1:7080 --zero=zero1:5080 --logtostderr -v=2 --security
-      "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;" --acl "secret-file=/secret/hmac;"
+      "whitelist=0.0.0.0/0;" --acl "secret-file=/secret/hmac;"
   zero1:
     image: dgraph/dgraph:local
     working_dir: /data/zero1

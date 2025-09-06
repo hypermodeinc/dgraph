@@ -25,7 +25,7 @@ services:
       - -c
       - |
         mount -v -o vers=4,loud nfs:/ /mnt 2>&1 &
-        /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --my=alpha1_backup_clust_ha:7080  --zero=zero1_backup_clust_ha:5080,zero2_backup_clust_ha:5080,zero3_backup_clust_ha:5080 --logtostderr -v=2  --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+        /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --my=alpha1_backup_clust_ha:7080  --zero=zero1_backup_clust_ha:5080,zero2_backup_clust_ha:5080,zero3_backup_clust_ha:5080 --logtostderr -v=2  --security "whitelist=0.0.0.0/0;"
 
   alpha2_backup_clust_ha:
     image: dgraph-nfs-client:local
@@ -47,7 +47,7 @@ services:
     command:
       /gobin/dgraph  ${COVERAGE_OUTPUT} alpha
       --my=alpha2_backup_clust_ha:7080  --zero=zero1_backup_clust_ha:5080,zero2_backup_clust_ha:5080,zero3_backup_clust_ha:5080
-      --logtostderr -v=2  --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+      --logtostderr -v=2  --security "whitelist=0.0.0.0/0;"
 
   alpha3_backup_clust_ha:
     image: dgraph-nfs-client:local
@@ -69,7 +69,7 @@ services:
     command:
       /gobin/dgraph  ${COVERAGE_OUTPUT} alpha
       --my=alpha3_backup_clust_ha:7080  --zero=zero1_backup_clust_ha:5080,zero2_backup_clust_ha:5080,zero3_backup_clust_ha:5080
-      --logtostderr -v=2  --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+      --logtostderr -v=2  --security "whitelist=0.0.0.0/0;"
 
   zero1_backup_clust_ha:
     image: dgraph-nfs-client:local
@@ -158,7 +158,7 @@ services:
       - -c
       - |
         mount -v -o vers=4,loud nfs:/ /mnt 2>&1 &
-        /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --my=alpha4_restore_clust_ha:7080  --zero=zero4_restore_clust_ha:5080,zero5_restore_clust_ha:5080,zero6_restore_clust_ha:5080 --logtostderr -v=2  --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+        /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --my=alpha4_restore_clust_ha:7080  --zero=zero4_restore_clust_ha:5080,zero5_restore_clust_ha:5080,zero6_restore_clust_ha:5080 --logtostderr -v=2  --security "whitelist=0.0.0.0/0;"
 
   alpha5_restore_clust_ha:
     image: dgraph-nfs-client:local
@@ -180,7 +180,7 @@ services:
     command:
       /gobin/dgraph  ${COVERAGE_OUTPUT} alpha
       --my=alpha5_restore_clust_ha:7080  --zero=zero4_restore_clust_ha:5080,zero5_restore_clust_ha:5080,zero6_restore_clust_ha:5080
-      --logtostderr -v=2  --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+      --logtostderr -v=2  --security "whitelist=0.0.0.0/0;"
 
   alpha6_restore_clust_ha:
     image: dgraph-nfs-client:local
@@ -202,7 +202,7 @@ services:
     command:
       /gobin/dgraph  ${COVERAGE_OUTPUT} alpha
       --my=alpha6_restore_clust_ha:7080  --zero=zero4_restore_clust_ha:5080,zero5_restore_clust_ha:5080,zero6_restore_clust_ha:5080
-      --logtostderr -v=2  --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+      --logtostderr -v=2  --security "whitelist=0.0.0.0/0;"
 
   zero4_restore_clust_ha:
     image: dgraph-nfs-client:local
@@ -312,7 +312,7 @@ services:
       - -c
       - |
         mount -v -o vers=4,loud nfs:/ /mnt 2>&1 &
-        /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --my=alpha7_backup_clust_non_ha:7080  --zero=zero7_backup_clust_non_ha:5080 --logtostderr -v=2  --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+        /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --my=alpha7_backup_clust_non_ha:7080  --zero=zero7_backup_clust_non_ha:5080 --logtostderr -v=2  --security "whitelist=0.0.0.0/0;"
 
   #non HA restore cluster
   zero8_restore_clust_non_ha:
@@ -359,7 +359,7 @@ services:
       - -c
       - |
         mount -v -o vers=4,loud nfs:/ /mnt 2>&1 &
-        /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --my=alpha8_restore_clust_non_ha:7080  --zero=zero8_restore_clust_non_ha:5080 --logtostderr -v=2  --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+        /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --my=alpha8_restore_clust_non_ha:7080  --zero=zero8_restore_clust_non_ha:5080 --logtostderr -v=2  --security "whitelist=0.0.0.0/0;"
 
   nfs:
     image: itsthenetwork/nfs-server-alpine:${NFS_SERVER_IMAGE_ARCH:-12}

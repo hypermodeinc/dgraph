@@ -18,8 +18,7 @@ services:
     command:
       /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --trace "jaeger=http://jaeger:14268;" --my=alpha1:7080
       --zero=zero1:5080,zero2:5080,zero3:5080 --logtostderr -v=2 --raft "idx=1; group=1;
-      snapshot-after-entries=100; snapshot-after-duration=1m" --security
-      "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+      snapshot-after-entries=100; snapshot-after-duration=1m" --security "whitelist=0.0.0.0/0;"
   alpha2:
     image: dgraph/dgraph:local
     working_dir: /data/alpha2
@@ -36,8 +35,7 @@ services:
     command:
       /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --trace "jaeger=http://jaeger:14268;" --my=alpha2:7080
       --zero=zero1:5080,zero2:5080,zero3:5080 --logtostderr -v=2 --raft "idx=2; group=1;
-      snapshot-after-entries=100; snapshot-after-duration=1m" --security
-      "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+      snapshot-after-entries=100; snapshot-after-duration=1m" --security "whitelist=0.0.0.0/0;"
   alpha3:
     image: dgraph/dgraph:local
     working_dir: /data/alpha3
@@ -54,8 +52,7 @@ services:
     command:
       /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --trace "jaeger=http://jaeger:14268;" --my=alpha3:7080
       --zero=zero1:5080,zero2:5080,zero3:5080 --logtostderr -v=2 --raft "idx=3; group=1;
-      snapshot-after-entries=100; snapshot-after-duration=1m" --security
-      "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+      snapshot-after-entries=100; snapshot-after-duration=1m" --security "whitelist=0.0.0.0/0;"
   alpha4:
     image: dgraph/dgraph:local
     working_dir: /data/alpha4
@@ -72,8 +69,7 @@ services:
     command:
       /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --trace "jaeger=http://jaeger:14268;" --my=alpha4:7080
       --zero=zero1:5080,zero2:5080,zero3:5080 --logtostderr -v=2 --raft "idx=4; group=2;
-      snapshot-after-entries=100; snapshot-after-duration=1m" --security
-      "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+      snapshot-after-entries=100; snapshot-after-duration=1m" --security "whitelist=0.0.0.0/0;"
   alpha5:
     image: dgraph/dgraph:local
     working_dir: /data/alpha5
@@ -90,8 +86,7 @@ services:
     command:
       /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --trace "jaeger=http://jaeger:14268;" --my=alpha5:7080
       --zero=zero1:5080,zero2:5080,zero3:5080 --logtostderr -v=2 --raft "idx=5; group=2;
-      snapshot-after-entries=100; snapshot-after-duration=1m" --security
-      "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+      snapshot-after-entries=100; snapshot-after-duration=1m" --security "whitelist=0.0.0.0/0;"
   alpha6:
     image: dgraph/dgraph:local
     working_dir: /data/alpha6
@@ -108,8 +103,7 @@ services:
     command:
       /gobin/dgraph  ${COVERAGE_OUTPUT} alpha --trace "jaeger=http://jaeger:14268;" --my=alpha6:7080
       --zero=zero1:5080,zero2:5080,zero3:5080 --logtostderr -v=2 --raft "idx=6; group=2;
-      snapshot-after-entries=100; snapshot-after-duration=1m" --security
-      "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;"
+      snapshot-after-entries=100; snapshot-after-duration=1m" --security "whitelist=0.0.0.0/0;"
   jaeger:
     image: jaegertracing/all-in-one:1.60
     working_dir: /working/jaeger

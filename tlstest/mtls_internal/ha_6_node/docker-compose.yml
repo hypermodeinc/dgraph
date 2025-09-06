@@ -19,9 +19,8 @@ services:
         read_only: true
     command:
       /gobin/dgraph ${COVERAGE_OUTPUT} alpha --my=alpha1:7080 --zero=zero1:5080 --logtostderr -v=2
-      --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;" --tls
-      "ca-cert=/dgraph-tls/ca.crt; server-cert=/dgraph-tls/node.crt;
-      server-key=/dgraph-tls/node.key; internal-port=true;
+      --security "whitelist=0.0.0.0/0;" --tls "ca-cert=/dgraph-tls/ca.crt;
+      server-cert=/dgraph-tls/node.crt; server-key=/dgraph-tls/node.key; internal-port=true;
       client-cert=/dgraph-tls/client.alpha1.crt; client-key=/dgraph-tls/client.alpha1.key;"
   alpha2:
     image: dgraph/dgraph:local
@@ -42,9 +41,8 @@ services:
         read_only: true
     command:
       /gobin/dgraph ${COVERAGE_OUTPUT} alpha --my=alpha2:7080 --zero=zero1:5080 --logtostderr -v=2
-      --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;" --tls
-      "ca-cert=/dgraph-tls/ca.crt; server-cert=/dgraph-tls/node.crt;
-      server-key=/dgraph-tls/node.key; internal-port=true;
+      --security "whitelist=0.0.0.0/0;" --tls "ca-cert=/dgraph-tls/ca.crt;
+      server-cert=/dgraph-tls/node.crt; server-key=/dgraph-tls/node.key; internal-port=true;
       client-cert=/dgraph-tls/client.alpha2.crt; client-key=/dgraph-tls/client.alpha2.key;"
   alpha3:
     image: dgraph/dgraph:local
@@ -65,9 +63,8 @@ services:
         read_only: true
     command:
       /gobin/dgraph ${COVERAGE_OUTPUT} alpha --my=alpha3:7080 --zero=zero1:5080 --logtostderr -v=2
-      --security "whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16;" --tls
-      "ca-cert=/dgraph-tls/ca.crt; server-cert=/dgraph-tls/node.crt;
-      server-key=/dgraph-tls/node.key; internal-port=true;
+      --security "whitelist=0.0.0.0/0;" --tls "ca-cert=/dgraph-tls/ca.crt;
+      server-cert=/dgraph-tls/node.crt; server-key=/dgraph-tls/node.key; internal-port=true;
       client-cert=/dgraph-tls/client.alpha3.crt; client-key=/dgraph-tls/client.alpha3.key;"
   zero1:
     image: dgraph/dgraph:local

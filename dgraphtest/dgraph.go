@@ -235,10 +235,9 @@ func (a *alpha) cmd(c *LocalCluster) []string {
 		"--bindall", "--logtostderr", fmt.Sprintf("-v=%d", c.conf.verbosity)}
 
 	if c.lowerThanV21 {
-		acmd = append(acmd, `--whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`, "--telemetry=false")
+		acmd = append(acmd, `--whitelist=0.0.0.0/0`, "--telemetry=false")
 	} else {
-		acmd = append(acmd, `--security=whitelist=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`,
-			"--telemetry=reports=false;")
+		acmd = append(acmd, `--security=whitelist=0.0.0.0/0`, "--telemetry=reports=false;")
 	}
 
 	if c.conf.lambdaURL != "" {
