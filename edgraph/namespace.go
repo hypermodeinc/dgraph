@@ -302,18 +302,18 @@ func getNamespaceIDFromName(ctx context.Context, nsName string) (uint64, error) 
 	req := &api.Request{Query: fmt.Sprintf(queryNamespaceByName, nsName)}
 	resp, err := (&Server{}).doQuery(ctx, &Request{req: req, doAuth: NoAuthorize})
 	if err != nil {
-		return 0, err
+		return 0, errors.Wrapf(err, "failed to get namespace ID from name %q", nsName)
 	}
 
 	var data resultNamespaces
 	if err := json.Unmarshal(resp.GetJson(), &data); err != nil {
-		return 0, err
+		return 0, errors.Wrapf(err, "failed to unmarshal JSON results for namespace query %q", req.Query)
 	}
 	if len(data.Namespaces) == 0 {
-		return 0, errors.Errorf("namespace %q not found", nsName)
+		return 0, errors.Wrapf(x.ErrNamespaceNotFound, "namespace %q not found", nsName)
 	}
 
-	glog.Infof("Found namespace [%v] with id [%d]", nsName, data.Namespaces[0].ID)
+	glog.V(2).Infof("Found namespace [%v] with id [%d]", nsName, data.Namespaces[0].ID)
 	return data.Namespaces[0].ID, nil
 }
 
