@@ -38,6 +38,107 @@ func getEntryForCommit(index, startTs, commitTs uint64) raftpb.Entry {
 	return raftpb.Entry{Index: index, Term: 1, Type: raftpb.EntryNormal, Data: data}
 }
 
+// func BenchmarkProcessListIndex(b *testing.B) {
+// 	dir, err := os.MkdirTemp("", "storetest_")
+// 	x.Check(err)
+// 	defer os.RemoveAll(dir)
+
+// 	opt := badger.DefaultOptions(dir)
+// 	ps, err := badger.OpenManaged(opt)
+// 	x.Check(err)
+// 	pstore = ps
+// 	// Not using posting list cache
+// 	posting.Init(ps, 0, false)
+// 	Init(ps)
+// 	err = schema.ParseBytes([]byte("testAttr: [string] @index(exact) ."), 1)
+// 	require.NoError(b, err)
+
+// 	ctx := context.Background()
+// 	pipeline := &PredicatePipeline{
+// 		attr:  "0-testAttr",
+// 		edges: make(chan *pb.DirectedEdge, 1000),
+// 		wg:    &sync.WaitGroup{},
+// 		errCh: make(chan error, 1),
+// 	}
+
+// 	txn := posting.Oracle().RegisterStartTs(5)
+// 	mp := &MutationPipeline{txn: txn}
+
+// 	// Generate 1000 edges
+// 	populatePipeline := func() {
+// 		pipeline = &PredicatePipeline{
+// 			attr:  "0-testAttr",
+// 			edges: make(chan *pb.DirectedEdge, 1000),
+// 			wg:    &sync.WaitGroup{},
+// 			errCh: make(chan error, 1),
+// 		}
+
+// 		txn = posting.Oracle().RegisterStartTs(5)
+// 		mp = &MutationPipeline{txn: txn}
+
+// 		for i := 0; i < 1000; i++ {
+// 			edge := &pb.DirectedEdge{
+// 				Entity:    uint64(i + 1),
+// 				Attr:      "0-testAttr",
+// 				Value:     []byte(fmt.Sprintf("value%d", rand.Intn(1000))),
+// 				ValueType: pb.Posting_STRING,
+// 				Op:        pb.DirectedEdge_SET,
+// 			}
+// 			pipeline.edges <- edge
+// 		}
+// 	}
+
+// 	b.ResetTimer()
+
+// 	b.Run("Baseline", func(b *testing.B) {
+// 		for i := 0; i < b.N; i++ {
+// 			populatePipeline()
+// 		}
+// 	})
+
+// 	b.Run("DefaultPipeline", func(b *testing.B) {
+// 		for i := 0; i < b.N; i++ {
+// 			populatePipeline()
+// 			var wg sync.WaitGroup
+// 			wg.Add(1)
+// 			go func() {
+// 				mp.DefaultPipeline(ctx, pipeline)
+// 				wg.Done()
+// 			}()
+// 			close(pipeline.edges)
+// 			wg.Wait()
+// 		}
+// 	})
+
+// 	b.Run("ProcessListWithoutIndex", func(b *testing.B) {
+// 		for i := 0; i < b.N; i++ {
+// 			populatePipeline()
+// 			var wg sync.WaitGroup
+// 			wg.Add(1)
+// 			go func() {
+// 				mp.ProcessListWithoutIndex(ctx, pipeline)
+// 				wg.Done()
+// 			}()
+// 			close(pipeline.edges)
+// 			wg.Wait()
+// 		}
+// 	})
+
+// 	b.Run("ProcessListIndex", func(b *testing.B) {
+// 		for i := 0; i < b.N; i++ {
+// 			populatePipeline()
+// 			var wg sync.WaitGroup
+// 			wg.Add(1)
+// 			go func() {
+// 				mp.ProcessListIndex(ctx, pipeline)
+// 				wg.Done()
+// 			}()
+// 			close(pipeline.edges)
+// 			wg.Wait()
+// 		}
+// 	})
+// }
+
 func TestCalculateSnapshot(t *testing.T) {
 	dir := t.TempDir()
 	ds := raftwal.Init(dir)
