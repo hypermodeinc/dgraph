@@ -27,6 +27,9 @@ func (c *LocalCluster) dgraphImage() string {
 	return "dgraph/dgraph:local"
 }
 
+// setupBinary sets up the dgraph binary. The binary is expected to be a version
+// compiled that is compatible with the host OS and architecture. Search this repo
+// for DGRAPH_BINARY to learn its use.
 func (c *LocalCluster) setupBinary() error {
 	if err := ensureDgraphClone(); err != nil {
 		panic(err)
@@ -39,6 +42,9 @@ func (c *LocalCluster) setupBinary() error {
 		}
 	}
 	if c.conf.version == localVersion {
+		if os.Getenv("GOPATH") == "" {
+			return errors.New("GOPATH is not set")
+		}
 		fromDir := filepath.Join(os.Getenv("GOPATH"), "bin")
 		return copyBinary(fromDir, c.tempBinDir, c.conf.version)
 	}
@@ -87,7 +93,7 @@ func runGitClone() error {
 	// a copy of this folder by running git clone using this already cloned dgraph
 	// repo. After the quick clone, we update the original URL to point to the
 	// GitHub dgraph repo and perform a "git fetch".
-	log.Printf("[INFO] cloning dgraph repo from [%v]", baseRepoDir)
+	log.Printf("[INFO] cloning dgraph repo from [%v] to [%v]", baseRepoDir, repoDir)
 	cmd := exec.Command("git", "clone", baseRepoDir, repoDir)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return errors.Wrapf(err, "error cloning dgraph repo\noutput:%v", string(out))

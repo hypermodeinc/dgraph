@@ -504,7 +504,11 @@ func (c *LocalCluster) BulkLoad(opts BulkOpts) error {
 	}
 
 	log.Printf("[INFO] running bulk loader with args: [%v]", strings.Join(args, " "))
-	cmd := exec.Command(filepath.Join(c.tempBinDir, "dgraph"), args...)
+	binaryName := "dgraph"
+	if os.Getenv("DGRAPH_BINARY") != "" {
+		binaryName = filepath.Base(os.Getenv("DGRAPH_BINARY"))
+	}
+	cmd := exec.Command(filepath.Join(c.tempBinDir, binaryName), args...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return errors.Wrapf(err, "error running bulk loader: %v", string(out))
 	} else {

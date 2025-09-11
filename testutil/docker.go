@@ -80,15 +80,15 @@ func (in ContainerInstance) BestEffortWaitForHealthy(privatePort uint16) error {
 				if aerr := checkACL(body); aerr == nil {
 					return nil
 				} else {
-					if attempt > 10 {
+					if attempt > 30 {
 						fmt.Printf("waiting for login to work: %v\n", aerr)
 					}
 					time.Sleep(time.Second)
 					continue
 				}
 			}
-			if attempt > 10 {
-				fmt.Printf("Health for %s failed: %v. Response: %q. Retrying...\n", in, err, body)
+			if attempt > 20 {
+				fmt.Printf("Health check %d for %s failed: %v. Response: %q. Retrying...\n", attempt, in, err, body)
 			}
 			time.Sleep(500 * time.Millisecond)
 		}
@@ -305,12 +305,12 @@ func DockerInspect(containerID string) (types.ContainerJSON, error) {
 	return cli.ContainerInspect(context.Background(), containerID)
 }
 
-// checkHealthContainer checks health of container and determines wheather container is ready to accept request
+// CheckHealthContainer checks health of container and determines wheather container is ready to accept request
 func CheckHealthContainer(socketAddrHttp string) error {
 	var err error
 	var resp *http.Response
 	url := "http://" + socketAddrHttp + "/health"
-	for range 30 {
+	for attempts := range 30 {
 		resp, err = http.Get(url)
 		if err == nil && resp.StatusCode == http.StatusOK {
 			return nil
@@ -323,9 +323,10 @@ func CheckHealthContainer(socketAddrHttp string) error {
 			}
 			_ = resp.Body.Close()
 		}
-		fmt.Printf("health check for container failed: %v. Response: %q. Retrying...\n", err, body)
+		if attempts > 10 {
+			fmt.Printf("health check for container failed: %v. Response: %q. Retrying...\n", err, body)
+		}
 		time.Sleep(time.Second)
-
 	}
 	return err
 }
