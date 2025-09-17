@@ -24,7 +24,7 @@ const (
 	NodeTypeZero          = "zero"
 )
 
-var auditEnabled uint32
+var auditEnabled atomic.Uint32
 
 type AuditEvent struct {
 	User        string
@@ -107,7 +107,7 @@ func InitAuditor(conf *x.LoggerConf, gId, nId uint64) error {
 	if auditor.log, err = x.InitLogger(conf, filename); err != nil {
 		return err
 	}
-	atomic.StoreUint32(&auditEnabled, 1)
+	auditEnabled.Store(1)
 	glog.Infoln("audit logs are enabled")
 	return nil
 }
@@ -116,7 +116,7 @@ func InitAuditor(conf *x.LoggerConf, gId, nId uint64) error {
 // It also sets the log to nil, because its being called by zero when license expires.
 // If license added, InitLogger will take care of the file.
 func Close() {
-	if atomic.LoadUint32(&auditEnabled) == 0 {
+	if auditEnabled.Load() == 0 {
 		return
 	}
 	auditor.log.Sync()

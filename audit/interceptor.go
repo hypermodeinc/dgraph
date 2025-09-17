@@ -68,7 +68,7 @@ func AuditRequestGRPC(ctx context.Context, req interface{},
 		return skipApis[info.FullMethod[strings.LastIndex(info.FullMethod, "/")+1:]]
 	}
 
-	if atomic.LoadUint32(&auditEnabled) == 0 || skip(info.FullMethod) {
+	if auditEnabled.Load() == 0 || skip(info.FullMethod) {
 		return handler(ctx, req)
 	}
 	response, err := handler(ctx, req)
@@ -82,7 +82,7 @@ func AuditRequestHttp(next http.Handler) http.Handler {
 			return skipEPs[r.URL.Path]
 		}
 
-		if atomic.LoadUint32(&auditEnabled) == 0 || skip(r.URL.Path) {
+		if auditEnabled.Load() == 0 || skip(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -110,7 +110,7 @@ func AuditRequestHttp(next http.Handler) http.Handler {
 }
 
 func AuditWebSockets(ctx context.Context, req *schema.Request) {
-	if atomic.LoadUint32(&auditEnabled) == 0 {
+	if auditEnabled.Load() == 0 {
 		return
 	}
 
