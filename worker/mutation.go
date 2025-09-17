@@ -55,6 +55,16 @@ func isDeletePredicateEdge(edge *pb.DirectedEdge) bool {
 	return edge.Entity == 0 && isStarAll(edge.Value)
 }
 
+func newRunMutations(ctx context.Context, edges []*pb.DirectedEdge, txn *posting.Txn) error {
+	mp := posting.NewMutationPipeline(txn)
+	return mp.Process(ctx, edges)
+}
+
+func newRunMutation(ctx context.Context, edge *pb.DirectedEdge, txn *posting.Txn) error {
+	mp := posting.NewMutationPipeline(txn)
+	return mp.Process(ctx, []*pb.DirectedEdge{edge})
+}
+
 // runMutation goes through all the edges and applies them.
 func runMutation(ctx context.Context, edge *pb.DirectedEdge, txn *posting.Txn) error {
 	ctx = schema.GetWriteContext(ctx)
