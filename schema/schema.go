@@ -1,6 +1,17 @@
 /*
- * SPDX-FileCopyrightText: © Hypermode Inc. <hello@hypermode.com>
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright 2016-2025 Hypermode Inc. and Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package schema
@@ -666,8 +677,7 @@ func initialTypesInternal(namespace uint64, all bool) []*pb.TypeUpdate {
 					ValueType: pb.Posting_STRING,
 				},
 			},
-		},
-		&pb.TypeUpdate{
+		}, &pb.TypeUpdate{
 			TypeName: "dgraph.graphql.persisted_query",
 			Fields: []*pb.SchemaUpdate{
 				{
@@ -697,24 +707,23 @@ func initialTypesInternal(namespace uint64, all bool) []*pb.TypeUpdate {
 	if all || x.WorkerConfig.AclEnabled {
 		// These type definitions are required for deleteUser and deleteGroup GraphQL API to work
 		// properly.
-		initialTypes = append(initialTypes,
-			&pb.TypeUpdate{
-				TypeName: "dgraph.type.User",
-				Fields: []*pb.SchemaUpdate{
-					{
-						Predicate: "dgraph.xid",
-						ValueType: pb.Posting_STRING,
-					},
-					{
-						Predicate: "dgraph.password",
-						ValueType: pb.Posting_PASSWORD,
-					},
-					{
-						Predicate: "dgraph.user.group",
-						ValueType: pb.Posting_UID,
-					},
+		initialTypes = append(initialTypes, &pb.TypeUpdate{
+			TypeName: "dgraph.type.User",
+			Fields: []*pb.SchemaUpdate{
+				{
+					Predicate: "dgraph.xid",
+					ValueType: pb.Posting_STRING,
+				},
+				{
+					Predicate: "dgraph.password",
+					ValueType: pb.Posting_PASSWORD,
+				},
+				{
+					Predicate: "dgraph.user.group",
+					ValueType: pb.Posting_UID,
 				},
 			},
+		},
 			&pb.TypeUpdate{
 				TypeName: "dgraph.type.Group",
 				Fields: []*pb.SchemaUpdate{
@@ -771,36 +780,31 @@ func CompleteInitialSchema(namespace uint64) []*pb.SchemaUpdate {
 func initialSchemaInternal(namespace uint64, all bool) []*pb.SchemaUpdate {
 	var initialSchema []*pb.SchemaUpdate
 
-	initialSchema = append(initialSchema, []*pb.SchemaUpdate{
-		{
+	initialSchema = append(initialSchema,
+		&pb.SchemaUpdate{
 			Predicate: "dgraph.type",
 			ValueType: pb.Posting_STRING,
 			Directive: pb.SchemaUpdate_INDEX,
 			Tokenizer: []string{"exact"},
 			List:      true,
-		},
-		{
+		}, &pb.SchemaUpdate{
 			Predicate: "dgraph.drop.op",
 			ValueType: pb.Posting_STRING,
-		},
-		{
+		}, &pb.SchemaUpdate{
 			Predicate: "dgraph.graphql.schema",
 			ValueType: pb.Posting_STRING,
-		},
-		{
+		}, &pb.SchemaUpdate{
 			Predicate: "dgraph.graphql.xid",
 			ValueType: pb.Posting_STRING,
 			Directive: pb.SchemaUpdate_INDEX,
 			Tokenizer: []string{"exact"},
 			Upsert:    true,
-		},
-		{
+		}, &pb.SchemaUpdate{
 			Predicate: "dgraph.graphql.p_query",
 			ValueType: pb.Posting_STRING,
 			Directive: pb.SchemaUpdate_INDEX,
 			Tokenizer: []string{"sha256"},
-		},
-	}...)
+		})
 
 	if namespace == x.RootNamespace {
 		initialSchema = append(initialSchema, []*pb.SchemaUpdate{

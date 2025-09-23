@@ -139,18 +139,27 @@ func addMutation(t *testing.T, l *List, edge *pb.DirectedEdge, op uint32,
 	}
 	txn := Oracle().RegisterStartTs(startTs)
 	txn.cache.SetIfAbsent(string(l.key), l)
-	if index {
-		require.NoError(t, l.AddMutationWithIndex(context.Background(), edge, txn))
-	} else {
-		require.NoError(t, l.addMutation(context.Background(), txn, edge))
-	}
 
+	mp := NewMutationPipeline(txn)
+	err := mp.Process(context.Background(), []*pb.DirectedEdge{edge})
+	require.NoError(t, err)
 	txn.Update()
 	txn.UpdateCachedKeys(commitTs)
 	writer := NewTxnWriter(pstore)
 	require.NoError(t, txn.CommitToDisk(writer, commitTs))
 	require.NoError(t, writer.Flush())
+	newTxn := Oracle().RegisterStartTs(commitTs + 1)
+	l1, err := newTxn.Get(l.key)
+	require.NoError(t, err)
+	*l = *l1 //nolint
 }
+
+const schemaPreVal = `
+	name: string .
+	name2: string .
+	dob: dateTime .
+	friend: [uid] .
+`
 
 const schemaVal = `
 name: string @index(term) .
@@ -263,6 +272,9 @@ func addEdgeToUID(t *testing.T, attr string, src uint64,
 func TestCountReverseIndexWithData(t *testing.T) {
 	require.NoError(t, pstore.DropAll())
 	MemLayerInstance.clear()
+	preIndex := "testcount: [uid] ."
+	require.NoError(t, schema.ParseBytes([]byte(preIndex), 1))
+
 	indexNameCountVal := "testcount: [uid] @count @reverse ."
 
 	attr := x.AttrInRootNamespace("testcount")
@@ -298,6 +310,9 @@ func TestCountReverseIndexWithData(t *testing.T) {
 func TestCountReverseIndexEmptyPosting(t *testing.T) {
 	require.NoError(t, pstore.DropAll())
 	MemLayerInstance.clear()
+	preIndex := "testcount: [uid] ."
+	require.NoError(t, schema.ParseBytes([]byte(preIndex), 1))
+
 	indexNameCountVal := "testcount: [uid] @count @reverse ."
 
 	attr := x.AttrInRootNamespace("testcount")
@@ -330,6 +345,8 @@ func TestCountReverseIndexEmptyPosting(t *testing.T) {
 }
 
 func TestRebuildTokIndex(t *testing.T) {
+	require.NoError(t, schema.ParseBytes([]byte(schemaPreVal), 1))
+
 	addEdgeToValue(t, x.AttrInRootNamespace("name2"), 91, "Michonne", uint64(1), uint64(2))
 	addEdgeToValue(t, x.AttrInRootNamespace("name2"), 92, "David", uint64(3), uint64(4))
 

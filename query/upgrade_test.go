@@ -50,7 +50,7 @@ func TestMain(m *testing.M) {
 			WithReplicas(1).WithACL(time.Hour).WithVersion(uc.Before)
 		c, err := dgraphtest.NewLocalCluster(conf)
 		x.Panic(err)
-		defer func() { c.Cleanup(code != 0) }()
+		defer func() { c.Cleanup(true) }()
 		x.Panic(c.Start())
 
 		hc, err := c.HTTPClient()
