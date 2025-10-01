@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"fmt"
 	"math"
 	"strconv"
 	"sync"
@@ -276,8 +277,11 @@ func (txn *Txn) CommitToDisk(writer *TxnWriter, commitTs uint64) error {
 	defer cache.Unlock()
 
 	var keys []string
-	for key := range cache.deltas {
+	if err := cache.deltas.IterateKeys(func(key string) error {
 		keys = append(keys, key)
+		return nil
+	}); err != nil {
+		return err
 	}
 
 	defer func() {
@@ -296,10 +300,19 @@ func (txn *Txn) CommitToDisk(writer *TxnWriter, commitTs uint64) error {
 		err := writer.update(commitTs, func(btxn *badger.Txn) error {
 			for ; idx < len(keys); idx++ {
 				key := keys[idx]
-				data := cache.deltas[key]
-				if len(data) == 0 {
+				data, ok := cache.deltas.GetBytes(key)
+				if !ok || data == nil {
 					continue
 				}
+				pl := &pb.PostingList{}
+				if err := proto.Unmarshal(data, pl); err != nil {
+					return err
+				}
+				if len(pl.Postings) == 0 {
+					continue
+				}
+				pk, _ := x.Parse([]byte(key))
+				fmt.Println("COMMITTING", pk, pl)
 				if ts := cache.maxVersions[key]; ts >= commitTs {
 					// Skip write because we already have a write at a higher ts.
 					// Logging here can cause a lot of output when doing Raft log replay. So, let's
@@ -482,7 +495,8 @@ func (ml *MemoryLayer) IterateDisk(ctx context.Context, f IterateDiskArgs) error
 		if err != nil {
 			return err
 		}
-		empty, err := l.IsEmpty(f.ReadTs, 0)
+		empty, err := false, nil
+		//empty, err := l.IsEmpty(f.ReadTs, 0)
 		switch {
 		case err != nil:
 			return err
@@ -567,7 +581,7 @@ func (ml *MemoryLayer) wait() {
 	ml.cache.wait()
 }
 
-func (ml *MemoryLayer) updateItemInCache(key string, delta []byte, startTs, commitTs uint64) {
+func (ml *MemoryLayer) updateItemInCache(key string, delta *pb.PostingList, startTs, commitTs uint64) {
 	if commitTs == 0 {
 		return
 	}
@@ -579,24 +593,19 @@ func (ml *MemoryLayer) updateItemInCache(key string, delta []byte, startTs, comm
 	}
 
 	val, ok := ml.cache.get([]byte(key))
-	if !ok {
-		return
-	}
 
-	val.lastUpdate = commitTs
+	if ok && val.list != nil && val.list.minTs <= commitTs {
+		val.lastUpdate = commitTs
 
-	if val.list != nil {
-		p := new(pb.PostingList)
-		x.Check(proto.Unmarshal(delta, p))
-
-		if p.Pack == nil {
-			val.list.setMutationAfterCommit(startTs, commitTs, p, true)
-			checkForRollup([]byte(key), val.list)
-		} else {
-			// Data was rolled up. TODO figure out how is UpdateCachedKeys getting delta which is pack)
-			ml.del([]byte(key))
+		if val.list != nil {
+			if delta.Pack == nil {
+				val.list.setMutationAfterCommit(startTs, commitTs, delta, true)
+				checkForRollup([]byte(key), val.list)
+			} else {
+				// Data was rolled up. TODO figure out how is UpdateCachedKeys getting delta which is pack)
+				ml.del([]byte(key))
+			}
 		}
-
 	}
 }
 
@@ -607,8 +616,11 @@ func (txn *Txn) UpdateCachedKeys(commitTs uint64) {
 	}
 
 	MemLayerInstance.wait()
-	for key, delta := range txn.cache.deltas {
-		MemLayerInstance.updateItemInCache(key, delta, txn.StartTs, commitTs)
+	if err := txn.cache.deltas.IteratePostings(func(key string, value *pb.PostingList) error {
+		MemLayerInstance.updateItemInCache(key, value, txn.StartTs, commitTs)
+		return nil
+	}); err != nil {
+		glog.Errorf("UpdateCachedKeys: error while iterating deltas: %v", err)
 	}
 }
 

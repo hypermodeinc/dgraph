@@ -124,7 +124,6 @@ func TestGetSinglePosting(t *testing.T) {
 
 	res, err := l.StaticValue(1)
 	require.NoError(t, err)
-	fmt.Println(res, res == nil)
 	require.Equal(t, res == nil, true)
 
 	l.plist = create_pl(1, 1)

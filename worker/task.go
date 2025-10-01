@@ -462,6 +462,8 @@ func (qs *queryState) handleValuePostings(ctx context.Context, args funcArgs) er
 						Value: p.Value,
 					}
 				}
+				pk, _ := x.Parse(key)
+				fmt.Println("READING SINGLE", pk, vals, pl)
 			} else {
 				pl, err := qs.cache.Get(key)
 				if err != nil {
@@ -481,6 +483,8 @@ func (qs *queryState) handleValuePostings(ctx context.Context, args funcArgs) er
 				}
 
 				vals, fcs, err = retrieveValuesAndFacets(args, pl, facetsTree, listType)
+				pk, _ := x.Parse(key)
+				fmt.Println("READING", pk, vals, fcs, pl.Print())
 
 				switch {
 				case err == posting.ErrNoValue || (err == nil && len(vals) == 0):

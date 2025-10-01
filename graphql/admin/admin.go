@@ -654,6 +654,10 @@ func newAdminResolver(
 			return
 		}
 
+		if len(pl.Postings) == 2 && string(pl.Postings[0].Value) == "_STAR_ALL" {
+			pl.Postings = pl.Postings[1:]
+		}
+
 		// There should be only one posting.
 		if len(pl.Postings) != 1 {
 			glog.Errorf("Only one posting is expected in the graphql schema posting list but got %d",
