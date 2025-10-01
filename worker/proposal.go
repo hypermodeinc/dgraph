@@ -221,6 +221,8 @@ func (n *node) proposeAndWait(ctx context.Context, proposal *pb.Proposal) (perr 
 		cctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
+		cctx = trace.ContextWithSpan(cctx, span)
+
 		errCh := make(chan error, 1)
 		pctx := &conn.ProposalCtx{
 			ErrCh: errCh,

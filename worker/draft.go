@@ -876,6 +876,12 @@ func (n *node) processApplyCh() {
 		glog.V(3).Infof("handling element in applyCh with #entries %v", len(entries))
 		defer glog.V(3).Infof("done handling element in applyCh")
 
+		_, spanHandler := otel.Tracer("applyCh").Start(context.Background(), "Alpha.processApplyCh")
+		defer spanHandler.End()
+
+		spanHandler.AddEvent("handling element in applyCh with #entries %v", trace.WithAttributes(
+			attribute.Int64("numEntries", int64(len(entries)))))
+
 		var totalSize int64
 		for _, entry := range entries {
 			x.AssertTrue(len(entry.Data) > 0)
@@ -909,7 +915,7 @@ func (n *node) processApplyCh() {
 					p := &P{err: perr, size: psz, seen: time.Now()}
 					previous[key] = p
 				}
-				span := trace.SpanFromContext(n.ctx)
+				span := trace.SpanFromContext(n.Ctx(key))
 				if perr != nil {
 					glog.Errorf("Applying proposal. Error: %v. Proposal: %q.", perr, &proposal)
 					span.AddEvent(fmt.Sprintf("Applying proposal failed. Error: %v Proposal: %q", perr, &proposal))
@@ -919,11 +925,22 @@ func (n *node) processApplyCh() {
 						attribute.Int64("key", int64(key)),
 						attribute.Int64("index", int64(proposal.Index)),
 					))
+				spanHandler.AddEvent("Applied proposal with key: %d, index: %d. Err: %v",
+					trace.WithAttributes(
+						attribute.Int64("key", int64(key)),
+						attribute.Int64("index", int64(proposal.Index)),
+					))
 
 				var tags []tag.Mutator
 				switch {
 				case proposal.Mutations != nil:
 					tags = append(tags, tag.Upsert(x.KeyMethod, "apply.Mutations"))
+					span.SetAttributes(attribute.Int64("start_ts", int64(proposal.Mutations.StartTs)))
+					txn := posting.Oracle().GetTxn(proposal.Mutations.StartTs)
+					if txn != nil {
+						txn.Span = span
+					}
+
 				case proposal.Delta != nil:
 					tags = append(tags, tag.Upsert(x.KeyMethod, "apply.Delta"))
 				}
@@ -966,10 +983,15 @@ func (n *node) processApplyCh() {
 
 // TODO(Anurag - 4 May 2020): Are we using pkey? Remove if unused.
 func (n *node) commitOrAbort(pkey uint64, delta *pb.OracleDelta) error {
+	pctx, span := otel.Tracer("alpha.CommitLoop").Start(context.Background(), "alpha.commitOrAbort")
+	defer span.End()
+
 	x.PrintOracleDelta(delta)
 	// First let's commit all mutations to disk.
 	writer := posting.NewTxnWriter(pstore)
 	toDisk := func(start, commit uint64) {
+		_, tspan := otel.Tracer("alpha.CommitLoop").Start(pctx, "alpha.toDisk")
+		defer tspan.End()
 		txn := posting.Oracle().GetTxn(start)
 		if txn == nil || commit == 0 {
 			return
@@ -995,6 +1017,12 @@ func (n *node) commitOrAbort(pkey uint64, delta *pb.OracleDelta) error {
 				start, commit, err)
 			panic(err)
 		}
+
+		tspan.AddEvent("Committed txn with start_ts: %d, commit_ts: %d", trace.WithAttributes(
+			attribute.Int64("start_ts", int64(start)),
+			attribute.Int64("commit_ts", int64(commit)),
+		))
+		tspan.SetAttributes(attribute.Int64("start_ts", int64(start)), attribute.Int64("commit_ts", int64(commit)))
 	}
 
 	for _, status := range delta.Txns {
@@ -1002,6 +1030,17 @@ func (n *node) commitOrAbort(pkey uint64, delta *pb.OracleDelta) error {
 	}
 	if err := writer.Flush(); err != nil {
 		return errors.Wrapf(err, "while flushing to disk")
+	}
+
+	span.AddEvent("Flushed to disk")
+	for _, status := range delta.Txns {
+		txn := posting.Oracle().GetTxn(status.StartTs)
+		if txn != nil && txn.Span != nil {
+			txn.Span.AddEvent("Flushed txn with start_ts: %d, commit_ts: %d", trace.WithAttributes(
+				attribute.Int64("start_ts", int64(status.StartTs)),
+				attribute.Int64("commit_ts", int64(status.CommitTs)),
+			))
+		}
 	}
 
 	if x.WorkerConfig.HardSync {
