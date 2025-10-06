@@ -22,6 +22,7 @@ import (
 	"github.com/hypermodeinc/dgraph/v25/protos/pb"
 	"github.com/hypermodeinc/dgraph/v25/tok/hnsw"
 	opts "github.com/hypermodeinc/dgraph/v25/tok/options"
+	"github.com/hypermodeinc/dgraph/v25/tok/partitioned_hnsw"
 	"github.com/hypermodeinc/dgraph/v25/types"
 	"github.com/hypermodeinc/dgraph/v25/x"
 )
@@ -87,6 +88,7 @@ var indexFactories = make(map[string]IndexFactory)
 func init() {
 	registerTokenizer(BigFloatTokenizer{})
 	registerIndexFactory(createIndexFactory(hnsw.CreateFactory[float32](32)))
+	registerIndexFactory(createIndexFactory(partitioned_hnsw.CreateFactory[float32](32)))
 	registerTokenizer(GeoTokenizer{})
 	registerTokenizer(IntTokenizer{})
 	registerTokenizer(FloatTokenizer{})

@@ -475,6 +475,11 @@ func (s *state) PredicatesToDelete(pred string) []string {
 			preds = append(preds, pred+hnsw.VecEntry)
 			preds = append(preds, pred+hnsw.VecKeyword)
 			preds = append(preds, pred+hnsw.VecDead)
+			for i := range 1000 {
+				preds = append(preds, fmt.Sprintf("%s%s_%d", pred, hnsw.VecEntry, i))
+				preds = append(preds, fmt.Sprintf("%s%s_%d", pred, hnsw.VecKeyword, i))
+				preds = append(preds, fmt.Sprintf("%s%s_%d", pred, hnsw.VecDead, i))
+			}
 		}
 	}
 	return preds
