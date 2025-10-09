@@ -49,9 +49,22 @@ ifneq ($(strip $(BUILD_RACE)),)
 	BUILD_FLAGS += -race
 endif
 
+# Set TMPDIR, jemalloc will be built here
+ifdef TMPDIR
+	# no-op
+else
+	TMPDIR := /tmp
+endif
+
 # jemalloc stuff
-HAS_JEMALLOC = $(shell test -f /usr/local/lib/libjemalloc.a && echo "jemalloc")
-JEMALLOC_URL = "https://github.com/jemalloc/jemalloc/releases/download/5.3.0/jemalloc-5.3.0.tar.bz2"
+JEMALLOC_VERSION = 5.3.0
+JEMALLOC_BUILD = $(TMPDIR)/jemalloc-$(JEMALLOC_VERSION)-u$(USER_ID)/build
+JEMALLOC_TARGET = $(TMPDIR)/jemalloc-$(JEMALLOC_VERSION)-u$(USER_ID)/target
+JEMALLOC_INCLUDE = $(JEMALLOC_TARGET)/include
+HAS_JEMALLOC = $(shell test -f ${JEMALLOC_TARGET}/lib/libjemalloc.a && echo "jemalloc")
+JEMALLOC_URL = "https://github.com/jemalloc/jemalloc/releases/download/$(JEMALLOC_VERSION)/jemalloc-$(JEMALLOC_VERSION).tar.bz2"
+export CGO_CFLAGS = -I$(JEMALLOC_INCLUDE)
+export CGO_LDFLAGS = $(JEMALLOC_TARGET)/lib/libjemalloc.a
 
 # go install variables
 HAS_SHA256SUM = $(shell which sha256sum)
@@ -93,17 +106,11 @@ install: jemalloc
 
 jemalloc:
 	@if [ -z "$(HAS_JEMALLOC)" ] ; then \
-		mkdir -p /tmp/jemalloc-temp && cd /tmp/jemalloc-temp ; \
+		mkdir -p ${JEMALLOC_BUILD} && cd ${JEMALLOC_BUILD} ; \
 		echo "Downloading jemalloc" ; \
 		curl -f -s -L ${JEMALLOC_URL} -o jemalloc.tar.bz2 ; \
 		tar xjf ./jemalloc.tar.bz2 ; \
-		cd jemalloc-5.3.0 ; \
-		./configure --with-jemalloc-prefix='je_' --with-malloc-conf='background_thread:true,metadata_thp:auto'; \
-		make ; \
-		if [ "$(USER_ID)" = "0" ]; then \
-			make install ; \
-		else \
-			echo "==== Need sudo access to install jemalloc" ; \
-			sudo make install ; \
-		fi \
+		cd jemalloc-$(JEMALLOC_VERSION) ; \
+		./configure --prefix=${JEMALLOC_TARGET} --with-jemalloc-prefix='je_' --with-malloc-conf='background_thread:true,metadata_thp:auto'; \
+		make install ; \
 	fi
